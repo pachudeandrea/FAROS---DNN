@@ -64,8 +64,21 @@ export const getQualitativeImpactLabel = (impact: string): string => {
   }
   return 'Neutral';
 };
-
-
+export interface NotificationAlert {
+  id: string;
+  newsId?: string;
+  calendarEventId?: string;
+  title: string;
+  timeAgo: string;
+  impact: NewsImpact;
+  read: boolean;
+  affectedHoldings: string;
+  reason?: string;
+  mediaName?: string;
+  publishedTime?: string;
+  sourceUrl?: string;
+  alertType?: 'noticia_adversa' | 'calendario_riesgo' | 'correccion_desmentida' | 'discrepancia_medios' | 'favorable' | 'neutral';
+}
 
 export type RelevanceType = 
   | 'impacto_precio' 
@@ -202,7 +215,7 @@ export interface OnboardingDraft {
   birthDate: string;
   country: string;
   city: string;
-  phone: string;
+  phone?: string;
   timeZone: string;
   termsAccepted: boolean;
   notificationsOptIn: boolean;

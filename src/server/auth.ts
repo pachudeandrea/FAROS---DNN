@@ -330,7 +330,7 @@ export async function handleRegister(req: Request, res: Response) {
     }
   }
 
-  // Build isolated Portfolio from provided assets
+  // Build isolated Portfolio from provided assets (allow 0 assets)
   const assetIds: string[] = [];
   const assetPositions: Record<string, 'long' | 'short'> = {};
 
@@ -339,20 +339,8 @@ export async function handleRegister(req: Request, res: Response) {
       const sym = (a.symbol || '').toUpperCase().trim();
       if (sym && !assetIds.includes(sym)) {
         assetIds.push(sym);
-        assetPositions[sym] = 'long';
+        assetPositions[sym] = a.position === 'short' ? 'short' : 'long';
       }
-    }
-  } else {
-    // Default initial assets based on profile
-    if (profile === 'dinamico') {
-      assetIds.push('GGAL', 'YPFD', 'PAMP');
-      assetPositions['GGAL'] = 'long';
-      assetPositions['YPFD'] = 'long';
-      assetPositions['PAMP'] = 'long';
-    } else {
-      assetIds.push('AL30', 'GD30');
-      assetPositions['AL30'] = 'long';
-      assetPositions['GD30'] = 'long';
     }
   }
 
@@ -361,8 +349,10 @@ export async function handleRegister(req: Request, res: Response) {
 
   const initialPortfolio: Portfolio = {
     id: portfolioId,
-    name: portfolioName.trim() || 'Mi Cartera Personal',
-    description: `Cartera (${profile === 'dinamico' ? 'Dinámica' : profile === 'conservador' ? 'Conservadora' : 'Moderada'}) con ${assetIds.length} activos monitoreados.`,
+    name: (portfolioName && portfolioName.trim()) ? portfolioName.trim() : 'Mi Cartera',
+    description: assetIds.length > 0
+      ? `Cartera (${profile === 'dinamico' ? 'Dinámica' : profile === 'conservador' ? 'Conservadora' : 'Moderada'}) con ${assetIds.length} activos monitoreados.`
+      : 'Mi espacio personal de inversión en FAROS.',
     profile: profile as RiskProfile,
     assetIds,
     assetPositions

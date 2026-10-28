@@ -123,7 +123,8 @@ function classifyArticle(headline: string, source: MediaCoverage): { topicKey: s
 
   // 1. Dólar / Brecha / CCL / MEP
   if (lower.includes('dólar') || lower.includes('dolar') || lower.includes('mep') || lower.includes('ccl') || lower.includes('blue') || lower.includes('brecha')) {
-    const isUp = lower.includes('sube') || lower.includes('trepa') || lower.includes('presión') || lower.includes('avanza');
+    const isPressure = lower.includes('sube') || lower.includes('trepa') || lower.includes('presión') || lower.includes('avanza') || lower.includes('tensión') || lower.includes('brecha');
+    const isRelief = lower.includes('baja') || lower.includes('cae') || lower.includes('retrocede') || lower.includes('calma') || lower.includes('estabiliza');
     return {
       topicKey: 'dolar_mercado',
       clusterInfo: {
@@ -131,14 +132,15 @@ function classifyArticle(headline: string, source: MediaCoverage): { topicKey: s
         tickers: ['MEP', 'CCL'],
         headline: headline.length > 30 ? headline : 'Mercado cambiario: cotizaciones del dólar financiero y oficial en la plaza local',
         briefSummary: `Evolución de las cotizaciones cambiarias (MEP, CCL y oficial), demanda de divisas y volumen operado informado por ${source.mediaName}.`,
-        impact: isUp ? 'alerta' : 'neutral'
+        impact: isPressure ? 'alerta' : isRelief ? 'favorable' : 'neutral'
       }
     };
   }
 
   // 2. Bonos / Riesgo País / Deuda Soberana
   if (lower.includes('bono') || lower.includes('deuda') || lower.includes('riesgo país') || lower.includes('riesgo pais') || lower.includes('al30') || lower.includes('gd30') || lower.includes('soberan')) {
-    const isDown = lower.includes('cae') || lower.includes('baja') || lower.includes('retroced') || lower.includes('derrumbe');
+    const isDown = lower.includes('cae') || lower.includes('baja') || lower.includes('retroced') || lower.includes('derrumbe') || lower.includes('presión') || lower.includes('sube el riesgo') || lower.includes('cautela') || lower.includes('dudas');
+    const isUp = lower.includes('sube') || lower.includes('trepa') || lower.includes('ganancias') || lower.includes('comprime') || lower.includes('cae el riesgo') || lower.includes('baja el riesgo');
     return {
       topicKey: 'deuda_soberana',
       clusterInfo: {
@@ -146,7 +148,7 @@ function classifyArticle(headline: string, source: MediaCoverage): { topicKey: s
         tickers: ['AL30', 'GD30'],
         headline: headline.length > 30 ? headline : 'Bonos soberanos en dólares y riesgo país: paridades y cotizaciones en BYMA y Wall Street',
         briefSummary: `Tendencia de las paridades soberanas en dólares (AL30 y GD30) y spread soberano reportados por ${source.mediaName}.`,
-        impact: isDown ? 'alerta' : 'favorable'
+        impact: isDown ? 'alerta' : isUp ? 'favorable' : 'neutral'
       }
     };
   }
@@ -164,6 +166,8 @@ function classifyArticle(headline: string, source: MediaCoverage): { topicKey: s
     lower.includes('oleoducto');
 
   if (isEnergy) {
+    const isAdverse = lower.includes('baja') || lower.includes('caída') || lower.includes('cae') || lower.includes('freno') || lower.includes('parada') || lower.includes('demora') || lower.includes('conflicto') || lower.includes('costos') || lower.includes('pérdida') || lower.includes('riesgo');
+    const isFavorable = lower.includes('inversión') || lower.includes('récord') || lower.includes('record') || lower.includes('amplía') || lower.includes('duplica') || lower.includes('exportación') || lower.includes('superávit');
     return {
       topicKey: 'energia_vaca_muerta',
       clusterInfo: {
@@ -171,13 +175,15 @@ function classifyArticle(headline: string, source: MediaCoverage): { topicKey: s
         tickers: ['YPFD', 'PAMP'],
         headline: headline.length > 30 ? headline : 'Sector energético y Vaca Muerta: producción, transporte y proyectos de inversión',
         briefSummary: `Actualización de capacidad operativa, evacuación de hidrocarburos y desempeño corporativo reportado por ${source.mediaName}.`,
-        impact: 'favorable'
+        impact: isAdverse ? 'alerta' : isFavorable ? 'favorable' : 'neutral'
       }
     };
   }
 
   // 4. Bancos / Tasas / BCRA / Reservas
   if (lower.includes('banco') || lower.includes('galicia') || lower.includes('tasa') || lower.includes('bcra') || lower.includes('reservas') || lower.includes('crédito') || lower.includes('bopreal')) {
+    const isAdverse = lower.includes('caída') || lower.includes('cae') || lower.includes('presión') || lower.includes('mora') || lower.includes('suba de tasas') || lower.includes('inflación');
+    const isFavorable = lower.includes('compras netas') || lower.includes('compras') || lower.includes('superávit') || lower.includes('desacelera');
     return {
       topicKey: 'sistema_financiero',
       clusterInfo: {
@@ -185,7 +191,7 @@ function classifyArticle(headline: string, source: MediaCoverage): { topicKey: s
         tickers: ['GGAL', 'BOPREAL'],
         headline: headline.length > 30 ? headline : 'Sistema bancario y política monetaria: reservas, encajes y colocaciones del BCRA',
         briefSummary: `Medidas monetarias, nivel de reservas y dinámica crediticia de entidades financieras relevadas por ${source.mediaName}.`,
-        impact: lower.includes('compras') || lower.includes('suba') ? 'favorable' : 'neutral'
+        impact: isAdverse ? 'alerta' : isFavorable ? 'favorable' : 'neutral'
       }
     };
   }

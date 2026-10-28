@@ -640,7 +640,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
       )}
 
       {/* Main Calendar Header Card */}
-      <div className="bg-gradient-to-br from-emerald-950 via-emerald-900 to-slate-950 text-white rounded-3xl p-6 sm:p-7 shadow-[0_4px_20px_rgba(0,0,0,0.06)] relative overflow-hidden">
+      <div data-tour="calendar-header" className="bg-gradient-to-br from-emerald-950 via-emerald-900 to-slate-950 text-white rounded-3xl p-6 sm:p-7 shadow-[0_4px_20px_rgba(0,0,0,0.06)] relative overflow-hidden">
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-48 h-48 rounded-full bg-emerald-500/10 blur-2xl pointer-events-none" />
         
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5 pb-5 border-b border-emerald-800/60">
@@ -664,6 +664,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
           {/* Action buttons: Refresh & Add custom event */}
           <div className="flex items-center gap-2.5 flex-wrap shrink-0">
             <button
+              data-tour="calendar-refresh-btn"
               onClick={() => loadCalendarEvents(true)}
               disabled={isLoading}
               className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-900/60 hover:bg-emerald-900 text-emerald-100 border border-emerald-700/60 text-xs font-bold transition-all cursor-pointer disabled:opacity-50 shadow-2xs"
@@ -674,6 +675,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
             </button>
 
             <button
+              data-tour="calendar-add-event-btn"
               onClick={() => handleOpenAddEventModal()}
               className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white text-emerald-950 hover:bg-emerald-50 text-xs font-extrabold transition-all cursor-pointer shadow-xs active:scale-95"
             >
@@ -684,7 +686,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
         </div>
 
         {/* 3 Quick Highlight Cards inside Calendar Hero (Recalculated by visible month) */}
-        <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-5">
+        <div data-tour="calendar-summary-metrics" className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-5">
           <div className="bg-emerald-900/40 border border-emerald-700/50 rounded-2xl p-4 flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center shrink-0">
               <DollarSign className="w-5 h-5" />
@@ -730,7 +732,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
       </div>
 
       {/* Category Filter Pills */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div data-tour="calendar-filters" className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-slate-100 rounded-full overflow-x-auto text-xs border border-slate-200/80">
           {[
             { id: 'todos', label: 'Todos los tipos' },
@@ -754,20 +756,23 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
         </div>
 
         {/* Browser Notifications Request Button */}
-        {notificationPermission !== 'granted' && (
-          <button
-            onClick={handleRequestNotificationPermission}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 transition-colors cursor-pointer shadow-2xs"
-            title="Activar avisos de recordatorios en el navegador"
-          >
-            <Bell className="w-3.5 h-3.5 text-emerald-800" />
-            <span>Activar notificaciones</span>
-          </button>
-        )}
+        <button
+          data-tour="calendar-browser-notifications"
+          onClick={handleRequestNotificationPermission}
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer shadow-2xs ${
+            notificationPermission === 'granted'
+              ? 'border-emerald-300 bg-emerald-50 text-emerald-950'
+              : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-700'
+          }`}
+          title="Activar avisos de recordatorios en el navegador"
+        >
+          <Bell className="w-3.5 h-3.5 text-emerald-800" />
+          <span>{notificationPermission === 'granted' ? 'Notificaciones activas' : 'Activar notificaciones'}</span>
+        </button>
       </div>
 
       {/* Monthly Calendar Grid Card */}
-      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_2px_16px_rgba(0,0,0,0.04)] p-6 sm:p-7 space-y-5">
+      <div data-tour="calendar-grid" className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_2px_16px_rgba(0,0,0,0.04)] p-6 sm:p-7 space-y-5">
         {/* Month Navigation Bar */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div>
@@ -925,20 +930,20 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
       </div>
 
       {/* Section "Mis recordatorios próximos" */}
-      {upcomingCustomEvents.length > 0 && (
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Bell className="w-4 h-4 text-emerald-900" />
-              <h3 className="text-base font-extrabold text-slate-900">
-                Mis recordatorios próximos
-              </h3>
-            </div>
-            <span className="text-xs text-slate-500">
-              {upcomingCustomEvents.length} {upcomingCustomEvents.length === 1 ? 'evento programado' : 'eventos programados'}
-            </span>
+      <section data-tour="calendar-reminders-info" className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Bell className="w-4 h-4 text-emerald-900" />
+            <h3 className="text-base font-extrabold text-slate-900">
+              Mis recordatorios y alertas programadas
+            </h3>
           </div>
+          <span className="text-xs text-slate-500">
+            {upcomingCustomEvents.length} {upcomingCustomEvents.length === 1 ? 'evento programado' : 'eventos programados'}
+          </span>
+        </div>
 
+        {upcomingCustomEvents.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             {upcomingCustomEvents.map(ce => {
               const countdownLabel = ce.diff === 0 ? '¡HOY!' : ce.diff === 1 ? 'Mañana' : `En ${ce.diff} días`;
@@ -981,11 +986,24 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
               );
             })}
           </div>
-        </section>
-      )}
+        ) : (
+          <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl flex items-center justify-between text-xs text-slate-600">
+            <span className="flex items-center gap-2">
+              <Info className="w-4 h-4 text-emerald-800 shrink-0" />
+              Podés agendar compras, ventas, cobros o vencimientos con recordatorios automáticos (en el día o 1 día antes).
+            </span>
+            <button
+              onClick={() => handleOpenAddEventModal()}
+              className="text-emerald-950 font-bold hover:underline shrink-0 ml-3 cursor-pointer"
+            >
+              + Agregar evento
+            </button>
+          </div>
+        )}
+      </section>
 
       {/* Próximos Eventos Destacados del Mes Visible */}
-      <section className="space-y-3">
+      <section data-tour="calendar-events-list" className="space-y-3">
         <h3 className="text-base font-extrabold text-slate-900">
           Próximos Eventos Destacados ({MONTH_NAMES[currentMonth]} {currentYear})
         </h3>

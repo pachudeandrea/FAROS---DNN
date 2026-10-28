@@ -1,6 +1,6 @@
 import React from 'react';
 import { LighthouseLogo } from './LighthouseLogo';
-import { Bell, ArrowRight } from 'lucide-react';
+import { Bell, ArrowRight, Sparkles } from 'lucide-react';
 
 interface HeaderProps {
   currentTab: 'feed' | 'calendar' | 'settings';
@@ -9,6 +9,7 @@ interface HeaderProps {
   onOpenNotifications: () => void;
   portfolioName: string;
   pendingRemindersCount?: number;
+  onStartTour?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -18,6 +19,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenNotifications,
   portfolioName,
   pendingRemindersCount = 0,
+  onStartTour,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
@@ -87,9 +89,22 @@ export const Header: React.FC<HeaderProps> = ({
         </nav>
 
         {/* Zone 3: Rocket Money-style Account/Portfolio Pill + Notifications */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+          {/* Tour button */}
+          {onStartTour && (
+            <button
+              onClick={onStartTour}
+              title="Iniciar tutorial interactivo de FAROS"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-950 bg-emerald-50 hover:bg-emerald-100 rounded-full border border-emerald-200/90 transition-all cursor-pointer shadow-2xs"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
+              <span>Tutorial</span>
+            </button>
+          )}
+
           {/* Notifications bell */}
           <button
+            data-tour="header-notifications"
             onClick={onOpenNotifications}
             title="Alertas de cartera"
             className="relative p-2.5 text-slate-600 hover:text-emerald-950 hover:bg-slate-100 rounded-full transition-colors cursor-pointer border border-transparent hover:border-slate-200"

@@ -104,6 +104,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({
           </div>
 
           <button
+            data-tour="feed-card-bookmark"
             onClick={(e) => {
               e.stopPropagation();
               onToggleSave(news.id);
@@ -216,7 +217,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({
           </span>
         </button>
 
-        <span className="inline-flex items-center gap-1.5 font-extrabold text-emerald-950 group-hover:translate-x-1 transition-transform">
+        <span data-tour="feed-card-detail" className="inline-flex items-center gap-1.5 font-extrabold text-emerald-950 group-hover:translate-x-1 transition-transform">
           <span>Ver impacto en cartera</span>
           <ArrowRight className="w-4 h-4" />
         </span>

@@ -164,26 +164,50 @@ export function generateDailySummaryScript(
     profileSection = `Con tu perfil moderado, buscamos un balance constante entre la paridad de los bonos soberanos y la evolución de las empresas de energía y el sector bancario.`;
   }
 
-  // 3. Bloque de noticias de cartera
+  // 3. Bloque de balance de noticias y desglose simétrico de riesgos y oportunidades
   const relevantNews = newsList.filter(item =>
     item.affectedAssetIds.some(aid => userTickers.includes(aid))
   );
 
+  const favorableNews = relevantNews.filter(n => n.impact === 'favorable' || n.impact === 'positivo');
+  const riskAlertNews = relevantNews.filter(n => n.impact === 'alerta' || n.impact === 'negativo');
+  const neutralNews = relevantNews.filter(n => n.impact === 'neutral' || n.impact === 'neutro');
+
   let newsSection = '';
-  let missingDataNotice = '';
 
   if (relevantNews.length > 0) {
-    const topNews = relevantNews.slice(0, 3);
-    const newsSentences = topNews.map((n, idx) => {
-      const symbolsInNews = n.affectedAssetIds.filter(aid => userTickers.includes(aid)).join(' y ');
-      const cleanSummary = n.briefSummary.replace(/\.$/, '');
-      return `Fijate que respecto a tus activos ${symbolsInNews}, ${n.headline}. ${cleanSummary}. Este hecho se traslada de manera directa a la liquidez y las cotizaciones de tu cartera.`;
-    }).join(' ');
+    const balanceIntro = `En el balance de hoy para tus activos, registramos ${favorableNews.length} novedades favorables, ${riskAlertNews.length} alertas de riesgo y ${neutralNews.length} acontecimientos de contexto neutral.`;
 
-    newsSection = `En cuanto a las novedades de tus activos, ${newsSentences}`;
+    let riskDetails = '';
+    if (riskAlertNews.length > 0) {
+      const riskItems = riskAlertNews.slice(0, 2).map(n => {
+        const syms = n.affectedAssetIds.filter(aid => userTickers.includes(aid)).join(' y ');
+        return `sobre ${syms}, ${n.headline}. ${n.briefSummary.replace(/\.$/, '')}`;
+      }).join('. Además, ');
+      riskDetails = `Mirando primero las alertas de riesgo y factores de cautela: ${riskItems}. Analizá con detenimiento este factor de presión sobre tus posiciones.`;
+    } else {
+      riskDetails = `En cuanto a riesgos, las fuentes monitoreadas de Ámbito, El Cronista, Infobae, BCRA e INDEC no registran hechos adversos directos sobre tus tenencias en las últimas horas.`;
+    }
+
+    let favorableDetails = '';
+    if (favorableNews.length > 0) {
+      const favItems = favorableNews.slice(0, 2).map(n => {
+        const syms = n.affectedAssetIds.filter(aid => userTickers.includes(aid)).join(' y ');
+        return `en ${syms}, ${n.headline}. ${n.briefSummary.replace(/\.$/, '')}`;
+      }).join('. Asimismo, ');
+      favorableDetails = `Por el lado de los factores favorables y catalizadores: ${favItems}.`;
+    }
+
+    let neutralDetails = '';
+    if (neutralNews.length > 0) {
+      const neuItem = neutralNews[0];
+      const syms = neuItem.affectedAssetIds.filter(aid => userTickers.includes(aid)).join(' y ');
+      neutralDetails = `En el plano regulatorio y de contexto para ${syms}, ${neuItem.headline}.`;
+    }
+
+    newsSection = `${balanceIntro} ${riskDetails} ${favorableDetails} ${neutralDetails}`.trim();
   } else {
-    missingDataNotice = 'Aviso de cobertura: Hoy las fuentes oficiales registran baja emisión de novedades directas sobre tus activos específicos. Completamos este informe con el análisis de variables macroeconómicas y lo que se espera para la próxima rueda.';
-    newsSection = `${missingDataNotice} Por eso, el seguimiento se concentra en el nivel de liquidez general, la tasa de interés en pesos y la marcha de los dólares financieros MEP y Contado con Liquidación, que marcan la referencia de tus activos.`;
+    newsSection = `Aviso de cobertura: Hoy las fuentes financieras monitoreadas registran baja emisión de novedades directas sobre tus activos específicos. No se identifican alertas de riesgo ni hechos relevantes. Completamos este informe con el análisis de liquidez en el Banco Central, tasas de interés y la dinámica de los dólares financieros MEP y Contado con Liquidación.`;
   }
 
   // 4. Bloque de Calendario Financiero de hoy y próximos vencimientos
@@ -265,7 +289,6 @@ export function generateDailySummaryScript(
     durationText: `${durationEst.formatted} min`,
     durationSeconds: durationEst.seconds,
     timeSlot,
-    generatedAtIso: new Date().toISOString(),
-    disclaimerNotice: missingDataNotice || undefined
+    generatedAtIso: new Date().toISOString()
   };
 }

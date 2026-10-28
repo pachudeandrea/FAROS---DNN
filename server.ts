@@ -120,9 +120,17 @@ async function fetchGroundedNewsFromGemini(tickers: string[], portfolioProfile: 
     const argDate = getNowAR();
     const tickersStr = tickers.length > 0 ? tickers.join(', ') : 'AL30, GD30, YPFD, GGAL, MEP, CCL';
     const searchPrompt = `Hoy es ${argDate.formattedSpanish} (fecha ISO: ${argDate.isoDate}, zona horaria America/Argentina/Buenos_Aires).
-Buscá las noticias financieras, cambiarias y de mercados más importantes publicadas hoy o en las últimas 24 a 48 horas en Argentina relacionadas con estos activos y el contexto macroeconómico: ${tickersStr}.
-Priorizá medios argentinos especializados de economía y finanzas: Ámbito Financiero (ambito.com), El Cronista (cronista.com), Infobae (infobae.com), Bloomberg Línea (bloomberglinea.com), La Nación (lanacion.com.ar), Clarín (clarin.com), Reuters (reuters.com), EconoJournal (econojournal.com.ar), BAE Negocios (baenegocios.com), iProfesional (iprofesional.com).
-Detallá los hechos concretos de mercado, cotizaciones, tipo de cambio y regulaciones respaldados por las notas periodísticas encontradas.`;
+Buscá con rigor simétrico las noticias financieras, cambiarias, regulatorias y de mercado más importantes publicadas hoy o en las últimas 24 a 48 horas en Argentina relacionadas con estos activos y su contexto: ${tickersStr}.
+Incluí tanto catalizadores favorables como factores de RIESGO e impacto adverso:
+- Suba de riesgo país, caída de paridades soberanas, licitaciones desiertas o vencimientos exigentes.
+- Presiones sobre el tipo de cambio (MEP, CCL, oficial), ampliación de brecha cambiaria y variación de reservas del BCRA.
+- Inflación mayor a la esperada, cambios de tasas de interés y medidas de política monetaria del BCRA.
+- Regulaciones, intimaciones o resoluciones de CNV, BCRA, ARCA/AFIP o Secretaría de Comercio.
+- Balances corporativos con caída de márgenes, suspensiones de inversiones o dividendos, hechos relevantes adversos y caídas en commodities (petróleo, gas, granos).
+- Shocks internacionales (tasas de la Fed, tensión geopolítica, bajas de calificación crediticia).
+
+Fuentes prioritarias autorizadas: Ámbito Financiero (ambito.com), El Cronista (cronista.com), Infobae Economía (infobae.com), Bloomberg Línea (bloomberglinea.com), La Nación Economía (lanacion.com.ar), Clarín Economía (clarin.com), Reuters (reuters.com), EconoJournal (econojournal.com.ar), BAE Negocios (baenegocios.com), iProfesional (iprofesional.com), Comunicados Oficiales BCRA (bcra.gob.ar), CNV (cnv.gov.ar) e INDEC (indec.gob.ar).
+Detallá los hechos concretos, cifras y mecanismos de transmisión respaldados por las notas encontradas.`;
 
     // Step 1: Call Gemini with Google Search grounding enabled
     const searchResponse = await ai.models.generateContent({
@@ -213,18 +221,21 @@ Detallá los hechos concretos de mercado, cotizaciones, tipo de cambio y regulac
     // Step 2: Structure news into JSON referencing sources solely by numeric ID
     const structurePrompt = `A partir del texto sintetizado y de la lista de fuentes reales numeradas, estructurá las noticias financieras relevantes para los activos [${tickersStr}] con fecha ${argDate.formattedSpanish}.
 
-REGLAS ABSOLUTAS:
-1. El modelo NUNCA escribe URLs ni títulos de notas.
-2. Cada noticia DEBE asociar en "sourceIds" únicamente los IDs numéricos de las fuentes reales que la respaldan (ejemplo: [1, 2]).
-3. Si una noticia no tiene al menos una fuente del listado, DESCARTALA.
-4. El título ("headline") y los puntos clave ("fullSynthesis") deben basarse estrictamente en los hechos reportados.
-5. NO incluyas recomendaciones financieras de compra o venta (estricto cumplimiento informativo/técnico).
+REGLAS ABSOLUTAS DE OBJETIVIDAD Y SIMETRÍA:
+1. EVALUACIÓN BALANCEADA SIN SESGO: Tratá con el mismo rigor y peso las noticias favorables, las alertas/riesgos adversos y las neutras. Queda estrictamente prohibido suavizar malas noticias, omitir riesgos o forzar conclusiones optimistas.
+2. DIRECCIÓN DEL IMPACTO ("impact"):
+   - "alerta": cuando la noticia reporte presiones a la baja en cotizaciones, suba de riesgo país, devaluación, aceleración inflacionaria, mayores costos, caídas de ventas/márgenes, endurecimiento regulatorio o shocks desfavorables.
+   - "favorable": cuando la noticia reporte hechos concretos de superávit, compras genuinas de reservas, compresión de riesgo, expansión operativa o desregulación positiva respaldada.
+   - "neutral": cuando el acontecimiento sea de contexto general, desmentida sin daño estructural o datos dentro de lo esperado. Si la evidencia es mixta o insuficiente, la dirección DEBE ser "neutral", NUNCA "favorable" por defecto.
+3. IMPACTO POR ACTIVO (afectación cruzada): En "portfolioImpactAnalysis.affectedHoldings", evaluá el impacto ticker por ticker. Un mismo acontecimiento puede ser adverso para un activo y favorable para otro (ej: suba del dólar financiero puede generar alerta para títulos en pesos y ser favorable para activos dolarizados).
+4. CERO ALUCINACIÓN DE URLs: El modelo NUNCA escribe URLs ni nombres de archivo. Cada noticia DEBE asociar en "sourceIds" únicamente los IDs numéricos de las fuentes reales provistas (ejemplo: [1, 2]). Si una noticia no tiene fuente en la lista, DESCARTALA.
+5. NO RECOMENDACIONES FINANCIERAS: Prohibido dar consejos de compra o venta. Estricto análisis objetivo de mercado y variables.
 6. Devolvé un arreglo JSON con el siguiente formato:
 [
   {
     "id": "gen-1",
-    "headline": "Título descriptivo y objetivo del acontecimiento",
-    "briefSummary": "Resumen conciso de 2-3 líneas",
+    "headline": "Título descriptivo, neutral y objetivo del acontecimiento",
+    "briefSummary": "Resumen conciso y equilibrado de 2-3 líneas",
     "fullSynthesis": ["Punto clave 1", "Punto clave 2", "Punto clave 3"],
     "publishedAgo": "Hace 1h",
     "affectedAssetIds": ["AL30", "GD30"],
@@ -232,17 +243,17 @@ REGLAS ABSOLUTAS:
     "relevanceType": "impacto_precio" | "valoracion_mercado" | "ruido" | "contexto_macro",
     "sourceIds": [1, 2],
     "audioDuration": "1:00 min",
-    "audioScript": "Resumen FAROS conciso para reproducción de audio",
+    "audioScript": "Resumen FAROS conciso y balanceado para reproducción de audio",
     "factCheck": {
-      "status": "confirmado",
+      "status": "confirmado" | "en_analisis" | "rumor_descartado",
       "officialSource": "Organismo oficial o medios verificados",
       "credibilityScore": 98,
-      "detail": "Detalle de confirmación técnica"
+      "detail": "Detalle técnico de confirmación"
     },
     "portfolioImpactAnalysis": {
-      "directExplanation": "Explicación directa del hecho para la cartera",
+      "directExplanation": "Explicación objetiva y simétrica del impacto para la cartera",
       "affectedHoldings": [
-        { "symbol": "AL30", "impactDirection": "favorable", "relationshipDetail": "Mecanismo técnico de mercado" }
+        { "symbol": "AL30", "impactDirection": "alerta", "relationshipDetail": "Mecanismo técnico de mercado" }
       ],
       "horizon": "Corto plazo (24-72h)"
     },

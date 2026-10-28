@@ -32,6 +32,7 @@ import { OnboardingModal } from './components/OnboardingModal';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { LoginForm } from './components/LoginForm';
 import { SignUpWizard } from './components/SignUpWizard';
+import { InteractiveTour } from './components/InteractiveTour';
 import { LighthouseLogo } from './components/LighthouseLogo';
 import { UserAccount } from './types';
 import { 
@@ -77,6 +78,8 @@ export default function App() {
   // Modals
   const [showNotifications, setShowNotifications] = useState<boolean>(false);
   const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
+  const [isTourActive, setIsTourActive] = useState<boolean>(false);
+  const [showWelcomeOnboardingModal, setShowWelcomeOnboardingModal] = useState<boolean>(false);
 
   // Saved news state
   const [savedNewsIds, setSavedNewsIds] = useState<string[]>(['real-01', 'real-02']);
@@ -345,7 +348,7 @@ export default function App() {
     return () => { isMounted = false; };
   }, []);
 
-  const handleSessionSuccess = useCallback((user: UserAccount, token?: string) => {
+  const handleSessionSuccess = useCallback((user: UserAccount, token?: string, isNewRegistration: boolean = false) => {
     setCurrentUser(user);
     if (token) {
       localStorage.setItem('faros_session_token', token);
@@ -361,6 +364,12 @@ export default function App() {
     setIsSessionLoading(false);
     setShowLoginModal(false);
     setShowSignUpModal(false);
+
+    if (isNewRegistration) {
+      // Direct new user immediately to Mi Cartera (settings tab)
+      setCurrentTab('settings');
+      setShowWelcomeOnboardingModal(true);
+    }
   }, []);
 
   const handleLogout = useCallback(async () => {
@@ -640,6 +649,7 @@ export default function App() {
         onOpenNotifications={() => setShowNotifications(true)}
         portfolioName={activePortfolio.name}
         pendingRemindersCount={pendingRemindersCount}
+        onStartTour={() => setIsTourActive(true)}
       />
 
       {/* Main View Area */}
@@ -663,11 +673,11 @@ export default function App() {
             />
 
             {/* Bottom: Classified News Section */}
-            <section id="news-feed-section" className="space-y-3 pt-2">
+            <section id="news-feed-section" data-tour="feed-news-section" className="space-y-3 pt-2">
               {/* Natural Document Flow Header: Title, Description, Search, Saved button */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                  <h3 data-tour="feed-title" className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                     Noticias Clasificadas
                   </h3>
                   <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
@@ -729,7 +739,7 @@ export default function App() {
               </div>
 
               {/* SLIM STICKY FILTER BAR: Minimal height (~46px) so it never obstructs reading */}
-              <div className="sticky top-16 z-20 bg-white/95 backdrop-blur-md py-2 px-3 sm:px-4 rounded-2xl border border-slate-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+              <div data-tour="feed-filters" className="sticky top-16 z-20 bg-white/95 backdrop-blur-md py-2 px-3 sm:px-4 rounded-2xl border border-slate-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-2.5">
                 {/* Category Pills (horizontal scroll on mobile) */}
                 <div className="flex items-center gap-1 overflow-x-auto max-w-full text-xs py-0.5 scrollbar-none">
                   {[
@@ -985,6 +995,7 @@ export default function App() {
             currentUser={currentUser}
             onLogout={handleLogout}
             onDeleteAccount={handleDeleteAccount}
+            onStartTour={() => setIsTourActive(true)}
           />
         )}
       </main>
@@ -1038,7 +1049,7 @@ export default function App() {
       {/* Persistent Audio Player Drawer */}
       <AudioPlayerDrawer
         onClose={() => audioController.stopAll('drawer-close')}
-        isModalOpen={!!selectedNews || !!showLoginModal || !!showSignUpModal || showNotifications || showOnboarding}
+        isModalOpen={!!selectedNews || !!showLoginModal || !!showSignUpModal || showNotifications || showOnboarding || isTourActive}
       />
 
       {/* Mobile Bottom Navigation (3 Tabs) */}
@@ -1125,6 +1136,52 @@ export default function App() {
           }}
         />
       )}
+
+      {/* 6. Initial Welcome Onboarding Modal for New Registrations */}
+      {showWelcomeOnboardingModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-100 text-center space-y-6">
+            <div className="w-16 h-16 rounded-3xl bg-emerald-950 text-white flex items-center justify-center mx-auto shadow-md">
+              <Compass className="w-8 h-8 text-emerald-300 animate-pulse" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+                ¡Bienvenido a FAROS!
+              </h3>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                Te vamos a mostrar cómo funciona la plataforma. No necesitás configurar todo ahora: podés agregar tus inversiones y personalizar tus preferencias cuando quieras.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowWelcomeOnboardingModal(false);
+                  setIsTourActive(true);
+                }}
+                className="w-full sm:w-auto px-6 py-3.5 bg-emerald-950 hover:bg-emerald-900 text-white font-extrabold rounded-2xl shadow-md transition-all active:scale-95 cursor-pointer text-sm"
+              >
+                Comenzar recorrido
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowWelcomeOnboardingModal(false)}
+                className="w-full sm:w-auto px-6 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl transition-all cursor-pointer text-sm"
+              >
+                Explorar por mi cuenta
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Comprehensive 3-Stage Guided Interactive Tour */}
+      <InteractiveTour
+        isActive={isTourActive}
+        onClose={() => setIsTourActive(false)}
+        currentTab={currentTab}
+        onSelectTab={handleSelectTab}
+      />
     </div>
   );
 }
