@@ -34,6 +34,7 @@ import { LoginForm } from './components/LoginForm';
 import { SignUpWizard } from './components/SignUpWizard';
 import { InteractiveTour } from './components/InteractiveTour';
 import { LighthouseLogo } from './components/LighthouseLogo';
+import { AdminPanel } from './components/admin/AdminPanel';
 import { UserAccount } from './types';
 import { 
   audioController, 
@@ -91,6 +92,70 @@ export default function App() {
   const [impactFilter, setImpactFilter] = useState<'todos' | NewsImpact>('todos');
   const [assetFilter, setAssetFilter] = useState<string>('todos');
   const [showSavedOnly, setShowSavedOnly] = useState<boolean>(false);
+
+  // Admin Panel view state synced with URL pathname /admin and hash #admin
+  const [isAdminView, setIsAdminView] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.location.pathname === '/admin' || window.location.hash === '#admin';
+    }
+    return false;
+  });
+
+  // Sync URL changes (back button, address bar navigation)
+  useEffect(() => {
+    const handleUrlChange = () => {
+      setIsAdminView(window.location.pathname === '/admin' || window.location.hash === '#admin');
+    };
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('hashchange', handleUrlChange);
+    };
+  }, []);
+
+  const navigateToAdmin = useCallback(() => {
+    try {
+      window.history.pushState({}, '', '/admin');
+    } catch {}
+    setIsAdminView(true);
+  }, []);
+
+  const navigateBackToApp = useCallback(() => {
+    try {
+      window.history.pushState({}, '', '/');
+    } catch {}
+    setIsAdminView(false);
+  }, []);
+
+  // Admin status check (server verifies token/cookie, client provides instant UI cues)
+  const isCurrentUserAdmin = useMemo(() => {
+    if (currentUser?.isAdmin) return true;
+    if (currentUser?.email && ['marudeandrea@gmail.com', 'pachudeandrea@gmail.com'].includes(currentUser.email.toLowerCase())) {
+      return true;
+    }
+    return false;
+  }, [currentUser]);
+
+  // Non-blocking telemetry tracking helper
+  const trackUsageEvent = useCallback((eventType: string, metadata?: Record<string, any>) => {
+    try {
+      const storedToken = localStorage.getItem('faros_session_token');
+      fetch('/api/admin/track', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(storedToken ? { 'Authorization': `Bearer ${storedToken}` } : {})
+        },
+        body: JSON.stringify({
+          eventType,
+          metadata,
+          userId: currentUser?.id,
+          userEmail: currentUser?.email
+        })
+      }).catch(() => {});
+    } catch {}
+  }, [currentUser]);
 
   // Helper to get today's date in America/Argentina/Buenos_Aires dynamically
   const getArgentinaTodayKey = useCallback(() => {
@@ -423,13 +488,16 @@ export default function App() {
 
   // Toggle Save News
   const handleToggleSave = (newsId: string) => {
-    setSavedNewsIds(prev => 
-      prev.includes(newsId) ? prev.filter(id => id !== newsId) : [...prev, newsId]
-    );
+    setSavedNewsIds(prev => {
+      const isSaving = !prev.includes(newsId);
+      trackUsageEvent('bookmark_saved', { newsId, action: isSaving ? 'saved' : 'unsaved' });
+      return isSaving ? [...prev, newsId] : prev.filter(id => id !== newsId);
+    });
   };
 
   // Play audio for an individual news item with real dynamic word-based duration
   const handlePlayNewsAudio = useCallback((news: NewsItem) => {
+    trackUsageEvent('audio_listen', { newsId: news.id, title: news.headline, type: 'item' });
     const rawScript = news.audioScript 
       ? news.audioScript.replace(/^Resumen FAROS\.\s*/i, 'Resumen FAROS: ')
       : `${news.headline}. ${news.briefSummary}.`;
@@ -447,7 +515,7 @@ export default function App() {
     };
 
     audioController.playTrack(track);
-  }, []);
+  }, [trackUsageEvent]);
 
   // Play audio for "Resumen del día" (Global Daily Summary: STRICTLY 320-450 words, 2-3 mins)
   const handlePlayDailySummary = useCallback(() => {
@@ -479,8 +547,9 @@ export default function App() {
       script: summaryResult.script,
     };
 
+    trackUsageEvent('audio_listen', { newsId: `daily-summary-${summaryResult.timeSlot}`, title: 'Resumen del día', type: 'summary' });
     audioController.playTrack(track);
-  }, [audioState.isPlaying, audioState.currentTrack, activePortfolio, newsList, calendarEvents]);
+  }, [audioState.isPlaying, audioState.currentTrack, activePortfolio, newsList, calendarEvents, trackUsageEvent]);
 
   // Filtered News stream (based on verified grounded newsList)
   const filteredNews = useMemo(() => {
@@ -568,7 +637,9 @@ export default function App() {
         (impact === 'favorable' && (prev === 'favorable' || prev === 'positivo')) ||
         (impact === 'alerta' && (prev === 'alerta' || prev === 'negativo')) ||
         (impact === 'neutral' && (prev === 'neutral' || prev === 'neutro'));
-      return isCurrentlyActive ? 'todos' : impact;
+      const next = isCurrentlyActive ? 'todos' : impact;
+      trackUsageEvent('filter_applied', { filter: 'impact', value: next });
+      return next;
     });
 
     // Smooth scroll down to classified news section so user sees the filtered list immediately
@@ -590,6 +661,16 @@ export default function App() {
           <span>Iniciando FAROS...</span>
         </div>
       </div>
+    );
+  }
+
+  // Admin View: If /admin URL or state is active, render AdminPanel directly
+  if (isAdminView) {
+    return (
+      <AdminPanel
+        onBackToApp={navigateBackToApp}
+        currentUserEmail={currentUser?.email}
+      />
     );
   }
 
@@ -650,6 +731,8 @@ export default function App() {
         portfolioName={activePortfolio.name}
         pendingRemindersCount={pendingRemindersCount}
         onStartTour={() => setIsTourActive(true)}
+        isAdmin={isCurrentUserAdmin}
+        onOpenAdmin={navigateToAdmin}
       />
 
       {/* Main View Area */}
@@ -996,6 +1079,7 @@ export default function App() {
             onLogout={handleLogout}
             onDeleteAccount={handleDeleteAccount}
             onStartTour={() => setIsTourActive(true)}
+            onOpenAdmin={isCurrentUserAdmin ? navigateToAdmin : undefined}
           />
         )}
       </main>

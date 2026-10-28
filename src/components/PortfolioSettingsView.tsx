@@ -27,7 +27,8 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Sparkles,
-  Info
+  Info,
+  Shield
 } from 'lucide-react';
 
 interface PortfolioSettingsViewProps {
@@ -42,6 +43,7 @@ interface PortfolioSettingsViewProps {
   onLogout?: () => void;
   onDeleteAccount?: () => void;
   onStartTour?: () => void;
+  onOpenAdmin?: () => void;
 }
 
 export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
@@ -56,6 +58,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
   onLogout,
   onDeleteAccount,
   onStartTour,
+  onOpenAdmin,
 }) => {
   // Asset search state for adding assets
   const [assetSearch, setAssetSearch] = useState<string>('');
@@ -746,6 +749,30 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                 <span className="block text-slate-400">Zona: {currentUser.timeZone}</span>
               </div>
             </div>
+
+            {/* Admin Access Card (founders & admins) */}
+            {onOpenAdmin && (
+              <div className="p-4 rounded-2xl bg-amber-50/90 border border-amber-300 flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-200 text-amber-900 flex items-center justify-center shrink-0">
+                    <Shield className="w-5 h-5 text-amber-800" />
+                  </div>
+                  <div>
+                    <h5 className="font-black text-amber-950">Panel Administrador Interno</h5>
+                    <p className="text-[11px] text-amber-800">
+                      Métricas de negocio, usuarios, embudo, salud del pipeline y modelo de tesis.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onOpenAdmin}
+                  className="px-3.5 py-2 rounded-xl bg-amber-950 hover:bg-amber-900 text-white font-black text-xs transition-all shadow-xs shrink-0 cursor-pointer"
+                >
+                  Abrir Panel
+                </button>
+              </div>
+            )}
 
             {/* Privacy Compliance Notice */}
             <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200/80 text-xs text-emerald-950 space-y-1.5">

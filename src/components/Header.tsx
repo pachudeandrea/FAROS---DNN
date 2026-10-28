@@ -1,6 +1,6 @@
 import React from 'react';
 import { LighthouseLogo } from './LighthouseLogo';
-import { Bell, ArrowRight, Sparkles } from 'lucide-react';
+import { Bell, ArrowRight, Sparkles, Shield } from 'lucide-react';
 
 interface HeaderProps {
   currentTab: 'feed' | 'calendar' | 'settings';
@@ -10,6 +10,8 @@ interface HeaderProps {
   portfolioName: string;
   pendingRemindersCount?: number;
   onStartTour?: () => void;
+  isAdmin?: boolean;
+  onOpenAdmin?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -20,6 +22,8 @@ export const Header: React.FC<HeaderProps> = ({
   portfolioName,
   pendingRemindersCount = 0,
   onStartTour,
+  isAdmin = false,
+  onOpenAdmin,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
@@ -90,6 +94,18 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Zone 3: Rocket Money-style Account/Portfolio Pill + Notifications */}
         <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+          {/* Admin panel launcher if admin */}
+          {isAdmin && onOpenAdmin && (
+            <button
+              onClick={onOpenAdmin}
+              title="Ir al Panel Administrador de FAROS"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-black text-amber-950 bg-amber-100/90 hover:bg-amber-200/90 rounded-full border border-amber-300 transition-all cursor-pointer shadow-2xs"
+            >
+              <Shield className="w-3.5 h-3.5 text-amber-700" />
+              <span>Admin</span>
+            </button>
+          )}
+
           {/* Tour button */}
           {onStartTour && (
             <button

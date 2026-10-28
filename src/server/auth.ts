@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { UserAccount, RiskProfile, Portfolio, OnboardingDraft, UserPreferences } from '../types';
 import { DEFAULT_PREFERENCES } from '../data/mockData';
+import { trackEventNonBlocking, isUserAdmin } from './dbAdapter';
 
 const ROOT_DIR = process.cwd();
 const DATA_DIR = path.resolve(ROOT_DIR, 'data');
@@ -167,6 +168,7 @@ export function getAppUrl(req: Request): string {
  */
 function sanitizeUser(user: StoredUser): UserAccount {
   const { passwordHash, ...safeUser } = user;
+  safeUser.isAdmin = isUserAdmin(user.email);
   return safeUser;
 }
 
@@ -381,11 +383,26 @@ export async function handleRegister(req: Request, res: Response) {
       ...DEFAULT_PREFERENCES,
       investorProfile: profile as RiskProfile
     },
+    plan: 'prueba',
+    funnelStage: 'cuenta_creada',
+    lastActiveAt: new Date().toISOString(),
     createdAt: new Date().toISOString()
   };
 
   indexUser(newUser);
   persistDatabase();
+
+  // Non-blocking telemetry event
+  trackEventNonBlocking('signup', {
+    userId: newUserId,
+    metadata: {
+      provider,
+      profile,
+      hasAssets: assetIds.length > 0,
+      alyc: alyc || undefined
+    },
+    userAgent: req.get('user-agent')
+  });
 
   // Clear any draft
   userDrafts.delete(normalizedEmail);
@@ -441,6 +458,17 @@ export async function handleLogin(req: Request, res: Response) {
   }
 
   failedLoginAttempts.delete(attemptKey);
+
+  user.lastActiveAt = new Date().toISOString();
+  persistDatabase();
+
+  trackEventNonBlocking('login', {
+    userId: user.id,
+    metadata: {
+      provider: user.provider || 'email'
+    },
+    userAgent: req.get('user-agent')
+  });
 
   const sessionToken = createSession(user.id, rememberMe);
   setSessionCookie(res, sessionToken, rememberMe);

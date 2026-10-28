@@ -44,8 +44,22 @@ import {
   handleGetGoogleAuthUrl,
   handleGoogleCallback,
   handleGetMicrosoftAuthUrl,
-  handleMicrosoftCallback
+  handleMicrosoftCallback,
+  getSessionUser
 } from './src/server/auth';
+import {
+  requireAdminMiddleware,
+  handleAdminCheck,
+  handleClientTrackEvent,
+  handleAdminOverview,
+  handleAdminUsers,
+  handleAdminUpdateUserPlan,
+  handleAdminFunnel,
+  handleAdminUsage,
+  handleAdminPipelineHealth,
+  handleAdminThesisFinancials
+} from './src/server/adminRoutes';
+import { trackEventNonBlocking, isUserAdmin } from './src/server/dbAdapter';
 
 // Re-export required functions as specified in deliverables
 export {
@@ -85,6 +99,20 @@ interface CalendarCacheEntry {
 const calendarCache: Record<string, CalendarCacheEntry> = {};
 
 let lastProcessedDay = '';
+
+// Sliding window rate limiter for expensive AI & audio endpoints
+const ipRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+function checkIpRateLimit(ip: string, maxPerMin = 60): boolean {
+  const now = Date.now();
+  const entry = ipRateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    ipRateLimitMap.set(ip, { count: 1, resetAt: now + 60000 });
+    return true;
+  }
+  if (entry.count >= maxPerMin) return false;
+  entry.count++;
+  return true;
+}
 
 // Gemini AI client (Server-side only)
 const ai = new GoogleGenAI({
@@ -388,6 +416,12 @@ export async function fetchCalendarEvents(
 
 // API endpoint to fetch news for a portfolio
 app.post('/api/news/pulse', async (req, res) => {
+  if (!checkIpRateLimit(req.ip || 'ip', 45)) {
+    return res.status(429).json({ error: 'Demasiadas consultas de pulso de mercado. Aguardá unos segundos.' });
+  }
+
+  const pulseStartTime = Date.now();
+  const user = getSessionUser(req);
   const { portfolioId, tickers = [], profile = 'moderado', forceRefresh = false } = req.body;
   
   // Dynamic cache key based on portfolio, date and hour in Argentina
@@ -408,6 +442,20 @@ app.post('/api/news/pulse', async (req, res) => {
 
   // Check server-side cache if not forcing refresh
   if (!forceRefresh && newsCache[cacheKey]) {
+    trackEventNonBlocking('news_pulse_query', {
+      userId: user?.id,
+      metadata: {
+        cached: true,
+        fallback: false,
+        tickersCount: tickers.length,
+        profile,
+        forceRefresh: false,
+        newsCount: newsCache[cacheKey].news.length,
+        durationMs: Date.now() - pulseStartTime
+      },
+      userAgent: req.get('user-agent')
+    });
+
     return res.json({
       news: newsCache[cacheKey].news,
       cached: true,
@@ -425,6 +473,22 @@ app.post('/api/news/pulse', async (req, res) => {
       timestamp: Date.now(),
       news: liveNews
     };
+
+    trackEventNonBlocking('news_pulse_query', {
+      userId: user?.id,
+      metadata: {
+        cached: false,
+        fallback: false,
+        usedGemini: true,
+        tickersCount: tickers.length,
+        profile,
+        forceRefresh: !!forceRefresh,
+        newsCount: liveNews.length,
+        durationMs: Date.now() - pulseStartTime
+      },
+      userAgent: req.get('user-agent')
+    });
+
     return res.json({
       news: liveNews,
       cached: false,
@@ -443,6 +507,22 @@ app.post('/api/news/pulse', async (req, res) => {
       timestamp: Date.now(),
       news: liveVerifiedNews
     };
+
+    trackEventNonBlocking('news_pulse_query', {
+      userId: user?.id,
+      metadata: {
+        cached: false,
+        fallback: true,
+        usedGemini: false,
+        tickersCount: tickers.length,
+        profile,
+        forceRefresh: !!forceRefresh,
+        newsCount: liveVerifiedNews.length,
+        durationMs: Date.now() - pulseStartTime
+      },
+      userAgent: req.get('user-agent')
+    });
+
     return res.json({
       news: liveVerifiedNews,
       cached: false,
@@ -459,6 +539,17 @@ app.post('/api/news/pulse', async (req, res) => {
       text: n.audioScript || `${n.headline}. ${n.briefSummary}.`
     })));
   }
+
+  trackEventNonBlocking('news_pulse_query', {
+    userId: user?.id,
+    metadata: {
+      cached: false,
+      empty: true,
+      newsCount: 0,
+      durationMs: Date.now() - pulseStartTime
+    },
+    userAgent: req.get('user-agent')
+  });
 
   // 3. Empty state if no fresh verified news remain
   return res.json({
@@ -477,8 +568,15 @@ app.post('/api/calendar/events', async (req, res) => {
   return res.json(result);
 });
 
-// API endpoint for simulated day offset (for testing simulated day change)
+// API endpoint for simulated day offset (Secured: development or admin only)
 app.post('/api/calendar/simulate-day', (req, res) => {
+  const user = getSessionUser(req);
+  if (process.env.NODE_ENV === 'production' && (!user || !isUserAdmin(user.email))) {
+    return res.status(403).json({ 
+      error: 'Simulación de fecha deshabilitada en producción para usuarios no administradores' 
+    });
+  }
+
   const { offsetDays = 0 } = req.body;
   setSimulatedDayOffset(offsetDays);
   // Invalidate caches
@@ -509,6 +607,20 @@ app.get('/api/auth/google/url', handleGetGoogleAuthUrl);
 app.get('/api/auth/google/callback', handleGoogleCallback);
 app.get('/api/auth/microsoft/url', handleGetMicrosoftAuthUrl);
 app.get('/api/auth/microsoft/callback', handleMicrosoftCallback);
+
+// --- PROTECTED ADMIN PANEL ENDPOINTS ---
+app.get('/api/admin/check', handleAdminCheck);
+app.post('/api/admin/track', handleClientTrackEvent);
+
+// Admin-only middleware barrier for all management routes
+app.use('/api/admin', requireAdminMiddleware);
+app.get('/api/admin/overview', handleAdminOverview);
+app.get('/api/admin/users', handleAdminUsers);
+app.put('/api/admin/users/:userId/plan', handleAdminUpdateUserPlan);
+app.get('/api/admin/funnel', handleAdminFunnel);
+app.get('/api/admin/usage', handleAdminUsage);
+app.get('/api/admin/pipeline-health', handleAdminPipelineHealth);
+app.get('/api/admin/thesis-financials', handleAdminThesisFinancials);
 
 import { 
   synthesizeArgentineSpeech, 
@@ -557,6 +669,13 @@ app.post('/api/audio/prefetch', (req, res) => {
  * Streams first-sentence immediately if uncached, or serves cached 64kbps MP3 instantly.
  */
 app.post('/api/audio/synthesize', async (req, res) => {
+  if (!checkIpRateLimit(req.ip || 'ip', 30)) {
+    return res.status(429).json({ 
+      success: false, 
+      error: 'Demasiadas solicitudes de síntesis de voz. Por favor aguardá unos segundos.' 
+    });
+  }
+
   const abortController = new AbortController();
   
   // Only abort if client disconnected before response finished writing
@@ -575,6 +694,10 @@ app.post('/api/audio/synthesize', async (req, res) => {
         error: 'El texto es requerido para la síntesis de audio.' 
       });
     }
+
+    trackEventNonBlocking('audio_synthesis', {
+      metadata: { textLength: text.length }
+    });
 
     const result = await synthesizeArgentineSpeech(text, abortController.signal);
     if (!res.writableEnded) {

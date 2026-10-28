@@ -175,6 +175,9 @@ export interface CustomCalendarEvent {
   createdAt: number;
 }
 
+export type UserPlan = 'ninguno' | 'prueba' | 'market' | 'partner';
+export type FunnelStage = 'cuenta_creada' | 'adoption' | 'interes' | 'venta' | 'farming';
+
 export interface UserAccount {
   id: string;
   name: string;
@@ -195,6 +198,10 @@ export interface UserAccount {
   microsoftOid?: string;
   picture?: string;
   createdAt: string;
+  plan?: UserPlan;
+  funnelStage?: FunnelStage;
+  lastActiveAt?: string;
+  isAdmin?: boolean;
 }
 
 export interface OnboardingAssetEntry {
@@ -235,4 +242,40 @@ export interface AudioTrack {
   totalSeconds: number;
   script?: string;
 }
+
+export type UsageEventType = 
+  | 'signup'
+  | 'login'
+  | 'logout'
+  | 'account_delete'
+  | 'password_reset_request'
+  | 'onboarding_step_1'
+  | 'onboarding_step_2'
+  | 'first_pulse_view'
+  | 'news_pulse_query'
+  | 'calendar_view'
+  | 'calendar_custom_event'
+  | 'audio_synthesis'
+  | 'audio_play'
+  | 'news_detail_open'
+  | 'news_bookmark'
+  | 'filter_applied'
+  | 'source_click'
+  | 'asset_added'
+  | 'asset_removed'
+  | 'long_short_toggled'
+  | 'portfolio_created'
+  | 'profile_changed'
+  | 'notifications_toggled';
+
+export interface UsageEvent {
+  id: string;
+  userId?: string | null;
+  eventType: UsageEventType | string;
+  metadata?: Record<string, any>;
+  timestamp: number;
+  dateIso: string;
+  userAgent?: string;
+}
+
 
