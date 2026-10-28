@@ -155,7 +155,7 @@ export function buildCacheKey(portfolioId: string, date = new Date()): { cacheKe
   const argInfo = getArgentinaDateInfo(date);
   const dateKey = argInfo.isoDate;
   const hourKey = `${dateKey}_${String(argInfo.hour).padStart(2, '0')}`;
-  const cacheKey = `${portfolioId || 'default'}_${hourKey}`;
+  const cacheKey = `v3_coherent_${portfolioId || 'default'}_${hourKey}`;
   return { cacheKey, dateKey, hourKey };
 }
 

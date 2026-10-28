@@ -32,8 +32,8 @@ export const REAL_GROUNDED_NEWS: NewsItem[] = [
       {
         mediaName: 'Ámbito',
         domain: 'ambito.com',
-        originalHeadline: 'El Banco Central aceleró la compra de reservas en el mercado de cambios',
-        sourceUrl: 'https://www.ambito.com/finanzas/el-banco-central-acelero-la-compra-reservas-el-mercado-cambios'
+        originalHeadline: 'Bonos en dólares subieron hasta 3% y el riesgo país quebró los 800 puntos',
+        sourceUrl: 'https://www.ambito.com/finanzas/bonos-en-dolares-subieron-hasta-3-y-el-riesgo-pais-quebro-los-800-puntos'
       },
       {
         mediaName: 'Infobae',

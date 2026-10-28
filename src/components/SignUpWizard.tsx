@@ -340,7 +340,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
 
     try {
       const abortController = new AbortController();
-      const timeoutId = setTimeout(() => abortController.abort(), 8000);
+      const timeoutId = setTimeout(() => abortController.abort(), 30000); // 30s timeout for mobile networks & cold starts
 
       const res = await fetch('/api/auth/register', {
         method: 'POST',
@@ -354,7 +354,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
 
       clearTimeout(timeoutId);
 
-      // Safe JSON parsing that does not throw on HTML or plain-text 404/500 responses
+      // Safe JSON parsing handling both JSON and plain-text/HTML responses
       let data: any = null;
       const contentType = res.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
@@ -370,7 +370,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
         }
       }
 
-      // 1. Success from Server
+      // 1. Success confirmed by real Backend
       if (res.ok && data?.user) {
         try {
           localStorage.removeItem('faros_onboarding_draft');
@@ -380,9 +380,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
           localStorage.setItem('faros_session_token', data.token);
         }
 
-        // Backup to local vault so account survives container restarts/deployments
-        await saveUserToVault(data.user, authProvider === 'email' ? password : undefined);
-
+        // Clean up UI and notify parent
         onSuccess(data.user, data.token, true);
         return;
       }
@@ -401,26 +399,40 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
         return;
       }
 
-      // 4. Serverless endpoint unavailable on Vercel static deployment or server error
-      console.warn('[FAROS REGISTER] Backend API endpoint unavailable (HTTP ' + res.status + '). Activating resilient local account creation.');
-      const localResult = await createLocalAccount(payload);
-      try {
-        localStorage.removeItem('faros_onboarding_draft');
-      } catch {}
-      onSuccess(localResult.user, localResult.token, true);
-    } catch (err: any) {
-      console.warn('[FAROS REGISTER] Network error reaching backend, creating persistent account in local vault:', err?.message || err);
-      // Resilient local account creation ensures user is NEVER blocked by network errors
-      try {
-        const localResult = await createLocalAccount(payload);
-        try {
-          localStorage.removeItem('faros_onboarding_draft');
-        } catch {}
-        onSuccess(localResult.user, localResult.token, true);
-      } catch (localErr: any) {
-        setStepError('No se pudo procesar el registro. Por favor verificá los datos e intentá nuevamente.');
+      // 4. Server Error (500)
+      if (res.status >= 500) {
+        setStepError('El servidor encontró un error temporal al procesar el registro. Por favor intentá nuevamente.');
         setIsLoading(false);
+        return;
       }
+
+      // 5. Backend Endpoint Not Found (404)
+      if (res.status === 404) {
+        setStepError('El servicio de registro no está disponible en este momento. Por favor intentá en unos instantes.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Fallback response error
+      setStepError(data?.error || 'No se pudo completar el registro. Por favor intentá nuevamente.');
+      setIsLoading(false);
+    } catch (err: any) {
+      console.warn('[FAROS REGISTER] Network exception reaching backend:', err?.message || err);
+      setIsLoading(false);
+
+      if (err?.name === 'AbortError') {
+        setStepError('La conexión tardó más de lo esperado. Por favor verificá tu señal de internet e intentá nuevamente.');
+        return;
+      }
+
+      const rawMsg = String(err?.message || err || '');
+      // Catch WebKit / Safari generic DOMExceptions and present user-friendly message
+      if (rawMsg.includes('pattern') || rawMsg.includes('SyntaxError') || rawMsg.includes('Load failed')) {
+        setStepError('No se pudo establecer conexión con el servidor. Verificá tu conexión de red e intentá nuevamente.');
+        return;
+      }
+
+      setStepError('Error de conexión al registrar la cuenta. Verificá tu conexión a internet e intentá nuevamente.');
     }
   };
 

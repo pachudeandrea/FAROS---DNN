@@ -59,7 +59,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
     try {
       const abortController = new AbortController();
-      const timeoutId = setTimeout(() => abortController.abort(), 7000);
+      const timeoutId = setTimeout(() => abortController.abort(), 30000); // 30s timeout for mobile networks & cold starts
 
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -90,35 +90,42 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         if (data.token) {
           localStorage.setItem('faros_session_token', data.token);
         }
-        await saveUserToVault(data.user, password);
         onSuccess(data.user, data.token);
         onClose();
         return;
       }
 
       // If server explicitly reported invalid credentials or rate limiting
-      if (res.status === 401 || res.status === 400 || res.status === 429) {
-        throw new Error(data?.error || 'Email o contraseña incorrectos.');
-      }
-
-      // If server endpoint returned 404/500 (e.g. static host), check local vault
-      const vaultAuth = await verifyVaultLogin(normalizedEmail, password);
-      if (vaultAuth.success && vaultAuth.user) {
-        onSuccess(vaultAuth.user, vaultAuth.token);
-        onClose();
+      if (res.status === 401 || res.status === 400) {
+        setErrorMessage(data?.error || 'Email o contraseña incorrectos.');
         return;
       }
 
-      throw new Error('Email o contraseña incorrectos.');
+      if (res.status === 429) {
+        setErrorMessage(data?.error || 'Demasiados intentos fallidos. Tu cuenta está bloqueada temporalmente.');
+        return;
+      }
+
+      if (res.status >= 500) {
+        setErrorMessage('El servidor encontró un error temporal al iniciar sesión. Por favor intentá nuevamente.');
+        return;
+      }
+
+      setErrorMessage(data?.error || 'Email o contraseña incorrectos.');
     } catch (err: any) {
-      // Check local vault in case of network disconnect or server unavailability
-      const vaultAuth = await verifyVaultLogin(normalizedEmail, password);
-      if (vaultAuth.success && vaultAuth.user) {
-        onSuccess(vaultAuth.user, vaultAuth.token);
-        onClose();
+      if (err?.name === 'AbortError') {
+        setErrorMessage('La conexión tardó más de lo esperado. Por favor verificá tu señal de internet e intentá nuevamente.');
         return;
       }
-      setErrorMessage(err.message || 'Error al iniciar sesión. Verificá tus credenciales.');
+
+      const rawMsg = String(err?.message || err || '');
+      // Catch WebKit / Safari generic DOMExceptions and present user-friendly message
+      if (rawMsg.includes('pattern') || rawMsg.includes('SyntaxError') || rawMsg.includes('Load failed')) {
+        setErrorMessage('No se pudo conectar con el servidor. Por favor verificá tu conexión a internet e intentá nuevamente.');
+        return;
+      }
+
+      setErrorMessage('Error al iniciar sesión. Por favor verificá tus credenciales e intentá nuevamente.');
     } finally {
       setIsLoading(false);
     }

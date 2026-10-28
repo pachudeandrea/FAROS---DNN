@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 import { NewsItem, MediaCoverage } from '../types';
 import { verifySourceUrl, filterByFreshness, getArgentinaDateInfo, DISALLOWED_PATH_PATTERNS } from './urlResolver';
+import { areSourcesReportingSameEvent } from './sourceGrounding';
 
 interface RawFeedItem {
   title: string;
@@ -105,113 +106,63 @@ async function fetchRssCandidates(maxPerFeed = 15): Promise<RawFeedItem[]> {
   return candidates;
 }
 
-interface TopicCluster {
+interface EventCluster {
   id: string;
+  headline: string;
   category: 'deuda_soberana' | 'balances' | 'regulaciones_bcra' | 'macro_tasas' | 'energia';
   tickers: string[];
-  headline: string;
-  briefSummary: string;
   impact: 'favorable' | 'alerta' | 'neutral';
   sources: MediaCoverage[];
 }
 
 /**
- * Classifies an article into a financial topic cluster.
+ * Analyzes an individual article's headline to extract:
+ * 1. Financial category
+ * 2. Specific affected tickers
+ * 3. Market impact direction (alerta, favorable, neutral)
+ *
+ * NOTE: Category is used solely for metadata and filtering, NEVER to force-group unrelated events!
  */
-function classifyArticle(headline: string, source: MediaCoverage): { topicKey: string; clusterInfo: Omit<TopicCluster, 'id' | 'sources'> } {
+function analyzeArticleContext(headline: string): {
+  category: 'deuda_soberana' | 'balances' | 'regulaciones_bcra' | 'macro_tasas' | 'energia';
+  tickers: string[];
+  impact: 'favorable' | 'alerta' | 'neutral';
+} {
   const lower = headline.toLowerCase();
 
-  // 1. Dólar / Brecha / CCL / MEP
-  if (lower.includes('dólar') || lower.includes('dolar') || lower.includes('mep') || lower.includes('ccl') || lower.includes('blue') || lower.includes('brecha')) {
-    const isPressure = lower.includes('sube') || lower.includes('trepa') || lower.includes('presión') || lower.includes('avanza') || lower.includes('tensión') || lower.includes('brecha');
-    const isRelief = lower.includes('baja') || lower.includes('cae') || lower.includes('retrocede') || lower.includes('calma') || lower.includes('estabiliza');
-    return {
-      topicKey: 'dolar_mercado',
-      clusterInfo: {
-        category: 'regulaciones_bcra',
-        tickers: ['MEP', 'CCL'],
-        headline: headline.length > 30 ? headline : 'Mercado cambiario: cotizaciones del dólar financiero y oficial en la plaza local',
-        briefSummary: `Evolución de las cotizaciones cambiarias (MEP, CCL y oficial), demanda de divisas y volumen operado informado por ${source.mediaName}.`,
-        impact: isPressure ? 'alerta' : isRelief ? 'favorable' : 'neutral'
-      }
-    };
+  // Impact determination based on concrete market facts in headline
+  const isAdverse = /ca[eé]|baja|retroced|derrumbe|presi[oó]n|inflaci[oó]n|sube el riesgo|tensi[oó]n|mora|freno|dudas|d[eé]ficit|ca[ií]da/i.test(lower);
+  const isFavorable = /sube|trepa|compras netas|compr[oó]|super[aá]vit|r[eé]cord|ganancia|baja el riesgo|comprime|inversi[oó]n|acuerdo|duplica|ampl[ií]a|lanzan|mejoran/i.test(lower);
+  const impact = isAdverse ? 'alerta' : isFavorable ? 'favorable' : 'neutral';
+
+  // Specific financial category & tickers
+  if (/bono|deuda|soberan|riesgo pa[ií]s|al30|gd30|canje|amortizaci[oó]n/i.test(lower)) {
+    return { category: 'deuda_soberana', tickers: ['AL30', 'GD30'], impact };
+  }
+  if (/ypf|petr[oó]le|vaca muerta|gasoducto|oleoducto|pampa|hidrocarburo|crudo|barril|gnc/i.test(lower)) {
+    return { category: 'energia', tickers: ['YPFD', 'PAMP'], impact };
+  }
+  if (/d[oó]lar|mep|ccl|blue|brecha|cambiari|divisas|parking/i.test(lower)) {
+    return { category: 'regulaciones_bcra', tickers: ['MEP', 'CCL'], impact };
+  }
+  if (/banco|galicia|ggal|bbva|macro|cr[eé]dito|hipotecari|uva|bopreal/i.test(lower)) {
+    return { category: 'balances', tickers: ['GGAL', 'BMA'], impact };
+  }
+  if (/tasa|inflaci[oó]n|ipc|bcra|reservas|lecap|boncap|fmi|indec|lefi/i.test(lower)) {
+    return { category: 'macro_tasas', tickers: ['AL30', 'MEP'], impact };
+  }
+  if (/dow jones|s&p|nasdaq|cedear|wall street|apple|nvidia/i.test(lower)) {
+    return { category: 'balances', tickers: ['SPY', 'NVDA'], impact };
   }
 
-  // 2. Bonos / Riesgo País / Deuda Soberana
-  if (lower.includes('bono') || lower.includes('deuda') || lower.includes('riesgo país') || lower.includes('riesgo pais') || lower.includes('al30') || lower.includes('gd30') || lower.includes('soberan')) {
-    const isDown = lower.includes('cae') || lower.includes('baja') || lower.includes('retroced') || lower.includes('derrumbe') || lower.includes('presión') || lower.includes('sube el riesgo') || lower.includes('cautela') || lower.includes('dudas');
-    const isUp = lower.includes('sube') || lower.includes('trepa') || lower.includes('ganancias') || lower.includes('comprime') || lower.includes('cae el riesgo') || lower.includes('baja el riesgo');
-    return {
-      topicKey: 'deuda_soberana',
-      clusterInfo: {
-        category: 'deuda_soberana',
-        tickers: ['AL30', 'GD30'],
-        headline: headline.length > 30 ? headline : 'Bonos soberanos en dólares y riesgo país: paridades y cotizaciones en BYMA y Wall Street',
-        briefSummary: `Tendencia de las paridades soberanas en dólares (AL30 y GD30) y spread soberano reportados por ${source.mediaName}.`,
-        impact: isDown ? 'alerta' : isUp ? 'favorable' : 'neutral'
-      }
-    };
-  }
-
-  // 3. Energía / Vaca Muerta / YPF / Pampa
-  const isEnergy =
-    lower.includes('vaca muerta') ||
-    lower.includes('ypf') ||
-    lower.includes('petróleo') ||
-    lower.includes('petroleo') ||
-    lower.includes('crudo') ||
-    lower.includes('hidrocarburos') ||
-    /(^|[^\p{L}\p{N}])gas( natural|oducto|ífera|ifera)?([^a-z]|$)/iu.test(lower) ||
-    lower.includes('pampa') ||
-    lower.includes('oleoducto');
-
-  if (isEnergy) {
-    const isAdverse = lower.includes('baja') || lower.includes('caída') || lower.includes('cae') || lower.includes('freno') || lower.includes('parada') || lower.includes('demora') || lower.includes('conflicto') || lower.includes('costos') || lower.includes('pérdida') || lower.includes('riesgo');
-    const isFavorable = lower.includes('inversión') || lower.includes('récord') || lower.includes('record') || lower.includes('amplía') || lower.includes('duplica') || lower.includes('exportación') || lower.includes('superávit');
-    return {
-      topicKey: 'energia_vaca_muerta',
-      clusterInfo: {
-        category: 'energia',
-        tickers: ['YPFD', 'PAMP'],
-        headline: headline.length > 30 ? headline : 'Sector energético y Vaca Muerta: producción, transporte y proyectos de inversión',
-        briefSummary: `Actualización de capacidad operativa, evacuación de hidrocarburos y desempeño corporativo reportado por ${source.mediaName}.`,
-        impact: isAdverse ? 'alerta' : isFavorable ? 'favorable' : 'neutral'
-      }
-    };
-  }
-
-  // 4. Bancos / Tasas / BCRA / Reservas
-  if (lower.includes('banco') || lower.includes('galicia') || lower.includes('tasa') || lower.includes('bcra') || lower.includes('reservas') || lower.includes('crédito') || lower.includes('bopreal')) {
-    const isAdverse = lower.includes('caída') || lower.includes('cae') || lower.includes('presión') || lower.includes('mora') || lower.includes('suba de tasas') || lower.includes('inflación');
-    const isFavorable = lower.includes('compras netas') || lower.includes('compras') || lower.includes('superávit') || lower.includes('desacelera');
-    return {
-      topicKey: 'sistema_financiero',
-      clusterInfo: {
-        category: 'macro_tasas',
-        tickers: ['GGAL', 'BOPREAL'],
-        headline: headline.length > 30 ? headline : 'Sistema bancario y política monetaria: reservas, encajes y colocaciones del BCRA',
-        briefSummary: `Medidas monetarias, nivel de reservas y dinámica crediticia de entidades financieras relevadas por ${source.mediaName}.`,
-        impact: isAdverse ? 'alerta' : isFavorable ? 'favorable' : 'neutral'
-      }
-    };
-  }
-
-  // Default Macro
-  return {
-    topicKey: `macro_${source.domain}`,
-    clusterInfo: {
-      category: 'deuda_soberana',
-      tickers: ['AL30', 'MEP'],
-      headline,
-      briefSummary: `Acontecimientos económicos e indicadores de coyuntura monitoreados por ${source.mediaName}.`,
-      impact: 'neutral'
-    }
-  };
+  return { category: 'macro_tasas', tickers: ['AL30', 'MEP'], impact };
 }
 
 /**
  * Builds real, live, grounded financial news for today directly from verified Argentine media articles.
- * Used when Gemini search grounding quota is exhausted (429) or as reliable live verification.
+ * Enforces STRICT EVENT COHERENCE:
+ * Two articles can ONLY be grouped if they report on the EXACT SAME CONCRETE EVENT.
+ * If articles report on different events, they remain separate news items with their own authentic source.
  */
 export async function getLiveVerifiedArgentineNews(userTickers: string[] = []): Promise<NewsItem[]> {
   const candidates = await fetchRssCandidates(15);
@@ -240,29 +191,31 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = []): 
     return [];
   }
 
-  // Group sources into topic clusters to create unified news items with multiple verified sources
-  const clusters = new Map<string, TopicCluster>();
+  // Group sources strictly by CONCRETE EVENT MATCH (Never by general category!)
+  const clusters: EventCluster[] = [];
 
   for (const src of verifiedSources) {
-    const { topicKey, clusterInfo } = classifyArticle(src.originalHeadline, src);
+    // Only group with an existing cluster if the two articles speak of the EXACT SAME EVENT
+    let matchedCluster = clusters.find(cl => areSourcesReportingSameEvent(cl.headline, src.originalHeadline));
 
-    if (!clusters.has(topicKey)) {
-      clusters.set(topicKey, {
-        id: `live-${topicKey}-${Date.now()}`,
-        category: clusterInfo.category,
-        tickers: clusterInfo.tickers,
-        headline: clusterInfo.headline,
-        briefSummary: clusterInfo.briefSummary,
-        impact: clusterInfo.impact,
+    if (matchedCluster) {
+      // Deduplicate within cluster by media name or URL
+      const hasMedia = matchedCluster.sources.some(s => s.mediaName === src.mediaName || s.sourceUrl === src.sourceUrl);
+      if (!hasMedia && matchedCluster.sources.length < 3) {
+        matchedCluster.sources.push(src);
+        console.log(`[EVENT MATCH] Grouped source "${src.originalHeadline}" (${src.mediaName}) with "${matchedCluster.headline}"`);
+      }
+    } else {
+      // Independent concrete event!
+      const ctx = analyzeArticleContext(src.originalHeadline);
+      clusters.push({
+        id: `live-event-${Date.now()}-${clusters.length}`,
+        headline: src.originalHeadline, // The authentic, real headline of the event
+        category: ctx.category,
+        tickers: ctx.tickers,
+        impact: ctx.impact,
         sources: [src]
       });
-    } else {
-      const existing = clusters.get(topicKey)!;
-      // Deduplicate sources within cluster by mediaName or URL
-      const hasMedia = existing.sources.some(s => s.mediaName === src.mediaName || s.sourceUrl === src.sourceUrl);
-      if (!hasMedia && existing.sources.length < 5) {
-        existing.sources.push(src);
-      }
     }
   }
 
@@ -270,25 +223,29 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = []): 
   const newsItems: NewsItem[] = [];
   let itemCounter = 1;
 
-  for (const cluster of clusters.values()) {
+  for (const cluster of clusters) {
     // Check ticker intersection if user provided tickers
     const matchesUserTickers = userTickers.length === 0 || cluster.tickers.some(t => userTickers.includes(t));
-    if (!matchesUserTickers && newsItems.length >= 6) {
+    if (!matchesUserTickers && newsItems.length >= 8) {
       continue;
     }
 
     const primarySource = cluster.sources[0];
-    const mediaNames = cluster.sources.map(s => s.mediaName).join(', ');
+    const mediaNames = cluster.sources.map(s => s.mediaName).join(' y ');
     const displayTimestamp = primarySource.publishedTime || argInfo.formattedSpanish;
+
+    const briefSummary = cluster.sources.length === 1
+      ? `${cluster.headline}. Información reportada y confirmada en ${primarySource.mediaName}.`
+      : `${cluster.headline}. Acontecimiento con cobertura periodística coincidente en ${mediaNames}.`;
 
     newsItems.push({
       id: `live-news-${itemCounter++}`,
       headline: cluster.headline,
-      briefSummary: cluster.briefSummary,
+      briefSummary,
       fullSynthesis: [
-        `Cobertura periodística confirmada en ${mediaNames} con fecha ${displayTimestamp}.`,
-        `Monitoreo de cotización e impacto directo en instrumentos vinculados (${cluster.tickers.join(', ')}).`,
-        `Datos validados directamente en las páginas originales de los medios emisores.`
+        `Hecho concreto informado en ${mediaNames} (${displayTimestamp}).`,
+        `Monitoreo de cotización e impacto evaluado en activos vinculados (${cluster.tickers.join(', ')}).`,
+        `Información respaldada directamente por las publicaciones originales de los medios consultados.`
       ],
       publishedAgo: primarySource.publishedTime || 'Reciente',
       timestamp: displayTimestamp,
@@ -304,16 +261,16 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = []): 
       impact: cluster.impact,
       relevanceType: 'impacto_precio',
       portfolioImpactAnalysis: {
-        directExplanation: `Hecho reportado por ${mediaNames} con incidencia sobre las cotizaciones y el flujo de fondos de tus tenencias.`,
+        directExplanation: `Hecho respaldado por ${mediaNames} con incidencia sobre las cotizaciones y el flujo de fondos de tus tenencias.`,
         affectedHoldings: cluster.tickers.map(sym => ({
           symbol: sym,
           impactDirection: cluster.impact,
-          relationshipDetail: 'Transmisión vía paridad de mercado y cotización en plaza local.'
+          relationshipDetail: 'Transmisión vía cotización en plaza local y variables del activo.'
         })),
         horizon: 'Corto plazo (24-72h)'
       },
       audioDuration: '1:00 min',
-      audioScript: `Resumen FAROS. ${cluster.headline}. Cobertura en ${mediaNames} para tus activos ${cluster.tickers.join(' y ')}.`,
+      audioScript: `Resumen FAROS. ${cluster.headline}. Información confirmada en ${mediaNames} para tus activos ${cluster.tickers.join(' y ')}.`,
       factCheck: {
         status: 'confirmado',
         officialSource: mediaNames,

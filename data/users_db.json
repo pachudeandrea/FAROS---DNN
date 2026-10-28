@@ -76,5 +76,53 @@
     "funnelStage": "cuenta_creada",
     "lastActiveAt": "2026-10-28T19:15:41.043Z",
     "createdAt": "2026-10-28T19:15:32.364Z"
+  },
+  {
+    "id": "usr_1793216628300_6a27155f",
+    "name": "Sofia Martinez",
+    "email": "inversor_1793216628007@faros.com.ar",
+    "passwordHash": "$2b$10$MTvD39qbUFFayOXNAy3Yqe7eSkibSmk3/YaStuz6grm3oSwpDOL8m",
+    "provider": "email",
+    "birthDate": "1998-04-12",
+    "country": "Argentina",
+    "city": "Cordoba",
+    "phone": "",
+    "timeZone": "America/Argentina/Buenos_Aires",
+    "termsAccepted": true,
+    "notificationsOptIn": false,
+    "profile": "dinamico",
+    "alyc": "Balanz Capital",
+    "portfolio": {
+      "id": "port_1793216628300_158cf7e8",
+      "name": "Mi Cartera",
+      "description": "Mi espacio personal de inversión en FAROS.",
+      "profile": "dinamico",
+      "assetIds": [],
+      "assetPositions": {}
+    },
+    "preferences": {
+      "investorProfile": "dinamico",
+      "enabledRelevanceTypes": [
+        "impacto_precio",
+        "valoracion_mercado",
+        "ruido",
+        "contexto_macro"
+      ],
+      "prioritizedTopics": [
+        "deuda_soberana",
+        "energia",
+        "cedears_tech",
+        "balances",
+        "regulaciones_bcra",
+        "macro_tasas"
+      ],
+      "notificationsEnabled": true,
+      "alertOnHighImpactOnly": false,
+      "audioSpeed": 1
+    },
+    "plan": "prueba",
+    "funnelStage": "cuenta_creada",
+    "lastActiveAt": "2026-10-28T19:43:48.728Z",
+    "createdAt": "2026-10-28T19:43:48.301Z"
   }
 ]

@@ -72,24 +72,88 @@ const userDrafts = new Map<string, OnboardingDraft>();
 const oauthStates = new Map<string, OAuthStateRecord>();
 
 /**
- * Saves current in-memory database to persistent JSON file on disk
+ * Remote Vercel KV / Upstash Redis synchronization helper
  */
-function persistDatabase(): void {
+async function syncFromRemoteKV(): Promise<boolean> {
+  const kvUrl = process.env.KV_REST_API_URL;
+  const kvToken = process.env.KV_REST_API_TOKEN;
+  if (!kvUrl || !kvToken) return false;
   try {
-    const userList = Array.from(usersById.values());
-    fs.writeFileSync(DB_PATH, JSON.stringify(userList, null, 2), 'utf-8');
+    const res = await fetch(`${kvUrl}/get/faros_users_db`, {
+      headers: { Authorization: `Bearer ${kvToken}` }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const rawResult = data?.result;
+      const list: StoredUser[] = typeof rawResult === 'string' ? JSON.parse(rawResult) : rawResult;
+      if (Array.isArray(list) && list.length > 0) {
+        for (const u of list) indexUser(u);
+        console.log(`[AUTH DB] Synchronized ${list.length} user(s) from Vercel KV.`);
+        return true;
+      }
+    }
   } catch (err) {
-    console.warn('[AUTH DB] Primary save failed, attempting fallback write:', err);
-    try {
-      const fallbackDir = path.join('/tmp', 'faros_data');
-      if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
-      fs.writeFileSync(path.join(fallbackDir, 'users_db.json'), JSON.stringify(Array.from(usersById.values()), null, 2), 'utf-8');
-    } catch {}
+    console.warn('[AUTH DB] Remote KV fetch warning:', err);
   }
+  return false;
+}
+
+function syncToRemoteKV(): void {
+  const kvUrl = process.env.KV_REST_API_URL;
+  const kvToken = process.env.KV_REST_API_TOKEN;
+  if (!kvUrl || !kvToken) return;
+  const userList = Array.from(usersById.values());
+  fetch(`${kvUrl}/set/faros_users_db`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${kvToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(JSON.stringify(userList))
+  }).catch(err => {
+    console.warn('[AUTH DB] Remote KV write warning:', err);
+  });
 }
 
 /**
- * Loads database from persistent disk file
+ * Saves current in-memory database to persistent JSON file on disk and remote KV if configured
+ */
+function persistDatabase(): void {
+  const userList = Array.from(usersById.values());
+  let wrote = false;
+
+  // 1. Try primary DB_PATH
+  try {
+    const dir = path.dirname(DB_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(DB_PATH, JSON.stringify(userList, null, 2), 'utf-8');
+    wrote = true;
+  } catch (err) {
+    console.warn('[AUTH DB] Primary save failed, attempting fallback write:', err);
+  }
+
+  // 2. Try fallback in /tmp/faros_data (always writable in Vercel Serverless)
+  try {
+    const fallbackDir = path.join('/tmp', 'faros_data');
+    if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
+    fs.writeFileSync(path.join(fallbackDir, 'users_db.json'), JSON.stringify(userList, null, 2), 'utf-8');
+    wrote = true;
+  } catch {}
+
+  // 3. Try repo data/ directory if writable
+  try {
+    const repoData = path.resolve(ROOT_DIR, 'data', 'users_db.json');
+    if (repoData !== DB_PATH) {
+      fs.writeFileSync(repoData, JSON.stringify(userList, null, 2), 'utf-8');
+    }
+  } catch {}
+
+  // 4. Remote KV sync if configured
+  syncToRemoteKV();
+}
+
+/**
+ * Loads database from persistent disk file or remote KV
  */
 function loadDatabase(): void {
   usersById.clear();
@@ -103,6 +167,7 @@ function loadDatabase(): void {
     path.join('/tmp', 'faros_data', 'users_db.json')
   ];
 
+  let loaded = false;
   for (const p of candidatePaths) {
     if (fs.existsSync(p)) {
       try {
@@ -113,7 +178,8 @@ function loadDatabase(): void {
             indexUser(u);
           }
           console.log(`[AUTH DB] Loaded ${list.length} user(s) from ${p}.`);
-          return;
+          loaded = true;
+          break;
         }
       } catch (err) {
         console.warn(`[AUTH DB] Error loading ${p}:`, err);
@@ -121,8 +187,13 @@ function loadDatabase(): void {
     }
   }
 
-  // Initial seed accounts for testing real multi-user isolation
-  seedInitialTestAccounts();
+  if (!loaded) {
+    // Initial seed accounts for testing real multi-user isolation
+    seedInitialTestAccounts();
+  }
+
+  // Non-blocking sync from remote KV if available
+  syncFromRemoteKV().catch(() => {});
 }
 
 /**
@@ -200,15 +271,49 @@ function sanitizeUser(user: StoredUser): UserAccount {
   safeUser.isAdmin = isUserAdmin(user.email);
   return safeUser;
 }
+const SESSION_SECRET = process.env.SESSION_SECRET || 'faros_secure_session_key_v1_2026';
 
 /**
- * Extracts session user from cookie or Authorization header
+ * Extracts session user from cookie or Authorization header.
+ * Validates cryptographically signed HMAC token so sessions survive serverless cold starts.
  */
 export function getSessionUser(req: Request): UserAccount | null {
-  const token = req.cookies?.faros_session || req.headers.authorization?.replace(/^Bearer\s+/i, '');
+  const rawHeader = req.headers.authorization;
+  const token = req.cookies?.faros_session || (rawHeader?.startsWith('Bearer ') ? rawHeader.slice(7) : rawHeader);
   if (!token) return null;
 
-  const session = sessions.get(token);
+  // 1. Check in-memory session cache first
+  let session = sessions.get(token);
+
+  // 2. If not found in memory (e.g. fresh lambda instance or restart), verify HMAC token
+  if (!session && token.includes('.')) {
+    try {
+      const parts = token.split('.');
+      if (parts.length === 2) {
+        const [payloadB64, signature] = parts;
+        const expectedSig = crypto.createHmac('sha256', SESSION_SECRET).update(payloadB64).digest('base64url');
+        
+        // Timing-safe comparison to prevent timing attacks
+        const sigBuffer = Buffer.from(signature);
+        const expectedBuffer = Buffer.from(expectedSig);
+        if (sigBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(sigBuffer, expectedBuffer)) {
+          const payloadJson = Buffer.from(payloadB64, 'base64url').toString('utf-8');
+          const parsed = JSON.parse(payloadJson);
+          if (parsed && parsed.userId && parsed.expiresAt && parsed.expiresAt > Date.now()) {
+            session = {
+              userId: parsed.userId,
+              createdAt: parsed.createdAt || Date.now(),
+              expiresAt: parsed.expiresAt
+            };
+            sessions.set(token, session);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[AUTH SESSION] Error verifying HMAC token:', err);
+    }
+  }
+
   if (!session) return null;
 
   if (Date.now() > session.expiresAt) {
@@ -216,23 +321,36 @@ export function getSessionUser(req: Request): UserAccount | null {
     return null;
   }
 
-  const user = usersById.get(session.userId);
+  let user = usersById.get(session.userId);
+  if (!user) {
+    // If user not in memory yet, reload database from disk/KV
+    loadDatabase();
+    user = usersById.get(session.userId);
+  }
+
   if (!user) return null;
 
   return sanitizeUser(user);
 }
 
 /**
- * Creates new session token
+ * Creates new HMAC-SHA256 signed session token
+ * Self-verifying across serverless restarts without requiring persistent server memory
  */
 export function createSession(userId: string, rememberMe = true): string {
-  const token = crypto.randomBytes(32).toString('hex');
   const duration = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
-  sessions.set(token, {
+  const now = Date.now();
+  const sessionData = {
     userId,
-    createdAt: Date.now(),
-    expiresAt: Date.now() + duration
-  });
+    createdAt: now,
+    expiresAt: now + duration
+  };
+
+  const payloadB64 = Buffer.from(JSON.stringify(sessionData)).toString('base64url');
+  const signature = crypto.createHmac('sha256', SESSION_SECRET).update(payloadB64).digest('base64url');
+  const token = `${payloadB64}.${signature}`;
+
+  sessions.set(token, sessionData);
   return token;
 }
 

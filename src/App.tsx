@@ -44,7 +44,7 @@ import {
 import { generateDailySummaryScript, naturalizeScriptForSpeech } from './utils/dailySummaryGenerator';
 import { getVerifiedCalendarEvents } from './utils/calendarGrounding';
 import { getNowAR } from './utils/dateAR';
-import { getActiveLocalSession, saveUserToVault, clearActiveLocalSession } from './utils/accountVault';
+import { saveUserToVault, clearActiveLocalSession } from './utils/accountVault';
 
 // Icons
 import { Search, X, Bookmark, ArrowRight, ShieldCheck, Sparkles, FilterX, Compass } from 'lucide-react';
@@ -172,14 +172,15 @@ export default function App() {
     }
   }, []);
 
-  // Helper to purge cache entries from previous days
+  // Helper to purge cache entries from previous days and older incompatible grouping formats
   const purgeOldClientCache = useCallback((todayKey: string) => {
     try {
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
         if (k && k.startsWith('faros_news_')) {
-          if (!k.includes(todayKey)) {
+          // Invalidate legacy unversioned caches and older days immediately
+          if (!k.startsWith('faros_news_v3_coherent_') || !k.includes(todayKey)) {
             keysToRemove.push(k);
           }
         }
@@ -206,7 +207,7 @@ export default function App() {
       }).format(new Date());
 
       const hourKey = `${todayKey}_${hourStr}`;
-      const cached = localStorage.getItem(`faros_news_${MOCK_PORTFOLIOS[0].id}_${hourKey}`);
+      const cached = localStorage.getItem(`faros_news_v3_coherent_${MOCK_PORTFOLIOS[0].id}_${hourKey}`);
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) return parsed;
@@ -333,7 +334,7 @@ export default function App() {
       hourKey = `${todayKey}_${hourStr}`;
     } catch {}
 
-    const cacheKey = `faros_news_${activePortfolio.id}_${hourKey}`;
+    const cacheKey = `faros_news_v3_coherent_${activePortfolio.id}_${hourKey}`;
 
     // Use cached news if available and not forced refresh
     if (!isManualRefresh) {
@@ -369,7 +370,7 @@ export default function App() {
           if (data.news.length > 0) {
             try {
               const hKey = data.hourKey || hourKey;
-              localStorage.setItem(`faros_news_${activePortfolio.id}_${hKey}`, JSON.stringify(data.news));
+              localStorage.setItem(`faros_news_v3_coherent_${activePortfolio.id}_${hKey}`, JSON.stringify(data.news));
             } catch {}
           }
         }
@@ -430,19 +431,15 @@ export default function App() {
             handleSessionSuccess(data.user, storedToken || undefined);
             return;
           }
+        } else if (res.status === 401) {
+          localStorage.removeItem('faros_session_token');
         }
       } catch {
         // Unauthenticated or network error
-      }
-
-      // Fallback: restore active session from local vault if server was offline or unreachable
-      if (isMounted) {
-        const localSession = getActiveLocalSession();
-        if (localSession?.user) {
-          handleSessionSuccess(localSession.user, localSession.token);
-          return;
+      } finally {
+        if (isMounted) {
+          setIsSessionLoading(false);
         }
-        setIsSessionLoading(false);
       }
     }
     checkSession();
