@@ -5,16 +5,29 @@ import { StoredUser } from './auth';
 import { UserPlan, FunnelStage, UsageEvent, UsageEventType } from '../types';
 
 const ROOT_DIR = process.cwd();
-const DATA_DIR = path.resolve(ROOT_DIR, 'data');
+
+function getWritableDataDir(): string {
+  const candidates = [
+    path.resolve(ROOT_DIR, 'data'),
+    path.join('/tmp', 'faros_data')
+  ];
+  for (const dir of candidates) {
+    try {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const testFile = path.join(dir, `.test_w_${Date.now()}`);
+      fs.writeFileSync(testFile, '1');
+      fs.unlinkSync(testFile);
+      return dir;
+    } catch {}
+  }
+  return path.resolve(ROOT_DIR, 'data');
+}
+
+const DATA_DIR = getWritableDataDir();
 const USERS_DB_PATH = path.resolve(DATA_DIR, 'users_db.json');
 const EVENTS_DB_PATH = path.resolve(DATA_DIR, 'events_db.json');
-
-// Ensure data folder exists
-if (!fs.existsSync(DATA_DIR)) {
-  try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  } catch {}
-}
 
 /**
  * Checks if a given email is listed in ADMIN_EMAILS

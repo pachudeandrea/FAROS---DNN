@@ -85,6 +85,20 @@ const app = express();
 app.use(express.json());
 app.use(cookieParser());
 
+// Universal CORS & preflight OPTIONS handler for mobile Safari, webviews & cross-origin requests
+app.use((req, res, next) => {
+  const origin = req.headers.origin || '*';
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cookie');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  next();
+});
+
 // In-memory cache per portfolio, date (in Argentina) and hour
 interface CacheEntry {
   timestamp: number;
@@ -719,6 +733,16 @@ app.post('/api/audio/synthesize', async (req, res) => {
   }
 });
 
+// Global JSON error handler preventing raw HTML 500 error pages
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('[SERVER ERROR]', err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Error interno del servidor. Por favor reintentá en unos momentos.' });
+  }
+});
+
+export default app;
+
 const PORT = 3000;
 
 async function startServer() {
@@ -749,4 +773,7 @@ async function startServer() {
   });
 }
 
-startServer();
+// Start standalone server only when not executing in a Vercel serverless function
+if (process.env.VERCEL !== '1' && !process.env.NOW_REGION) {
+  startServer();
+}

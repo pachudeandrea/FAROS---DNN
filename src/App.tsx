@@ -44,6 +44,7 @@ import {
 import { generateDailySummaryScript, naturalizeScriptForSpeech } from './utils/dailySummaryGenerator';
 import { getVerifiedCalendarEvents } from './utils/calendarGrounding';
 import { getNowAR } from './utils/dateAR';
+import { getActiveLocalSession, saveUserToVault, clearActiveLocalSession } from './utils/accountVault';
 
 // Icons
 import { Search, X, Bookmark, ArrowRight, ShieldCheck, Sparkles, FilterX, Compass } from 'lucide-react';
@@ -385,6 +386,33 @@ export default function App() {
     fetchPulseNews(false);
   }, [activePortfolio.id, fetchPulseNews]);
 
+  const handleSessionSuccess = useCallback((user: UserAccount, token?: string, isNewRegistration: boolean = false) => {
+    setCurrentUser(user);
+    if (token) {
+      localStorage.setItem('faros_session_token', token);
+    }
+    // Mirror into local vault
+    saveUserToVault(user);
+
+    if (user.portfolio) {
+      // Isolate view: user sees strictly their own portfolio
+      setPortfolios([user.portfolio]);
+      setActivePortfolioId(user.portfolio.id);
+    }
+    if (user.preferences) {
+      setPreferences(user.preferences);
+    }
+    setIsSessionLoading(false);
+    setShowLoginModal(false);
+    setShowSignUpModal(false);
+
+    if (isNewRegistration) {
+      // Direct new user immediately to Mi Cartera (settings tab)
+      setCurrentTab('settings');
+      setShowWelcomeOnboardingModal(true);
+    }
+  }, []);
+
   // Session verification on mount
   useEffect(() => {
     let isMounted = true;
@@ -405,37 +433,21 @@ export default function App() {
         }
       } catch {
         // Unauthenticated or network error
-      } finally {
-        if (isMounted) setIsSessionLoading(false);
+      }
+
+      // Fallback: restore active session from local vault if server was offline or unreachable
+      if (isMounted) {
+        const localSession = getActiveLocalSession();
+        if (localSession?.user) {
+          handleSessionSuccess(localSession.user, localSession.token);
+          return;
+        }
+        setIsSessionLoading(false);
       }
     }
     checkSession();
     return () => { isMounted = false; };
-  }, []);
-
-  const handleSessionSuccess = useCallback((user: UserAccount, token?: string, isNewRegistration: boolean = false) => {
-    setCurrentUser(user);
-    if (token) {
-      localStorage.setItem('faros_session_token', token);
-    }
-    if (user.portfolio) {
-      // Isolate view: user sees strictly their own portfolio
-      setPortfolios([user.portfolio]);
-      setActivePortfolioId(user.portfolio.id);
-    }
-    if (user.preferences) {
-      setPreferences(user.preferences);
-    }
-    setIsSessionLoading(false);
-    setShowLoginModal(false);
-    setShowSignUpModal(false);
-
-    if (isNewRegistration) {
-      // Direct new user immediately to Mi Cartera (settings tab)
-      setCurrentTab('settings');
-      setShowWelcomeOnboardingModal(true);
-    }
-  }, []);
+  }, [handleSessionSuccess]);
 
   const handleLogout = useCallback(async () => {
     // CRITICAL: Stop and clean up all audio upon logging out
@@ -444,6 +456,7 @@ export default function App() {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch {}
     localStorage.removeItem('faros_session_token');
+    clearActiveLocalSession();
     setCurrentUser(null);
     setPortfolios(MOCK_PORTFOLIOS);
     setActivePortfolioId(MOCK_PORTFOLIOS[0].id);

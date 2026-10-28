@@ -8,13 +8,29 @@ import { DEFAULT_PREFERENCES } from '../data/mockData';
 import { trackEventNonBlocking, isUserAdmin } from './dbAdapter';
 
 const ROOT_DIR = process.cwd();
-const DATA_DIR = path.resolve(ROOT_DIR, 'data');
-const DB_PATH = path.resolve(DATA_DIR, 'users_db.json');
 
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+function getWritableDataDir(): string {
+  const candidates = [
+    path.resolve(ROOT_DIR, 'data'),
+    path.join('/tmp', 'faros_data')
+  ];
+
+  for (const dir of candidates) {
+    try {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const testFile = path.join(dir, `.test_w_${Date.now()}`);
+      fs.writeFileSync(testFile, '1');
+      fs.unlinkSync(testFile);
+      return dir;
+    } catch {}
+  }
+  return path.resolve(ROOT_DIR, 'data');
 }
+
+const DATA_DIR = getWritableDataDir();
+const DB_PATH = path.resolve(DATA_DIR, 'users_db.json');
 
 // User and session types
 export interface StoredUser extends UserAccount {
@@ -63,7 +79,12 @@ function persistDatabase(): void {
     const userList = Array.from(usersById.values());
     fs.writeFileSync(DB_PATH, JSON.stringify(userList, null, 2), 'utf-8');
   } catch (err) {
-    console.error('[AUTH DB] Failed to save database to disk:', err);
+    console.warn('[AUTH DB] Primary save failed, attempting fallback write:', err);
+    try {
+      const fallbackDir = path.join('/tmp', 'faros_data');
+      if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
+      fs.writeFileSync(path.join(fallbackDir, 'users_db.json'), JSON.stringify(Array.from(usersById.values()), null, 2), 'utf-8');
+    } catch {}
   }
 }
 
@@ -76,19 +97,27 @@ function loadDatabase(): void {
   usersByGoogleSub.clear();
   usersByMicrosoftOid.clear();
 
-  if (fs.existsSync(DB_PATH)) {
-    try {
-      const content = fs.readFileSync(DB_PATH, 'utf-8');
-      const list: StoredUser[] = JSON.parse(content);
-      if (Array.isArray(list)) {
-        for (const u of list) {
-          indexUser(u);
+  const candidatePaths = [
+    DB_PATH,
+    path.resolve(ROOT_DIR, 'data', 'users_db.json'),
+    path.join('/tmp', 'faros_data', 'users_db.json')
+  ];
+
+  for (const p of candidatePaths) {
+    if (fs.existsSync(p)) {
+      try {
+        const content = fs.readFileSync(p, 'utf-8');
+        const list: StoredUser[] = JSON.parse(content);
+        if (Array.isArray(list) && list.length > 0) {
+          for (const u of list) {
+            indexUser(u);
+          }
+          console.log(`[AUTH DB] Loaded ${list.length} user(s) from ${p}.`);
+          return;
         }
-        console.log(`[AUTH DB] Loaded ${list.length} user(s) from persistent storage.`);
-        return;
+      } catch (err) {
+        console.warn(`[AUTH DB] Error loading ${p}:`, err);
       }
-    } catch (err) {
-      console.warn('[AUTH DB] Error loading users_db.json, re-initializing store:', err);
     }
   }
 
@@ -208,14 +237,15 @@ export function createSession(userId: string, rememberMe = true): string {
 }
 
 /**
- * Sets session cookie with cross-origin iframe security flags
+ * Sets session cookie with cross-origin iframe security flags and Safari iOS compatibility
  */
 export function setSessionCookie(res: Response, token: string, rememberMe = true) {
   const maxAge = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
   res.cookie('faros_session', token, {
     httpOnly: true,
     secure: true,
-    sameSite: 'none',
+    sameSite: 'lax',
+    path: '/',
     maxAge
   });
 }
@@ -290,7 +320,15 @@ export async function handleRegister(req: Request, res: Response) {
   }
 
   if (existingUser) {
-    // If user exists, link provider IDs if not linked yet
+    // If standard email registration and user already exists, reject with 409 Conflict
+    if (provider === 'email' || !provider) {
+      return res.status(409).json({
+        success: false,
+        error: 'Este correo electrónico ya se encuentra registrado en FAROS. Por favor iniciá sesión con tu contraseña.'
+      });
+    }
+
+    // If OAuth, link provider IDs if not linked yet
     if (googleSub && !existingUser.googleSub) existingUser.googleSub = googleSub;
     if (microsoftOid && !existingUser.microsoftOid) existingUser.microsoftOid = microsoftOid;
     if (picture && !existingUser.picture) existingUser.picture = picture;

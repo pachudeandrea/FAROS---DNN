@@ -13,6 +13,7 @@ import {
   KeyRound
 } from 'lucide-react';
 import { UserAccount } from '../types';
+import { saveUserToVault, verifyVaultLogin } from '../utils/accountVault';
 
 interface LoginFormProps {
   isOpen: boolean;
@@ -54,26 +55,69 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     setErrorMessage(null);
     setIsLoading(true);
 
+    const normalizedEmail = email.trim().toLowerCase();
+
     try {
+      const abortController = new AbortController();
+      const timeoutId = setTimeout(() => abortController.abort(), 7000);
+
       const res = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({
-          email: email.trim().toLowerCase(),
+          email: normalizedEmail,
           password,
           rememberMe
-        })
+        }),
+        signal: abortController.signal
       });
 
-      const data = await res.json();
+      clearTimeout(timeoutId);
 
-      if (!res.ok) {
-        throw new Error(data.error || 'Email o contraseña incorrectos.');
+      let data: any = null;
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        try { data = await res.json(); } catch {}
+      } else {
+        const textBody = await res.text();
+        try { data = JSON.parse(textBody); } catch {}
       }
 
-      onSuccess(data.user, data.token);
-      onClose();
+      if (res.ok && data?.user) {
+        if (data.token) {
+          localStorage.setItem('faros_session_token', data.token);
+        }
+        await saveUserToVault(data.user, password);
+        onSuccess(data.user, data.token);
+        onClose();
+        return;
+      }
+
+      // If server explicitly reported invalid credentials or rate limiting
+      if (res.status === 401 || res.status === 400 || res.status === 429) {
+        throw new Error(data?.error || 'Email o contraseña incorrectos.');
+      }
+
+      // If server endpoint returned 404/500 (e.g. static host), check local vault
+      const vaultAuth = await verifyVaultLogin(normalizedEmail, password);
+      if (vaultAuth.success && vaultAuth.user) {
+        onSuccess(vaultAuth.user, vaultAuth.token);
+        onClose();
+        return;
+      }
+
+      throw new Error('Email o contraseña incorrectos.');
     } catch (err: any) {
+      // Check local vault in case of network disconnect or server unavailability
+      const vaultAuth = await verifyVaultLogin(normalizedEmail, password);
+      if (vaultAuth.success && vaultAuth.user) {
+        onSuccess(vaultAuth.user, vaultAuth.token);
+        onClose();
+        return;
+      }
       setErrorMessage(err.message || 'Error al iniciar sesión. Verificá tus credenciales.');
     } finally {
       setIsLoading(false);

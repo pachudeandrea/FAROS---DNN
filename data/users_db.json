@@ -1,0 +1,80 @@
+[
+  {
+    "id": "usr_mariano_demo",
+    "name": "Mariano De Andrea",
+    "email": "marudeandrea@gmail.com",
+    "passwordHash": "$2b$10$8yepnLJ9KqDbCnFnJlyMZeASMaR/ZMH3beUwIgGSSa1h8wLpI0xea",
+    "provider": "email",
+    "timeZone": "America/Argentina/Buenos_Aires",
+    "termsAccepted": true,
+    "profile": "moderado",
+    "alyc": "Balanz",
+    "portfolio": {
+      "id": "port_mariano_1",
+      "name": "Cartera Renta Fija Soberana",
+      "description": "Títulos de deuda soberana y corporativa argentina en dólares.",
+      "profile": "moderado",
+      "assetIds": [
+        "AL30",
+        "GD30",
+        "YPFD",
+        "GGAL"
+      ],
+      "assetPositions": {
+        "AL30": "long",
+        "GD30": "long",
+        "YPFD": "long",
+        "GGAL": "long"
+      }
+    },
+    "createdAt": "2026-10-01T10:00:00.000Z"
+  },
+  {
+    "id": "usr_1793214932363_2317bd5f",
+    "name": "Valeria Mendez",
+    "email": "valeria.test@faros.com",
+    "passwordHash": "$2b$10$0N9iCSBUcpbe00S6pi7sMO3EAekjwMkDz4Pv9pfo4tosJSIKziqIq",
+    "provider": "email",
+    "birthDate": "1995-05-14",
+    "country": "Argentina",
+    "city": "Buenos Aires",
+    "phone": "",
+    "timeZone": "America/Argentina/Buenos_Aires",
+    "termsAccepted": true,
+    "notificationsOptIn": false,
+    "profile": "moderado",
+    "alyc": "",
+    "portfolio": {
+      "id": "port_1793214932363_80a20e7f",
+      "name": "Mi Cartera",
+      "description": "Mi espacio personal de inversión en FAROS.",
+      "profile": "moderado",
+      "assetIds": [],
+      "assetPositions": {}
+    },
+    "preferences": {
+      "investorProfile": "moderado",
+      "enabledRelevanceTypes": [
+        "impacto_precio",
+        "valoracion_mercado",
+        "ruido",
+        "contexto_macro"
+      ],
+      "prioritizedTopics": [
+        "deuda_soberana",
+        "energia",
+        "cedears_tech",
+        "balances",
+        "regulaciones_bcra",
+        "macro_tasas"
+      ],
+      "notificationsEnabled": true,
+      "alertOnHighImpactOnly": false,
+      "audioSpeed": 1
+    },
+    "plan": "prueba",
+    "funnelStage": "cuenta_creada",
+    "lastActiveAt": "2026-10-28T19:15:41.043Z",
+    "createdAt": "2026-10-28T19:15:32.364Z"
+  }
+]
