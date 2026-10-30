@@ -75,7 +75,7 @@ export async function handleClientTrackEvent(req: Request, res: Response): Promi
 /**
  * Overview KPIs endpoint
  */
-export function handleAdminOverview(req: Request, res: Response): void {
+export async function handleAdminOverview(req: Request, res: Response): Promise<void> {
   const mode = req.query.mode === 'real' ? 'real' : 'demo';
   const days = parseInt(req.query.days as string, 10) || 30;
 
@@ -118,11 +118,11 @@ export function handleAdminOverview(req: Request, res: Response): void {
   }
 
   // Real Mode Calculation
-  const allUsers = getAllUsers();
+  const allUsers = await getAllUsers();
   const now = Date.now();
   const dayMs = 24 * 60 * 60 * 1000;
   const sinceTimestamp = now - days * dayMs;
-  const events = getUsageEvents(sinceTimestamp);
+  const events = (await getUsageEvents(sinceTimestamp));
 
   const totalUsers = allUsers.length;
   const todayStart = new Date().setHours(0, 0, 0, 0);
@@ -214,7 +214,7 @@ export function handleAdminOverview(req: Request, res: Response): void {
 /**
  * Users listing with filters, pagination and activity timeline
  */
-export function handleAdminUsers(req: Request, res: Response): void {
+export async function handleAdminUsers(req: Request, res: Response): Promise<void> {
   const mode = req.query.mode === 'real' ? 'real' : 'demo';
   const search = ((req.query.search as string) || '').toLowerCase().trim();
   const planFilter = (req.query.plan as string) || 'todos';
@@ -222,7 +222,7 @@ export function handleAdminUsers(req: Request, res: Response): void {
   const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
   const limit = Math.max(1, Math.min(100, parseInt(req.query.limit as string, 10) || 20));
 
-  let users = mode === 'demo' ? generateDemoAdminData().demoUsers : getAllUsers();
+  let users = mode === 'demo' ? generateDemoAdminData().demoUsers : await getAllUsers();
 
   if (search) {
     users = users.filter(u => 
@@ -245,7 +245,7 @@ export function handleAdminUsers(req: Request, res: Response): void {
   const paginated = users.slice(startIndex, startIndex + limit);
 
   // Attach recent activity preview
-  const allEvents = getUsageEvents();
+  const allEvents = (await getUsageEvents());
   const enriched = paginated.map(u => {
     const userEvents = allEvents
       .filter(e => e.userId === u.id)
@@ -287,7 +287,7 @@ export function handleAdminUsers(req: Request, res: Response): void {
 /**
  * Update plan or funnel stage for an individual user
  */
-export function handleAdminUpdateUserPlan(req: Request, res: Response): void {
+export async function handleAdminUpdateUserPlan(req: Request, res: Response): Promise<void> {
   const { userId } = req.params;
   const { plan, funnelStage } = req.body;
 
@@ -296,7 +296,7 @@ export function handleAdminUpdateUserPlan(req: Request, res: Response): void {
     return;
   }
 
-  const success = updateUserPlanAndStage(userId, { plan, funnelStage });
+  const success = await updateUserPlanAndStage(userId, { plan, funnelStage });
   if (success) {
     res.json({ success: true, userId, plan, funnelStage });
   } else {
@@ -307,7 +307,7 @@ export function handleAdminUpdateUserPlan(req: Request, res: Response): void {
 /**
  * Funnel & Onboarding metrics
  */
-export function handleAdminFunnel(req: Request, res: Response): void {
+export async function handleAdminFunnel(req: Request, res: Response): Promise<void> {
   const mode = req.query.mode === 'real' ? 'real' : 'demo';
   if (mode === 'demo') {
     const demo = generateDemoAdminData();
@@ -324,7 +324,7 @@ export function handleAdminFunnel(req: Request, res: Response): void {
     return;
   }
 
-  const users = getAllUsers();
+  const users = await getAllUsers();
   const totalAccounts = users.length || 1;
   const adoption = users.filter(u => u.funnelStage !== 'cuenta_creada').length;
   const interes = users.filter(u => u.funnelStage === 'interes' || u.funnelStage === 'venta' || u.funnelStage === 'farming').length;
@@ -351,7 +351,7 @@ export function handleAdminFunnel(req: Request, res: Response): void {
 /**
  * Product Usage breakdown
  */
-export function handleAdminUsage(req: Request, res: Response): void {
+export async function handleAdminUsage(req: Request, res: Response): Promise<void> {
   const mode = req.query.mode === 'real' ? 'real' : 'demo';
   if (mode === 'demo') {
     const demo = generateDemoAdminData();
@@ -362,7 +362,7 @@ export function handleAdminUsage(req: Request, res: Response): void {
     return;
   }
 
-  const users = getAllUsers();
+  const users = await getAllUsers();
   const tickerMap: Record<string, { count: number; longCount: number; shortCount: number }> = {};
   let totalLong = 0;
   let totalShort = 0;
@@ -419,8 +419,8 @@ export function handleAdminUsage(req: Request, res: Response): void {
         google: users.filter(u => u.provider === 'google').length,
         microsoft: users.filter(u => u.provider === 'microsoft').length
       },
-      audioPlaysTotal: getUsageEvents().filter(e => e.eventType === 'audio_play').length,
-      bookmarksTotal: getUsageEvents().filter(e => e.eventType === 'news_bookmark').length
+      audioPlaysTotal: (await getUsageEvents()).filter(e => e.eventType === 'audio_play').length,
+      bookmarksTotal: (await getUsageEvents()).filter(e => e.eventType === 'news_bookmark').length
     }
   });
 }
@@ -428,7 +428,7 @@ export function handleAdminUsage(req: Request, res: Response): void {
 /**
  * Pipeline technical health
  */
-export function handleAdminPipelineHealth(req: Request, res: Response): void {
+export async function handleAdminPipelineHealth(req: Request, res: Response): Promise<void> {
   const mode = req.query.mode === 'real' ? 'real' : 'demo';
   const demo = generateDemoAdminData().pipelineHealth;
 
@@ -440,7 +440,7 @@ export function handleAdminPipelineHealth(req: Request, res: Response): void {
     return;
   }
 
-  const events = getUsageEvents();
+  const events = (await getUsageEvents());
   const pulseEvents = events.filter(e => e.eventType === 'news_pulse_query');
   const cacheHits = pulseEvents.filter(e => e.metadata?.cached).length;
   const geminiCalls = pulseEvents.filter(e => !e.metadata?.cached && !e.metadata?.fallback).length;
@@ -472,11 +472,11 @@ export function handleAdminPipelineHealth(req: Request, res: Response): void {
 /**
  * Thesis Financial Model & Breakeven Calculator
  */
-export function handleAdminThesisFinancials(req: Request, res: Response): void {
+export async function handleAdminThesisFinancials(req: Request, res: Response): Promise<void> {
   const mode = req.query.mode === 'real' ? 'real' : 'demo';
   const demo = generateDemoAdminData().thesisModel;
 
-  const users = getAllUsers();
+  const users = await getAllUsers();
   const retailUsersCount = users.filter(u => u.plan === 'market').length;
   const partnerUsersCount = users.filter(u => u.plan === 'partner').length;
   const realMrr = (retailUsersCount * demo.marketPlanPrice) + (partnerUsersCount * demo.partnerPlanPrice);

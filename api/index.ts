@@ -1,10 +1,4 @@
-import app from '../src/server/app';
-
-export default function handler(req: any, res: any) {
-  // Normalize URL if Vercel serverless environment rewrote or stripped the path
-  const matchedPath = req.headers['x-matched-path'] || req.headers['x-forwarded-uri'];
-  if (matchedPath && typeof matchedPath === 'string' && matchedPath.startsWith('/api')) {
-    req.url = matchedPath;
-  }
-  return app(req, res);
-}
+// Import only the API. Local listening and Vite belong to server.ts.
+// Vercel preserves the original request URL through the rewrite. Internal
+// routing headers refer to the function and must not replace the public path.
+export { default } from '../src/server/app';

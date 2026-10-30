@@ -44,7 +44,7 @@ import {
 import { generateDailySummaryScript, naturalizeScriptForSpeech } from './utils/dailySummaryGenerator';
 import { getVerifiedCalendarEvents } from './utils/calendarGrounding';
 import { getNowAR } from './utils/dateAR';
-import { saveUserToVault, clearActiveLocalSession } from './utils/accountVault';
+import { apiRequest, ApiError } from './utils/apiClient';
 
 // Icons
 import { Search, X, Bookmark, ArrowRight, ShieldCheck, Sparkles, FilterX, Compass } from 'lucide-react';
@@ -60,6 +60,7 @@ export default function App() {
 
   // User Authentication & Session State
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
+  const [accountError, setAccountError] = useState<string | null>(null);
   const [isSessionLoading, setIsSessionLoading] = useState<boolean>(true);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
   const [showSignUpModal, setShowSignUpModal] = useState<boolean>(false);
@@ -70,6 +71,7 @@ export default function App() {
     picture?: string;
     googleSub?: string;
     microsoftOid?: string;
+    signupTicket?: string;
   } | null>(null);
 
   // Active news item for detail modal & audio drawer
@@ -389,11 +391,8 @@ export default function App() {
 
   const handleSessionSuccess = useCallback((user: UserAccount, token?: string, isNewRegistration: boolean = false) => {
     setCurrentUser(user);
-    if (token) {
-      localStorage.setItem('faros_session_token', token);
-    }
-    // Mirror into local vault
-    saveUserToVault(user);
+    try { if (token) localStorage.setItem('faros_session_token', token); } catch {}
+    setAccountError(null);
 
     if (user.portfolio) {
       // Isolate view: user sees strictly their own portfolio
@@ -419,23 +418,20 @@ export default function App() {
     let isMounted = true;
     async function checkSession() {
       try {
-        const storedToken = localStorage.getItem('faros_session_token');
-        const headers: Record<string, string> = {};
-        if (storedToken) {
-          headers['Authorization'] = `Bearer ${storedToken}`;
+        // Remove old device-only account/password copies. Server verification
+        // is the sole source of authenticated identity.
+        try {
+          localStorage.removeItem('faros_registered_accounts_vault_v1');
+          localStorage.removeItem('faros_active_session_user');
+        } catch {}
+        const data = await apiRequest('/api/auth/me');
+        if (data.authenticated && data.user && isMounted) handleSessionSuccess(data.user);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          try { localStorage.removeItem('faros_session_token'); } catch {}
+        } else if (isMounted) {
+          setAccountError(error instanceof Error ? error.message : 'No se pudo comprobar tu sesión.');
         }
-        const res = await fetch('/api/auth/me', { headers, credentials: 'include' });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.authenticated && data.user && isMounted) {
-            handleSessionSuccess(data.user, storedToken || undefined);
-            return;
-          }
-        } else if (res.status === 401) {
-          localStorage.removeItem('faros_session_token');
-        }
-      } catch {
-        // Unauthenticated or network error
       } finally {
         if (isMounted) {
           setIsSessionLoading(false);
@@ -446,42 +442,39 @@ export default function App() {
     return () => { isMounted = false; };
   }, [handleSessionSuccess]);
 
-  const handleLogout = useCallback(async () => {
-    // CRITICAL: Stop and clean up all audio upon logging out
+  const clearSessionView = () => {
     audioController.stopAll('logout');
     try {
-      const storedToken = localStorage.getItem('faros_session_token');
-      await fetch('/api/auth/logout', { 
-        method: 'POST',
-        headers: storedToken ? { 'Authorization': `Bearer ${storedToken}` } : {},
-        credentials: 'include'
-      });
+      localStorage.removeItem('faros_session_token');
+      localStorage.removeItem('faros_active_session_user');
+      localStorage.removeItem('faros_registered_accounts_vault_v1');
+      localStorage.removeItem('faros_onboarding_draft');
     } catch {}
-    localStorage.removeItem('faros_session_token');
-    clearActiveLocalSession();
     setCurrentUser(null);
     setPortfolios(MOCK_PORTFOLIOS);
     setActivePortfolioId(MOCK_PORTFOLIOS[0].id);
     setPreferences(DEFAULT_PREFERENCES);
     setCurrentTab('feed');
-  }, []);
+    setAccountError(null);
+  };
 
-  const handleDeleteAccount = useCallback(async () => {
-    // CRITICAL: Stop and clean up all audio upon account deletion
-    audioController.stopAll('account-deleted');
+  const handleLogout = async () => {
     try {
-      const storedToken = localStorage.getItem('faros_session_token');
-      await fetch('/api/auth/account', {
-        method: 'DELETE',
-        headers: storedToken ? { 'Authorization': `Bearer ${storedToken}` } : {},
-        credentials: 'include'
-      });
-    } catch {}
-    localStorage.removeItem('faros_session_token');
-    localStorage.removeItem('faros_onboarding_draft');
-    setCurrentUser(null);
-    setCurrentTab('feed');
-  }, []);
+      if (currentUser?.id !== 'usr_demo') await apiRequest('/api/auth/logout', { method: 'POST' });
+      clearSessionView();
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : 'No se pudo cerrar la sesión en el servidor.');
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    try {
+      if (currentUser?.id !== 'usr_demo') await apiRequest('/api/auth/account', { method: 'DELETE' });
+      clearSessionView();
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : 'No se pudo eliminar la cuenta.');
+    }
+  };
 
   const handleExploreDemo = useCallback(() => {
     const demoUser: UserAccount = {
@@ -641,57 +634,34 @@ export default function App() {
     preferences
   ]);
 
-  // Handler for saving portfolio settings and syncing to backend database
-  const handleSavePortfolioSettings = (updated: Portfolio) => {
-    setPortfolios(prev => prev.map(p => p.id === updated.id ? updated : p));
-    if (currentUser) {
-      const updatedUser: UserAccount = {
-        ...currentUser,
-        portfolio: updated,
-        profile: updated.profile
-      };
-      setCurrentUser(updatedUser);
-      saveUserToVault(updatedUser);
-
-      const storedToken = localStorage.getItem('faros_session_token');
-      fetch('/api/auth/user', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(storedToken ? { 'Authorization': `Bearer ${storedToken}` } : {})
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          portfolio: updated,
-          profile: updated.profile
-        })
-      }).catch(() => {});
+  // Only confirm account changes after PostgreSQL acknowledges them.
+  const handleSavePortfolioSettings = async (updated: Portfolio) => {
+    try {
+      setAccountError(null);
+      if (currentUser && currentUser.id !== 'usr_demo') {
+        const data = await apiRequest('/api/auth/user', { method: 'PUT', body: JSON.stringify({ portfolio: updated, profile: updated.profile }) });
+        setCurrentUser(data.user);
+        setPortfolios([data.user.portfolio]);
+      } else {
+        setPortfolios(prev => prev.map(p => p.id === updated.id ? updated : p));
+      }
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : 'No se pudo guardar la cartera.');
     }
   };
 
-  // Handler for saving preferences and syncing to backend database
-  const handleSavePreferences = (updated: UserPreferences) => {
-    setPreferences(updated);
-    if (currentUser) {
-      const updatedUser: UserAccount = {
-        ...currentUser,
-        preferences: updated
-      };
-      setCurrentUser(updatedUser);
-      saveUserToVault(updatedUser);
-
-      const storedToken = localStorage.getItem('faros_session_token');
-      fetch('/api/auth/user', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(storedToken ? { 'Authorization': `Bearer ${storedToken}` } : {})
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          preferences: updated
-        })
-      }).catch(() => {});
+  const handleSavePreferences = async (updated: UserPreferences) => {
+    try {
+      setAccountError(null);
+      if (currentUser && currentUser.id !== 'usr_demo') {
+        const data = await apiRequest('/api/auth/user', { method: 'PUT', body: JSON.stringify({ preferences: updated }) });
+        setCurrentUser(data.user);
+        setPreferences(data.user.preferences);
+      } else {
+        setPreferences(updated);
+      }
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : 'No se pudieron guardar las preferencias.');
     }
   };
 
@@ -743,6 +713,7 @@ export default function App() {
   if (!currentUser) {
     return (
       <>
+        {accountError && <p role="alert" className="fixed bottom-4 left-4 right-4 z-40 mx-auto max-w-xl rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{accountError}</p>}
         <WelcomeScreen
           onOpenSignUp={() => setShowSignUpModal(true)}
           onOpenLogin={() => setShowLoginModal(true)}
@@ -802,6 +773,7 @@ export default function App() {
 
       {/* Main View Area */}
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 pb-28 md:pb-16">
+        {accountError && <p role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{accountError}</p>}
         {/* PANTALLA 1: INICIO (FEED) */}
         {currentTab === 'feed' && (
           <div className="space-y-8">

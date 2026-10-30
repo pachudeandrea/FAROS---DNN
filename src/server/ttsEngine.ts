@@ -5,23 +5,8 @@ import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 
 const ROOT_DIR = process.cwd();
 
-function getSafeAudioCacheDir(): string {
-  const candidates = [
-    path.join('/tmp', 'faros_audio_cache'),
-    path.resolve(ROOT_DIR, 'audio_cache')
-  ];
-  for (const dir of candidates) {
-    try {
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      return dir;
-    } catch {}
-  }
-  return path.join('/tmp', 'faros_audio_cache');
-}
-
-const AUDIO_CACHE_DIR = getSafeAudioCacheDir();
+// Audio cache is prepared only on use; imports must work on read-only runtimes.
+const AUDIO_CACHE_DIR = path.join('/tmp', 'faros_audio_cache');
 const VOICE_ARGENTINA = 'es-AR-ElenaNeural';
 
 export interface SynthesisResult {
@@ -117,6 +102,7 @@ export async function ensurePiperDaemon(): Promise<boolean> {
  */
 export async function prefetchAudioScripts(items: Array<{ text: string; hash?: string }>): Promise<void> {
   if (!items || items.length === 0) return;
+  if (!await ensurePiperDaemon()) return;
 
   // Process sequentially in background to avoid bursting
   (async () => {
@@ -154,6 +140,10 @@ export async function synthesizeArgentineSpeech(
       success: false,
       error: 'El texto es requerido para la síntesis de audio.'
     };
+  }
+
+  if (!await ensurePiperDaemon()) {
+    return { success: false, error: 'El audio no está disponible en este momento.', fallbackTextOnly: true };
   }
 
   const hash = computeScriptHash(cleanText);

@@ -20,7 +20,7 @@ import {
   Briefcase
 } from 'lucide-react';
 import { RiskProfile, UserAccount, OnboardingDraft } from '../types';
-import { saveUserToVault, createLocalAccount, isEmailInVault } from '../utils/accountVault';
+import { apiRequest } from '../utils/apiClient';
 
 interface SignUpWizardProps {
   isOpen: boolean;
@@ -34,6 +34,7 @@ interface SignUpWizardProps {
     picture?: string;
     googleSub?: string;
     microsoftOid?: string;
+    signupTicket?: string;
   } | null;
 }
 
@@ -85,8 +86,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [stepError, setStepError] = useState<string | null>(null);
   const [oauthNotice, setOauthNotice] = useState<{ provider: string; message: string } | null>(null);
-  const [oauthGoogleSub, setOauthGoogleSub] = useState<string | null>(null);
-  const [oauthMicrosoftOid, setOauthMicrosoftOid] = useState<string | null>(null);
+  const [signupTicket, setSignupTicket] = useState<string | null>(null);
   const [oauthPicture, setOauthPicture] = useState<string | null>(null);
 
   // Load draft from localStorage on mount
@@ -114,8 +114,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
       if (initialTempUser.name) setName(initialTempUser.name);
       if (initialTempUser.email) setEmail(initialTempUser.email);
       if (initialTempUser.provider) setAuthProvider(initialTempUser.provider);
-      if (initialTempUser.googleSub) setOauthGoogleSub(initialTempUser.googleSub);
-      if (initialTempUser.microsoftOid) setOauthMicrosoftOid(initialTempUser.microsoftOid);
+      setSignupTicket(initialTempUser.signupTicket || null);
       if (initialTempUser.picture) setOauthPicture(initialTempUser.picture);
       // Skip password step when OAuth provider is used
       setStep(2);
@@ -169,8 +168,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
     setStepError(null);
     setOauthNotice(null);
     try {
-      const res = await fetch('/api/auth/google/url');
-      const data = await res.json();
+      const data = await apiRequest('/api/auth/google/url');
       if (!data.configured) {
         setOauthNotice({
           provider: 'Google',
@@ -189,8 +187,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
     setStepError(null);
     setOauthNotice(null);
     try {
-      const res = await fetch('/api/auth/microsoft/url');
-      const data = await res.json();
+      const data = await apiRequest('/api/auth/microsoft/url');
       if (!data.configured) {
         setOauthNotice({
           provider: 'Microsoft',
@@ -215,25 +212,26 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
       `toolbar=no, location=no, directories=no, status=no, menubar=no, scrollbars=yes, resizable=yes, copyhistory=no, width=${width}, height=${height}, top=${top}, left=${left}`
     );
 
+    if (!popup) { setStepError('Habilitá las ventanas emergentes para iniciar sesión.'); return; }
     const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'FAROS_OAUTH_SUCCESS') {
+      if (event.origin !== window.location.origin || event.source !== popup) return;
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
         window.removeEventListener('message', handleMessage);
         if (popup && !popup.closed) popup.close();
         if (event.data.user) {
           onSuccess(event.data.user, event.data.token, true);
         }
-      } else if (event.data?.type === 'FAROS_OAUTH_NEEDS_ONBOARDING') {
+      } else if (event.data?.type === 'OAUTH_AUTH_NEW_USER') {
         window.removeEventListener('message', handleMessage);
         if (popup && !popup.closed) popup.close();
         const temp = event.data.tempUser;
         setName(temp.name || '');
         setEmail(temp.email || '');
         setAuthProvider(temp.provider);
-        if (temp.googleSub) setOauthGoogleSub(temp.googleSub);
-        if (temp.microsoftOid) setOauthMicrosoftOid(temp.microsoftOid);
+        setSignupTicket(temp.signupTicket || null);
         if (temp.picture) setOauthPicture(temp.picture);
         setStep(2);
-      } else if (event.data?.type === 'FAROS_OAUTH_ERROR') {
+      } else if (event.data?.type === 'OAUTH_AUTH_ERROR') {
         window.removeEventListener('message', handleMessage);
         if (popup && !popup.closed) popup.close();
         setStepError(event.data.error || 'Error en autenticación externa.');
@@ -312,8 +310,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
       email: normalizedEmail,
       password: authProvider === 'email' ? password : undefined,
       provider: authProvider,
-      googleSub: oauthGoogleSub || undefined,
-      microsoftOid: oauthMicrosoftOid || undefined,
+      signupTicket: signupTicket || undefined,
       picture: oauthPicture || undefined,
       birthDate,
       country,
@@ -331,113 +328,14 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
       }
     };
 
-    // Precheck if email is already registered in local device vault
-    if (authProvider === 'email' && isEmailInVault(normalizedEmail)) {
-      setStepError('Este correo electrónico ya se encuentra registrado en FAROS. Podés iniciar sesión directamente con tu contraseña.');
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      const abortController = new AbortController();
-      const timeoutId = setTimeout(() => abortController.abort(), 25000);
-
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-        signal: abortController.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      // Safe JSON parsing that does not throw on HTML or plain-text 404/500 responses
-      let data: any = null;
-      const contentType = res.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        try {
-          data = await res.json();
-        } catch {}
-      } else {
-        const textBody = await res.text();
-        try {
-          data = JSON.parse(textBody);
-        } catch {
-          data = { error: textBody };
-        }
-      }
-
-      // 1. Success from Server
-      if (res.ok && data?.user) {
-        try {
-          localStorage.removeItem('faros_onboarding_draft');
-        } catch {}
-
-        if (data.token) {
-          localStorage.setItem('faros_session_token', data.token);
-        }
-
-        // Backup to local vault so account survives offline sessions
-        await saveUserToVault(data.user, authProvider === 'email' ? password : undefined);
-
-        onSuccess(data.user, data.token, true);
-        return;
-      }
-
-      // 2. Email Already Registered (409 Conflict)
-      if (res.status === 409 || (data?.error && typeof data.error === 'string' && data.error.toLowerCase().includes('registrado'))) {
-        setStepError('Este correo electrónico ya se encuentra registrado en FAROS. Podés iniciar sesión directamente con tu contraseña.');
-        setIsLoading(false);
-        return;
-      }
-
-      // 3. User Input Validation Error (400 Bad Request)
-      if (res.status === 400) {
-        setStepError(data?.error || 'Por favor revisá los datos ingresados en el formulario.');
-        setIsLoading(false);
-        return;
-      }
-
-      // 4. API Endpoint Not Found (404)
-      if (res.status === 404) {
-        setStepError('El servicio de registro no está disponible o no fue encontrado (404). Por favor recargá la página.');
-        setIsLoading(false);
-        return;
-      }
-
-      // 5. Server Errors (500, 502, 503, 504)
-      if (res.status >= 500) {
-        if (data?.error && typeof data.error === 'string' && !data.error.includes('<!DOCTYPE')) {
-          setStepError(data.error);
-        } else {
-          setStepError(`El servidor de FAROS experimentó un error temporal (${res.status}). Por favor reintentá en unos momentos.`);
-        }
-        setIsLoading(false);
-        return;
-      }
-
-      // 6. Generic response error with server message
-      if (data?.error && typeof data.error === 'string' && !data.error.includes('<!DOCTYPE')) {
-        setStepError(data.error);
-        setIsLoading(false);
-        return;
-      }
-
-      setStepError('Ocurrió un problema al procesar el registro en el servidor. Por favor intentá nuevamente.');
-      setIsLoading(false);
+      const data = await apiRequest('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) });
+      if (!data.success || !data.user) throw new Error('El servidor no confirmó la creación de la cuenta.');
+      try { localStorage.removeItem('faros_onboarding_draft'); } catch {}
+      onSuccess(data.user, data.token, true);
     } catch (err: any) {
-      console.warn('[FAROS REGISTER] Network error reaching backend:', err?.message || err);
-      if (err?.name === 'AbortError') {
-        setStepError('La solicitud demoró más de lo esperado. Por favor verificá tu conexión e intentá nuevamente.');
-      } else if (err instanceof TypeError || String(err?.message || '').toLowerCase().includes('failed to fetch')) {
-        setStepError('No se pudo establecer conexión con el servidor. Por favor verificá tu conexión a internet e intentá nuevamente.');
-      } else {
-        setStepError(err?.message || 'Ocurrió un error inesperado al procesar el registro.');
-      }
+      setStepError(err?.message || 'No se pudo completar el registro.');
+    } finally {
       setIsLoading(false);
     }
   };

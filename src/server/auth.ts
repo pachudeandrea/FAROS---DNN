@@ -1,50 +1,24 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
-import { UserAccount, RiskProfile, Portfolio, OnboardingDraft, UserPreferences } from '../types';
+import { UserAccount, RiskProfile, Portfolio } from '../types';
 import { DEFAULT_PREFERENCES } from '../data/mockData';
 import { 
   trackEventNonBlocking, 
   isUserAdmin, 
-  saveUserDb, 
   deleteUserDb, 
-  loadAllUsersFromStorage, 
   saveSessionDb, 
   deleteSessionDb,
   getUserFromDbById,
   getUserFromDbByEmail,
   getUserFromDbByOAuth,
-  getSessionDb
+  getSessionDb,
+  createUserAndSessionDb,
+  updateUserDb,
+  saveAuthFlow, getAuthFlow, consumeAuthFlow
 } from './dbAdapter';
 
-const ROOT_DIR = process.cwd();
-
-function getWritableDataDir(): string {
-  const candidates = [
-    path.join('/tmp', 'faros_data'),
-    path.resolve(ROOT_DIR, 'data')
-  ];
-
-  for (const dir of candidates) {
-    try {
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      const testFile = path.join(dir, `.test_w_${Date.now()}`);
-      fs.writeFileSync(testFile, '1');
-      fs.unlinkSync(testFile);
-      return dir;
-    } catch {}
-  }
-  return '/tmp';
-}
-
-const DATA_DIR = getWritableDataDir();
-const DB_PATH = path.resolve(DATA_DIR, 'users_db.json');
-
-// User and session types
+// Accounts and sessions are always read from PostgreSQL, never process caches.
 export interface StoredUser extends UserAccount {
   passwordHash?: string;
   googleSub?: string;
@@ -52,129 +26,19 @@ export interface StoredUser extends UserAccount {
   updatedAt?: string;
 }
 
-interface Session {
-  userId: string;
-  createdAt: number;
-  expiresAt: number;
-}
-
-interface FailedAttempt {
-  count: number;
-  lockedUntil: number;
-}
-
-interface OAuthStateRecord {
-  provider: 'google' | 'microsoft';
-  codeVerifier: string;
-  redirectUri: string;
-  createdAt: number;
-  expiresAt: number;
-}
-
-// In-memory runtime caches & state tracking
-const usersById = new Map<string, StoredUser>();
-const usersByEmail = new Map<string, StoredUser>();
-const usersByGoogleSub = new Map<string, StoredUser>();
-const usersByMicrosoftOid = new Map<string, StoredUser>();
-
-const sessions = new Map<string, Session>();
+interface FailedAttempt { count: number; lockedUntil: number }
 const failedLoginAttempts = new Map<string, FailedAttempt>();
-const passwordResetTokens = new Map<string, { email: string; expiresAt: number }>();
-const userDrafts = new Map<string, OnboardingDraft>();
-const oauthStates = new Map<string, OAuthStateRecord>();
-
-/**
- * Saves current in-memory database to persistent storage (PostgreSQL + JSON fallback)
- */
-export async function persistDatabase(targetUser?: StoredUser): Promise<void> {
-  // If targetUser is given, persist specifically to PostgreSQL/storage
-  if (targetUser) {
-    try {
-      await saveUserDb(targetUser);
-    } catch (err) {
-      console.warn('[AUTH DB] Error syncing user to persistent storage:', err);
-    }
-  }
-
-  try {
-    const userList = Array.from(usersById.values());
-    fs.writeFileSync(DB_PATH, JSON.stringify(userList, null, 2), 'utf-8');
-  } catch (err) {
-    try {
-      const fallbackDir = path.join('/tmp', 'faros_data');
-      if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
-      fs.writeFileSync(path.join(fallbackDir, 'users_db.json'), JSON.stringify(Array.from(usersById.values()), null, 2), 'utf-8');
-    } catch {}
-  }
-}
-
-/**
- * Loads database from persistent storage (PostgreSQL first, then candidate disk paths)
- */
-export async function loadDatabase(): Promise<void> {
-  usersById.clear();
-  usersByEmail.clear();
-  usersByGoogleSub.clear();
-  usersByMicrosoftOid.clear();
-
-  try {
-    const persistentList = await loadAllUsersFromStorage();
-    if (Array.isArray(persistentList) && persistentList.length > 0) {
-      for (const u of persistentList) {
-        indexUser(u);
-      }
-      console.log(`[AUTH DB] Loaded ${persistentList.length} user(s) from primary database storage.`);
-      return;
-    }
-  } catch (err) {
-    console.warn('[AUTH DB] Primary storage load warning:', err);
-  }
-
-  const candidatePaths = [
-    DB_PATH,
-    path.resolve(ROOT_DIR, 'data', 'users_db.json'),
-    path.join('/tmp', 'faros_data', 'users_db.json')
-  ];
-
-  for (const p of candidatePaths) {
-    if (fs.existsSync(p)) {
-      try {
-        const content = fs.readFileSync(p, 'utf-8');
-        const list: StoredUser[] = JSON.parse(content);
-        if (Array.isArray(list) && list.length > 0) {
-          for (const u of list) {
-            indexUser(u);
-          }
-          console.log(`[AUTH DB] Loaded ${list.length} user(s) from ${p}.`);
-          return;
-        }
-      } catch (err) {
-        console.warn(`[AUTH DB] Error loading ${p}:`, err);
-      }
-    }
-  }
-}
-
-/**
- * Indexes a user across all identity maps
- */
-function indexUser(user: StoredUser): void {
-  usersById.set(user.id, user);
-  if (user.email) {
-    usersByEmail.set(user.email.toLowerCase(), user);
-  }
-  if (user.googleSub) {
-    usersByGoogleSub.set(user.googleSub, user);
-  }
-  if (user.microsoftOid) {
-    usersByMicrosoftOid.set(user.microsoftOid, user);
-  }
-}
-
-// Non-blocking database preload on startup
-loadDatabase().catch(err => {
-  console.warn('[AUTH DB] Background database preload notice:', err?.message || err);
+const sessionDuration = (rememberMe: boolean) => (rememberMe ? 30 : 1) * 24 * 60 * 60 * 1000;
+const newToken = () => crypto.randomBytes(32).toString('hex');
+const cookieOptions = () => ({
+  httpOnly: true, secure: process.env.NODE_ENV === 'production' || process.env.VERCEL === '1',
+  sameSite: 'lax' as const, path: '/'
 });
+const sessionTokenFrom = (req: Request): string | undefined => {
+  const bearer = req.headers.authorization?.match(/^Bearer\s+([a-f0-9]{64})$/i)?.[1];
+  const cookie = req.cookies?.faros_session;
+  return bearer || (typeof cookie === 'string' && /^[a-f0-9]{64}$/i.test(cookie) ? cookie : undefined);
+};
 
 /**
  * Helper to determine the canonical public App URL
@@ -193,84 +57,29 @@ export function getAppUrl(req: Request): string {
  * Helper to sanitize UserAccount (strips password hash before sending to client)
  */
 function sanitizeUser(user: StoredUser): UserAccount {
-  const { passwordHash, ...safeUser } = user;
+  const { passwordHash, googleSub, microsoftOid, ...safeUser } = user;
   safeUser.isAdmin = isUserAdmin(user.email);
   return safeUser;
 }
 
-/**
- * Extracts session user from cookie or Authorization header
- * Checks in-memory fast cache first, then PostgreSQL / disk fallback
- */
+/** Every request checks durable session revocation and the current account. */
 export async function getSessionUser(req: Request): Promise<UserAccount | null> {
-  const token = req.cookies?.faros_session || req.headers.authorization?.replace(/^Bearer\s+/i, '');
+  const token = sessionTokenFrom(req);
   if (!token) return null;
-
-  // 1. Check in-memory fast cache
-  let session = sessions.get(token);
-  if (session && Date.now() > session.expiresAt) {
-    sessions.delete(token);
-    session = undefined;
-  }
-
-  // 2. Fall back to PostgreSQL / disk session store
-  if (!session) {
-    const dbSession = await getSessionDb(token);
-    if (dbSession) {
-      session = {
-        userId: dbSession.userId,
-        createdAt: Date.now(),
-        expiresAt: dbSession.expiresAt
-      };
-      sessions.set(token, session);
-    }
-  }
-
+  const session = await getSessionDb(token);
   if (!session) return null;
-
-  // 3. Look up user in memory or database
-  let user = usersById.get(session.userId);
-  if (!user) {
-    const dbUser = await getUserFromDbById(session.userId);
-    if (dbUser) {
-      user = dbUser;
-      indexUser(dbUser);
-    }
-  }
-
-  if (!user) return null;
-
-  return sanitizeUser(user);
+  const user = await getUserFromDbById(session.userId);
+  return user ? sanitizeUser(user) : null;
 }
 
-/**
- * Creates new session token and persists to PostgreSQL / disk
- */
 export async function createSession(userId: string, rememberMe = true): Promise<string> {
-  const token = crypto.randomBytes(32).toString('hex');
-  const duration = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
-  const expiresAt = Date.now() + duration;
-  sessions.set(token, {
-    userId,
-    createdAt: Date.now(),
-    expiresAt
-  });
-  await saveSessionDb(token, userId, expiresAt);
+  const token = newToken();
+  await saveSessionDb(token, userId, Date.now() + sessionDuration(rememberMe));
   return token;
 }
 
-/**
- * Sets session cookie with cross-origin iframe security flags and Safari iOS compatibility
- */
 export function setSessionCookie(res: Response, token: string, rememberMe = true) {
-  const maxAge = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
-  res.cookie('faros_session', token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-    path: '/',
-    maxAge
-  });
+  res.cookie('faros_session', token, { ...cookieOptions(), maxAge: sessionDuration(rememberMe) });
 }
 
 // --- PKCE HELPERS (RFC 7636) ---
@@ -323,7 +132,7 @@ export async function handleRegister(req: Request, res: Response) {
   } = req.body;
 
   // Validation
-  if (!name || !email || !termsAccepted) {
+  if (typeof name !== 'string' || !name.trim() || name.length > 120 || typeof email !== 'string' || email.length > 254 || termsAccepted !== true) {
     return res.status(400).json({ error: 'Faltan datos obligatorios para el registro.' });
   }
 
@@ -333,42 +142,32 @@ export async function handleRegister(req: Request, res: Response) {
     return res.status(400).json({ error: 'El formato del correo electrónico no es válido.' });
   }
 
-  // Check existing user by email, googleSub or microsoftOid (memory or DB)
-  let existingUser = usersByEmail.get(normalizedEmail) || await getUserFromDbByEmail(normalizedEmail);
-  if (!existingUser && googleSub) {
-    existingUser = usersByGoogleSub.get(googleSub) || await getUserFromDbByOAuth('google', googleSub);
+  if (!['email', 'google', 'microsoft'].includes(provider)) {
+    return res.status(400).json({ error: 'Proveedor de autenticación inválido.' });
   }
-  if (!existingUser && microsoftOid) {
-    existingUser = usersByMicrosoftOid.get(microsoftOid) || await getUserFromDbByOAuth('microsoft', microsoftOid);
+  if (!['conservador', 'moderado', 'dinamico'].includes(profile)) {
+    return res.status(400).json({ error: 'El perfil de inversión no es válido.' });
   }
-
-  if (existingUser) {
-    // If standard email registration and user already exists, reject with 409 Conflict
-    if (provider === 'email' || !provider) {
-      return res.status(409).json({
-        success: false,
-        error: 'Este correo electrónico ya se encuentra registrado en FAROS. Por favor iniciá sesión con tu contraseña.'
-      });
+  if (provider === 'email' && (typeof password !== 'string' || password.length < 8 || Buffer.byteLength(password, 'utf8') > 72)) {
+    return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres y hasta 72 bytes.' });
+  }
+  if (provider === 'email' && (googleSub || microsoftOid)) {
+    return res.status(400).json({ error: 'Los identificadores externos requieren autenticación con el proveedor.' });
+  }
+  let verifiedIdentity: any = null;
+  const signupTicket = req.body.signupTicket;
+  if (provider !== 'email') {
+    if (typeof signupTicket !== 'string' || !/^[a-f0-9]{64}$/.test(signupTicket)) {
+      return res.status(401).json({ error: 'Iniciá sesión con el proveedor para verificar tu identidad.', code: 'OAUTH_PROOF_REQUIRED' });
     }
+    verifiedIdentity = await getAuthFlow(signupTicket, 'signup');
+    if (!verifiedIdentity || verifiedIdentity.provider !== provider || verifiedIdentity.email !== normalizedEmail) {
+      return res.status(401).json({ error: 'La verificación externa venció o no coincide con la cuenta.', code: 'OAUTH_PROOF_INVALID' });
+    }
+  }
 
-    // If OAuth, link provider IDs if not linked yet
-    if (googleSub && !existingUser.googleSub) existingUser.googleSub = googleSub;
-    if (microsoftOid && !existingUser.microsoftOid) existingUser.microsoftOid = microsoftOid;
-    if (picture && !existingUser.picture) existingUser.picture = picture;
-    existingUser.updatedAt = new Date().toISOString();
-    indexUser(existingUser);
-    await saveUserDb(existingUser);
-    await persistDatabase(existingUser);
-
-    const sessionToken = await createSession(existingUser.id, true);
-    setSessionCookie(res, sessionToken, true);
-
-    return res.status(200).json({
-      success: true,
-      user: sanitizeUser(existingUser),
-      token: sessionToken,
-      message: 'Cuenta existente vinculada con éxito.'
-    });
+  if (await getUserFromDbByEmail(normalizedEmail)) {
+    return res.status(409).json({ error: 'Este correo electrónico ya se encuentra registrado en FAROS. Por favor iniciá sesión con tu contraseña.', code: 'EMAIL_EXISTS' });
   }
 
   // Age validation
@@ -385,15 +184,10 @@ export async function handleRegister(req: Request, res: Response) {
     }
   }
 
-  // Password validation if email provider
-  let passwordHash: string | undefined = undefined;
-  if (provider === 'email' || password) {
-    if (password && String(password).length < 8) {
-      return res.status(400).json({ error: 'La contraseña debe contener al menos 8 caracteres.' });
-    }
-    if (password) {
-      passwordHash = await bcrypt.hash(password, 10);
-    }
+  const passwordHash = provider === 'email' ? await bcrypt.hash(password, 10) : undefined;
+
+  if (!Array.isArray(assets) || assets.length > 500 || assets.some((a: any) => !a || typeof a.symbol !== 'string' || a.symbol.length > 64) || typeof portfolioName !== 'string') {
+    return res.status(400).json({ error: 'Los datos de la cartera no son válidos.' });
   }
 
   // Build isolated Portfolio from provided assets (allow 0 assets)
@@ -430,9 +224,9 @@ export async function handleRegister(req: Request, res: Response) {
     email: normalizedEmail,
     passwordHash,
     provider: provider as 'email' | 'google' | 'microsoft',
-    googleSub: googleSub || undefined,
-    microsoftOid: microsoftOid || undefined,
-    picture: picture || undefined,
+    googleSub: verifiedIdentity?.googleSub,
+    microsoftOid: verifiedIdentity?.microsoftOid,
+    picture: verifiedIdentity?.picture,
     birthDate,
     country,
     city,
@@ -453,9 +247,8 @@ export async function handleRegister(req: Request, res: Response) {
     createdAt: new Date().toISOString()
   };
 
-  indexUser(newUser);
-  await saveUserDb(newUser);
-  await persistDatabase(newUser);
+  const sessionToken = newToken();
+  await createUserAndSessionDb(newUser, sessionToken, Date.now() + sessionDuration(true), provider === 'email' ? undefined : signupTicket);
 
   // Non-blocking telemetry event
   trackEventNonBlocking('signup', {
@@ -469,11 +262,8 @@ export async function handleRegister(req: Request, res: Response) {
     userAgent: req.get('user-agent')
   });
 
-  // Clear any draft
-  userDrafts.delete(normalizedEmail);
 
-  // Create session and persist to database
-  const sessionToken = await createSession(newUserId, true);
+  // The user and session have already committed together.
   setSessionCookie(res, sessionToken, true);
 
   return res.status(201).json({
@@ -502,18 +292,11 @@ export async function handleLogin(req: Request, res: Response) {
     });
   }
 
-  if (!normalizedEmail || !password) {
+  if (!normalizedEmail || typeof password !== 'string' || !password || Buffer.byteLength(password, 'utf8') > 72) {
     return res.status(400).json({ error: 'Ingresá tu correo electrónico y contraseña.' });
   }
 
-  let user = usersByEmail.get(normalizedEmail);
-  if (!user) {
-    const dbUser = await getUserFromDbByEmail(normalizedEmail);
-    if (dbUser) {
-      user = dbUser;
-      indexUser(dbUser);
-    }
-  }
+  const user = await getUserFromDbByEmail(normalizedEmail);
 
   if (!user || !user.passwordHash) {
     const count = (existingAttempt?.count || 0) + 1;
@@ -532,9 +315,7 @@ export async function handleLogin(req: Request, res: Response) {
 
   failedLoginAttempts.delete(attemptKey);
 
-  user.lastActiveAt = new Date().toISOString();
-  await saveUserDb(user);
-  await persistDatabase(user);
+  await updateUserDb(user.id, { lastActiveAt: new Date().toISOString() });
 
   trackEventNonBlocking('login', {
     userId: user.id,
@@ -559,78 +340,21 @@ export async function handleLogin(req: Request, res: Response) {
  * POST /api/auth/logout
  */
 export async function handleLogout(req: Request, res: Response) {
-  const token = req.cookies?.faros_session || req.headers.authorization?.replace(/^Bearer\s+/i, '');
+  const token = sessionTokenFrom(req);
   if (token) {
-    sessions.delete(token);
     await deleteSessionDb(token);
   }
-  res.clearCookie('faros_session', {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-    path: '/'
-  });
+  res.clearCookie('faros_session', cookieOptions());
   return res.json({ success: true, message: 'Sesión cerrada correctamente.' });
 }
 
-/**
- * POST /api/auth/forgot-password
- */
+/** Recovery requires a real, verified email-delivery integration. */
 export function handleForgotPassword(req: Request, res: Response) {
-  const { email } = req.body;
-  const normalizedEmail = String(email || '').trim().toLowerCase();
-
-  if (!normalizedEmail) {
-    return res.status(400).json({ error: 'Ingresá tu correo electrónico.' });
-  }
-
-  const token = crypto.randomBytes(24).toString('hex');
-  const expiresAt = Date.now() + 60 * 60 * 1000;
-  passwordResetTokens.set(token, { email: normalizedEmail, expiresAt });
-
-  return res.json({
-    success: true,
-    message: 'Si el correo electrónico está registrado, recibirás un enlace de un solo uso para restablecer tu contraseña.',
-    resetToken: token,
-    expiresIn: '60 minutos'
-  });
+  return res.status(503).json({ code: 'PASSWORD_RECOVERY_UNAVAILABLE', error: 'La recuperación de contraseña no está disponible: falta configurar un servicio de correo seguro. No se envió ningún enlace.' });
 }
 
-/**
- * POST /api/auth/reset-password
- */
-export async function handleResetPassword(req: Request, res: Response) {
-  const { token, newPassword } = req.body;
-
-  if (!token || !newPassword) {
-    return res.status(400).json({ error: 'Faltan datos obligatorios.' });
-  }
-
-  if (String(newPassword).length < 8) {
-    return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 8 caracteres.' });
-  }
-
-  const record = passwordResetTokens.get(token);
-  if (!record || Date.now() > record.expiresAt) {
-    return res.status(400).json({ error: 'El enlace de recuperación es inválido o ha expirado.' });
-  }
-
-  let user = usersByEmail.get(record.email) || await getUserFromDbByEmail(record.email);
-  if (!user) {
-    return res.status(404).json({ error: 'Usuario no encontrado.' });
-  }
-
-  user.passwordHash = await bcrypt.hash(newPassword, 10);
-  user.updatedAt = new Date().toISOString();
-  indexUser(user);
-  passwordResetTokens.delete(token);
-  await saveUserDb(user);
-  await persistDatabase(user);
-
-  return res.json({
-    success: true,
-    message: 'Contraseña restablecida con éxito. Ya podés iniciar sesión con tus nuevas credenciales.'
-  });
+export function handleResetPassword(req: Request, res: Response) {
+  return res.status(503).json({ code: 'PASSWORD_RECOVERY_UNAVAILABLE', error: 'La recuperación de contraseña no está disponible. No se modificó tu contraseña.' });
 }
 
 /**
@@ -642,26 +366,56 @@ export async function handleUpdateUser(req: Request, res: Response) {
     return res.status(401).json({ error: 'No autorizado.' });
   }
 
-  let target = usersById.get(currentUser.id) || await getUserFromDbById(currentUser.id);
+  const target = await getUserFromDbById(currentUser.id);
   if (!target) {
     return res.status(404).json({ error: 'Usuario no encontrado.' });
   }
 
   const { name, alyc, profile, portfolio, preferences } = req.body;
-  if (name) target.name = name;
-  if (alyc !== undefined) target.alyc = alyc;
-  if (profile) target.profile = profile;
-  if (portfolio) target.portfolio = portfolio;
-  if (preferences) target.preferences = preferences;
-  target.updatedAt = new Date().toISOString();
-
-  indexUser(target);
-  await saveUserDb(target);
-  await persistDatabase(target);
+  const updates: Partial<StoredUser> = { updatedAt: new Date().toISOString() };
+  if (name !== undefined) {
+    if (typeof name !== 'string' || !name.trim() || name.length > 120) return res.status(400).json({ error: 'El nombre no es válido.' });
+    updates.name = name.trim();
+  }
+  if (alyc !== undefined) {
+    if (typeof alyc !== 'string' || alyc.length > 200) return res.status(400).json({ error: 'El ALyC no es válido.' });
+    updates.alyc = alyc;
+  }
+  if (profile !== undefined) {
+    if (!['conservador', 'moderado', 'dinamico'].includes(profile)) return res.status(400).json({ error: 'El perfil no es válido.' });
+    updates.profile = profile;
+  }
+  if (portfolio !== undefined) {
+    if (!portfolio || typeof portfolio !== 'object' || !Array.isArray(portfolio.assetIds) ||
+        portfolio.assetIds.length > 500 || portfolio.assetIds.some((a: unknown) => typeof a !== 'string' || a.length > 64) ||
+        typeof portfolio.name !== 'string' || portfolio.name.length > 200 ||
+        !['conservador', 'moderado', 'dinamico'].includes(portfolio.profile) ||
+        (portfolio.assetPositions && (typeof portfolio.assetPositions !== 'object' || Object.values(portfolio.assetPositions).some(p => p !== 'long' && p !== 'short')))) {
+      return res.status(400).json({ error: 'Los datos de la cartera no son válidos.' });
+    }
+    updates.portfolio = {
+      id: target.portfolio?.id || `port_${crypto.randomUUID()}`,
+      name: portfolio.name, description: typeof portfolio.description === 'string' ? portfolio.description.slice(0, 2000) : '',
+      profile: portfolio.profile, assetIds: portfolio.assetIds,
+      assetPositions: Object.fromEntries(portfolio.assetIds.map((id: string) => [id, portfolio.assetPositions?.[id] === 'short' ? 'short' : 'long']))
+    };
+  }
+  if (preferences !== undefined) {
+    if (!preferences || typeof preferences !== 'object' || !Array.isArray(preferences.enabledRelevanceTypes) ||
+        !Array.isArray(preferences.prioritizedTopics) || typeof preferences.notificationsEnabled !== 'boolean' ||
+        typeof preferences.alertOnHighImpactOnly !== 'boolean' || typeof preferences.audioSpeed !== 'number' ||
+        preferences.audioSpeed < 0.5 || preferences.audioSpeed > 3) return res.status(400).json({ error: 'Las preferencias no son válidas.' });
+    updates.preferences = {
+      investorProfile: updates.profile || updates.portfolio?.profile || target.profile,
+      enabledRelevanceTypes: preferences.enabledRelevanceTypes, prioritizedTopics: preferences.prioritizedTopics,
+      notificationsEnabled: preferences.notificationsEnabled, alertOnHighImpactOnly: preferences.alertOnHighImpactOnly, audioSpeed: preferences.audioSpeed
+    };
+  }
+  const updated = await updateUserDb(currentUser.id, updates);
 
   return res.json({
     success: true,
-    user: sanitizeUser(target),
+    user: sanitizeUser(updated),
     message: 'Datos actualizados con éxito.'
   });
 }
@@ -675,422 +429,105 @@ export async function handleDeleteAccount(req: Request, res: Response) {
     return res.status(401).json({ error: 'No autorizado.' });
   }
 
-  let target = usersById.get(currentUser.id) || await getUserFromDbById(currentUser.id);
-  if (target) {
-    usersById.delete(target.id);
-    usersByEmail.delete(target.email.toLowerCase());
-    if (target.googleSub) usersByGoogleSub.delete(target.googleSub);
-    if (target.microsoftOid) usersByMicrosoftOid.delete(target.microsoftOid);
-    userDrafts.delete(target.email.toLowerCase());
-    await deleteUserDb(target.id);
-    await persistDatabase();
-  }
-
-  for (const [token, session] of sessions.entries()) {
-    if (session.userId === currentUser.id) {
-      sessions.delete(token);
-      await deleteSessionDb(token);
-    }
-  }
-
-  res.clearCookie('faros_session', {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-    path: '/'
-  });
+  await deleteUserDb(currentUser.id);
+  res.clearCookie('faros_session', cookieOptions());
   return res.json({ 
     success: true, 
     message: 'Tu cuenta y todos tus datos personales y de cartera fueron eliminados definitivamente de FAROS.' 
   });
 }
 
-/**
- * Onboarding Draft Endpoints
- */
+/** Unsubmitted drafts stay on this browser; never expose drafts by email. */
 export function handleSaveDraft(req: Request, res: Response) {
-  const { email, draft } = req.body;
-  const key = (email || 'anonymous').toLowerCase();
-  userDrafts.set(key, draft);
-  return res.json({ success: true });
+  return res.status(410).json({ error: 'Guardá el borrador de registro en este dispositivo.' });
 }
-
 export function handleGetDraft(req: Request, res: Response) {
-  const email = (req.query.email as string || 'anonymous').toLowerCase();
-  const draft = userDrafts.get(email);
-  return res.json({ draft: draft || null });
+  return res.status(410).json({ draft: null, error: 'Los borradores no se consultan por correo electrónico.' });
 }
 
 // --- OAUTH 2.0 (GOOGLE & MICROSOFT) ---
+type OAuthProvider = 'google' | 'microsoft';
 
-/**
- * GET /api/auth/google/url
- * Google OAuth 2.0 with Authorization Code + PKCE (RFC 7636) and State validation
- */
-export function handleGetGoogleAuthUrl(req: Request, res: Response) {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const appUrl = getAppUrl(req);
-  const redirectUri = `${appUrl}/api/auth/google/callback`;
-
-  if (!clientId || clientId.startsWith('YOUR_')) {
-    return res.json({
-      configured: false,
-      provider: 'google',
-      missingVars: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
-      instructions: `Configurá tus credenciales en Google Cloud Console con redirect URI: ${redirectUri}`
-    });
+async function startOAuth(provider: OAuthProvider, req: Request, res: Response) {
+  const prefix = provider.toUpperCase();
+  const clientId = process.env[`${prefix}_CLIENT_ID`];
+  const clientSecret = process.env[`${prefix}_CLIENT_SECRET`];
+  const redirectUri = `${getAppUrl(req)}/api/auth/${provider}/callback`;
+  if (!clientId || !clientSecret || clientId.startsWith('YOUR_')) {
+    return res.json({ configured: false, provider,
+      missingVars: [`${prefix}_CLIENT_ID`, `${prefix}_CLIENT_SECRET`],
+      instructions: `Falta configurar OAuth de ${provider}. Configurá las credenciales y la URI de retorno: ${redirectUri}` });
   }
-
-  // 1. Generate PKCE code_verifier and code_challenge
   const codeVerifier = generateCodeVerifier();
-  const codeChallenge = generateCodeChallenge(codeVerifier);
-
-  // 2. Generate cryptographically random state
-  const state = crypto.randomBytes(24).toString('hex');
-
-  // 3. Store state & PKCE verifier (10 minute expiry)
-  oauthStates.set(state, {
-    provider: 'google',
-    codeVerifier,
-    redirectUri,
-    createdAt: Date.now(),
-    expiresAt: Date.now() + 10 * 60 * 1000
-  });
-
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    response_type: 'code',
-    scope: 'openid email profile',
-    state,
-    code_challenge: codeChallenge,
-    code_challenge_method: 'S256',
-    access_type: 'offline',
-    prompt: 'select_account'
-  });
-
-  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-  return res.json({ configured: true, url: authUrl, state });
+  const state = newToken();
+  // The cookie ties state to the browser, while PostgreSQL survives cold starts.
+  res.cookie(`faros_oauth_${provider}`, state, { ...cookieOptions(), maxAge: 10 * 60 * 1000 });
+  await saveAuthFlow(state, `oauth_${provider}`, { codeVerifier, redirectUri }, Date.now() + 10 * 60 * 1000);
+  const params = new URLSearchParams({ client_id: clientId, response_type: 'code', redirect_uri: redirectUri,
+    scope: provider === 'google' ? 'openid email profile' : 'openid email profile User.Read',
+    state, code_challenge: generateCodeChallenge(codeVerifier), code_challenge_method: 'S256', prompt: 'select_account' });
+  const endpoint = provider === 'google' ? 'https://accounts.google.com/o/oauth2/v2/auth' : 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize';
+  return res.json({ configured: true, url: `${endpoint}?${params}` });
 }
 
-/**
- * GET /api/auth/google/callback
- */
-export async function handleGoogleCallback(req: Request, res: Response) {
-  const { code, state, error, error_description } = req.query;
-  const appUrl = getAppUrl(req);
-  const redirectUri = `${appUrl}/api/auth/google/callback`;
+export const handleGetGoogleAuthUrl = (req: Request, res: Response) => startOAuth('google', req, res);
+export const handleGetMicrosoftAuthUrl = (req: Request, res: Response) => startOAuth('microsoft', req, res);
 
-  // 1. Check for OAuth error from Google
-  if (error || !code) {
-    let userMsg = 'Autorización cancelada o denegada en Google.';
-    if (error === 'access_denied') {
-      userMsg = 'Acceso denegado o cancelado por el usuario en la pantalla de Google.';
-    } else if (error === 'redirect_uri_mismatch') {
-      userMsg = `La redirect URI configurada en Google Cloud Console no coincide con: ${redirectUri}`;
-    } else if (error_description) {
-      userMsg = String(error_description);
-    }
-
-    return res.send(renderOAuthCallbackHtml({
-      success: false,
-      provider: 'google',
-      error: userMsg,
-      errorType: String(error || 'cancelled')
-    }));
+async function oauthCallback(provider: OAuthProvider, req: Request, res: Response) {
+  const send = (payload: Parameters<typeof renderOAuthCallbackHtml>[0]) => res.type('html').send(renderOAuthCallbackHtml(payload, new URL(getAppUrl(req)).origin));
+  res.setHeader('Cache-Control', 'no-store');
+  const state = typeof req.query.state === 'string' ? req.query.state : '';
+  const cookieName = `faros_oauth_${provider}`;
+  if (!state || req.cookies?.[cookieName] !== state) {
+    return send({ success: false, type: 'OAUTH_AUTH_ERROR', provider, error: 'La validación de seguridad falló. Volvé a intentar.', errorType: 'state_mismatch' });
   }
-
-  // 2. Validate state & retrieve PKCE code_verifier
-  const stateStr = String(state || '');
-  const stateRecord = oauthStates.get(stateStr);
-
-  if (!stateRecord || stateRecord.provider !== 'google' || Date.now() > stateRecord.expiresAt) {
-    oauthStates.delete(stateStr);
-    return res.send(renderOAuthCallbackHtml({
-      success: false,
-      provider: 'google',
-      error: 'La validación de seguridad (state) falló o la sesión ha expirado. Por favor, volvé a intentar.',
-      errorType: 'state_mismatch'
-    }));
+  res.clearCookie(cookieName, cookieOptions());
+  const record = await consumeAuthFlow(state, `oauth_${provider}`);
+  if (!record || typeof req.query.code !== 'string' || req.query.error) {
+    return send({ success: false, type: 'OAUTH_AUTH_ERROR', provider, error: 'La autorización fue cancelada o venció. Volvé a intentar.', errorType: 'auth_cancelled' });
   }
-
-  const { codeVerifier } = stateRecord;
-  oauthStates.delete(stateStr);
-
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-
   try {
-    // 3. Exchange authorization code with PKCE code_verifier
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        code: String(code),
-        client_id: clientId || '',
-        client_secret: clientSecret || '',
-        redirect_uri: redirectUri,
-        grant_type: 'authorization_code',
-        code_verifier: codeVerifier
-      })
-    });
-
+    const prefix = provider.toUpperCase();
+    const clientId = process.env[`${prefix}_CLIENT_ID`];
+    const clientSecret = process.env[`${prefix}_CLIENT_SECRET`];
+    if (!clientId || !clientSecret) throw new Error('OAuth unavailable');
+    const endpoint = provider === 'google' ? 'https://oauth2.googleapis.com/token' : 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
+    const tokenRes = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, code: req.query.code,
+        redirect_uri: record.redirectUri, grant_type: 'authorization_code', code_verifier: record.codeVerifier }), signal: AbortSignal.timeout(10000) });
     const tokenData = await tokenRes.json();
-    if (!tokenRes.ok || !tokenData.access_token) {
-      const errMsg = tokenData.error_description || tokenData.error || 'Fallo en intercambio de tokens con Google.';
-      throw new Error(errMsg);
-    }
-
-    // 4. Retrieve user profile
-    const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { Authorization: `Bearer ${tokenData.access_token}` }
-    });
+    if (!tokenRes.ok || !tokenData.access_token) throw new Error('OAuth exchange failed');
+    const userInfoRes = await fetch(provider === 'google' ? 'https://www.googleapis.com/oauth2/v3/userinfo' : 'https://graph.microsoft.com/v1.0/me', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }, signal: AbortSignal.timeout(10000) });
+    if (!userInfoRes.ok) throw new Error('OAuth profile failed');
     const profile = await userInfoRes.json();
-
-    const sub = profile.sub; // Google's permanent unique subject identifier
-    const email = (profile.email || '').toLowerCase().trim();
-    const name = profile.name || email.split('@')[0];
-    const picture = profile.picture;
-    const isEmailVerified = profile.email_verified === true;
-
-    if (!email || !sub) {
-      throw new Error('Google no proveyó el correo electrónico o identificador del usuario.');
-    }
-
-    if (!isEmailVerified) {
-      throw new Error('El correo electrónico de tu cuenta Google no está verificado.');
-    }
-
-    // 5. Real Multi-user Lookup & Account Linking (memory or DB)
-    let existingUser = usersByGoogleSub.get(sub) || await getUserFromDbByOAuth('google', sub);
-    if (!existingUser) {
-      existingUser = usersByEmail.get(email) || await getUserFromDbByEmail(email);
-    }
-
+    const id = provider === 'google' ? profile.sub : profile.id;
+    const email = String(provider === 'google' ? profile.email || '' : profile.mail || profile.userPrincipalName || '').trim().toLowerCase();
+    if (typeof id !== 'string' || !email || (provider === 'google' && profile.email_verified !== true)) throw new Error('Unverified identity');
+    // Only a provider-verified identity may authenticate an already linked account.
+    // Do not link by email automatically (especially Microsoft tenant addresses).
+    const existingUser = await getUserFromDbByOAuth(provider, id);
     if (existingUser) {
-      // User exists: link Google sub if missing, update picture
-      if (!existingUser.googleSub) existingUser.googleSub = sub;
-      if (picture && !existingUser.picture) existingUser.picture = picture;
-      existingUser.updatedAt = new Date().toISOString();
-      indexUser(existingUser);
-      await saveUserDb(existingUser);
-      await persistDatabase(existingUser);
-
-      const sessionToken = await createSession(existingUser.id, true);
-      setSessionCookie(res, sessionToken, true);
-
-      return res.send(renderOAuthCallbackHtml({
-        success: true,
-        type: 'OAUTH_AUTH_SUCCESS',
-        provider: 'google',
-        user: sanitizeUser(existingUser),
-        token: sessionToken,
-        message: 'Bienvenido de nuevo a FAROS.'
-      }));
-    } else {
-      // New user: Send verified profile to onboarding wizard
-      return res.send(renderOAuthCallbackHtml({
-        success: true,
-        type: 'OAUTH_AUTH_NEW_USER',
-        provider: 'google',
-        tempUser: {
-          name,
-          email,
-          picture,
-          provider: 'google',
-          googleSub: sub
-        },
-        message: 'Cuenta de Google verificada con éxito. Completá tus preferencias de inversión.'
-      }));
+      const token = await createSession(existingUser.id);
+      setSessionCookie(res, token);
+      return send({ success: true, type: 'OAUTH_AUTH_SUCCESS', provider, user: sanitizeUser(existingUser), token });
     }
-  } catch (err: any) {
-    return res.send(renderOAuthCallbackHtml({
-      success: false,
-      provider: 'google',
-      error: err.message || 'Error durante la conexión con Google.',
-      errorType: 'auth_failed'
-    }));
+    if (await getUserFromDbByEmail(email)) {
+      return send({ success: false, type: 'OAUTH_AUTH_ERROR', provider, error: 'El correo ya tiene una cuenta. Iniciá sesión con su método original; no se vinculó otra identidad automáticamente.' });
+    }
+    const identity = { email, name: profile.name || profile.displayName || email.split('@')[0], provider,
+      ...(provider === 'google' ? { googleSub: id, picture: profile.picture } : { microsoftOid: id }) };
+    const signupTicket = newToken();
+    await saveAuthFlow(signupTicket, 'signup', identity, Date.now() + 10 * 60 * 1000);
+    return send({ success: true, type: 'OAUTH_AUTH_NEW_USER', provider,
+      tempUser: { name: identity.name, email, provider, picture: profile.picture, signupTicket } });
+  } catch {
+    return send({ success: false, type: 'OAUTH_AUTH_ERROR', provider, error: 'No se pudo verificar la identidad con el proveedor o guardar la sesión. Intentá nuevamente.', errorType: 'auth_failed' });
   }
 }
 
-/**
- * GET /api/auth/microsoft/url
- * Microsoft OAuth 2.0 with tenant 'common' (supports personal @outlook and corporate Entra accounts)
- */
-export function handleGetMicrosoftAuthUrl(req: Request, res: Response) {
-  const clientId = process.env.MICROSOFT_CLIENT_ID;
-  const appUrl = getAppUrl(req);
-  const redirectUri = `${appUrl}/api/auth/microsoft/callback`;
-
-  if (!clientId || clientId.startsWith('YOUR_')) {
-    return res.json({
-      configured: false,
-      provider: 'microsoft',
-      missingVars: ['MICROSOFT_CLIENT_ID', 'MICROSOFT_CLIENT_SECRET'],
-      instructions: `Configurá tus credenciales en Microsoft Entra ID con redirect URI: ${redirectUri}`
-    });
-  }
-
-  // PKCE + State
-  const codeVerifier = generateCodeVerifier();
-  const codeChallenge = generateCodeChallenge(codeVerifier);
-  const state = crypto.randomBytes(24).toString('hex');
-
-  oauthStates.set(state, {
-    provider: 'microsoft',
-    codeVerifier,
-    redirectUri,
-    createdAt: Date.now(),
-    expiresAt: Date.now() + 10 * 60 * 1000
-  });
-
-  const params = new URLSearchParams({
-    client_id: clientId,
-    response_type: 'code',
-    redirect_uri: redirectUri,
-    response_mode: 'query',
-    scope: 'openid email profile User.Read',
-    state,
-    code_challenge: codeChallenge,
-    code_challenge_method: 'S256',
-    prompt: 'select_account'
-  });
-
-  // Strict: tenant 'common' for personal + corporate accounts
-  const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params.toString()}`;
-  return res.json({ configured: true, url: authUrl, state });
-}
-
-/**
- * GET /api/auth/microsoft/callback
- */
-export async function handleMicrosoftCallback(req: Request, res: Response) {
-  const { code, state, error, error_description } = req.query;
-  const appUrl = getAppUrl(req);
-  const redirectUri = `${appUrl}/api/auth/microsoft/callback`;
-
-  // 1. Check for OAuth error from Microsoft
-  if (error || !code) {
-    let userMsg = 'Autorización cancelada o denegada en Microsoft.';
-    if (error === 'access_denied') {
-      userMsg = 'Acceso denegado o cancelado por el usuario en la pantalla de Microsoft.';
-    } else if (error === 'redirect_uri_mismatch') {
-      userMsg = `La redirect URI configurada en Microsoft Entra no coincide con: ${redirectUri}`;
-    } else if (error_description) {
-      userMsg = String(error_description);
-    }
-
-    return res.send(renderOAuthCallbackHtml({
-      success: false,
-      provider: 'microsoft',
-      error: userMsg,
-      errorType: String(error || 'cancelled')
-    }));
-  }
-
-  // 2. Validate state & retrieve PKCE code_verifier
-  const stateStr = String(state || '');
-  const stateRecord = oauthStates.get(stateStr);
-
-  if (!stateRecord || stateRecord.provider !== 'microsoft' || Date.now() > stateRecord.expiresAt) {
-    oauthStates.delete(stateStr);
-    return res.send(renderOAuthCallbackHtml({
-      success: false,
-      provider: 'microsoft',
-      error: 'La validación de seguridad (state) falló o la sesión ha expirado. Por favor, volvé a intentar.',
-      errorType: 'state_mismatch'
-    }));
-  }
-
-  const { codeVerifier } = stateRecord;
-  oauthStates.delete(stateStr);
-
-  const clientId = process.env.MICROSOFT_CLIENT_ID;
-  const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
-
-  try {
-    // 3. Exchange code at tenant common
-    const tokenRes = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: clientId || '',
-        client_secret: clientSecret || '',
-        code: String(code),
-        redirect_uri: redirectUri,
-        grant_type: 'authorization_code',
-        code_verifier: codeVerifier
-      })
-    });
-
-    const tokenData = await tokenRes.json();
-    if (!tokenRes.ok || !tokenData.access_token) {
-      const errMsg = tokenData.error_description || tokenData.error || 'Fallo en intercambio de tokens con Microsoft.';
-      throw new Error(errMsg);
-    }
-
-    // 4. Retrieve user profile via Microsoft Graph
-    const userInfoRes = await fetch('https://graph.microsoft.com/v1.0/me', {
-      headers: { Authorization: `Bearer ${tokenData.access_token}` }
-    });
-    const profile = await userInfoRes.json();
-
-    // In Microsoft Entra, id is the user Object ID (oid)
-    const oid = profile.id;
-    const email = (profile.mail || profile.userPrincipalName || '').toLowerCase().trim();
-    const name = profile.displayName || email.split('@')[0];
-
-    if (!email || !oid) {
-      throw new Error('Microsoft no proveyó el correo electrónico o el identificador del usuario.');
-    }
-
-    // 5. Multi-user Lookup & Account Linking (memory or DB)
-    let existingUser = usersByMicrosoftOid.get(oid) || await getUserFromDbByOAuth('microsoft', oid);
-    if (!existingUser) {
-      existingUser = usersByEmail.get(email) || await getUserFromDbByEmail(email);
-    }
-
-    if (existingUser) {
-      if (!existingUser.microsoftOid) existingUser.microsoftOid = oid;
-      existingUser.updatedAt = new Date().toISOString();
-      indexUser(existingUser);
-      await saveUserDb(existingUser);
-      await persistDatabase(existingUser);
-
-      const sessionToken = await createSession(existingUser.id, true);
-      setSessionCookie(res, sessionToken, true);
-
-      return res.send(renderOAuthCallbackHtml({
-        success: true,
-        type: 'OAUTH_AUTH_SUCCESS',
-        provider: 'microsoft',
-        user: sanitizeUser(existingUser),
-        token: sessionToken,
-        message: 'Bienvenido de nuevo a FAROS.'
-      }));
-    } else {
-      return res.send(renderOAuthCallbackHtml({
-        success: true,
-        type: 'OAUTH_AUTH_NEW_USER',
-        provider: 'microsoft',
-        tempUser: {
-          name,
-          email,
-          provider: 'microsoft',
-          microsoftOid: oid
-        },
-        message: 'Cuenta de Microsoft verificada con éxito. Completá tus preferencias de inversión.'
-      }));
-    }
-  } catch (err: any) {
-    return res.send(renderOAuthCallbackHtml({
-      success: false,
-      provider: 'microsoft',
-      error: err.message || 'Error durante la conexión con Microsoft.',
-      errorType: 'auth_failed'
-    }));
-  }
-}
+export const handleGoogleCallback = (req: Request, res: Response) => oauthCallback('google', req, res);
+export const handleMicrosoftCallback = (req: Request, res: Response) => oauthCallback('microsoft', req, res);
 
 /**
  * Renders HTML that safely sends postMessage to opener popup and closes window
@@ -1105,8 +542,9 @@ function renderOAuthCallbackHtml(payload: {
   error?: string;
   errorType?: string;
   message?: string;
-}): string {
-  const serialized = JSON.stringify(payload);
+}, targetOrigin: string): string {
+  const serialized = JSON.stringify(payload).replace(/</g, '\\u003c');
+  const safeError = (payload.error || 'Ocurrió un error al procesar el inicio de sesión.').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
   const isError = !payload.success;
 
   return `<!DOCTYPE html>
@@ -1185,7 +623,7 @@ function renderOAuthCallbackHtml(payload: {
     ${isError ? `
       <div class="error-icon">!</div>
       <h2>Error de autenticación</h2>
-      <p id="err-text">${payload.error || 'Ocurrió un error al procesar el inicio de sesión.'}</p>
+      <p id="err-text">${safeError}</p>
       <button class="btn" onclick="retryClose()">Cerrar y Reintentar</button>
     ` : `
       <div class="spinner"></div>
@@ -1199,7 +637,7 @@ function renderOAuthCallbackHtml(payload: {
       function sendToOpener() {
         if (window.opener) {
           try {
-            window.opener.postMessage(data, '*');
+            window.opener.postMessage(data, ${JSON.stringify(targetOrigin)});
           } catch(e) {}
           if (data.success) {
             setTimeout(function() { window.close(); }, 700);
@@ -1215,9 +653,4 @@ function renderOAuthCallbackHtml(payload: {
   </script>
 </body>
 </html>`;
-}
-
-// Development and testing helper: returns all users sanitized
-export function debugGetAllUsers(): UserAccount[] {
-  return Array.from(usersById.values()).map(sanitizeUser);
 }

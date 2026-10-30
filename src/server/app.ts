@@ -1,4 +1,5 @@
-import express from 'express';
+import express, { type RequestHandler } from 'express';
+import { DatabaseError, query } from './database';
 import fs from 'fs';
 import path from 'path';
 import cookieParser from 'cookie-parser';
@@ -68,6 +69,17 @@ import {
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1);
+const asyncRoute = (handler: RequestHandler): RequestHandler => (req, res, next) => {
+  Promise.resolve().then(() => handler(req, res, next)).catch(next);
+};
+app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
+app.get('/api/health', asyncRoute(async (_req, res) => {
+  await query('SELECT id FROM faros_users LIMIT 0');
+  await query('SELECT token FROM faros_sessions LIMIT 0');
+  await query('SELECT token_hash FROM faros_auth_flows LIMIT 0');
+  res.json({ status: 'ok', database: 'postgresql' });
+}));
 
 // Middleware to prevent Express from hanging on pre-parsed bodies in Vercel Serverless
 app.use((req, res, next) => {
@@ -80,28 +92,15 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(cookieParser());
 
-// Universal CORS & preflight OPTIONS handler for mobile Safari, webviews & cross-origin requests
+// Auth cookies are same-origin. Never reflect arbitrary credentialed origins.
 app.use((req, res, next) => {
-  if (!res.headersSent) {
-    const reqOrigin = req.headers.origin;
-    if (reqOrigin) {
-      res.setHeader('Access-Control-Allow-Origin', reqOrigin);
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-    } else {
-      const host = req.headers.host;
-      if (host) {
-        const proto = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
-        res.setHeader('Access-Control-Allow-Origin', `${proto}://${host}`);
-        res.setHeader('Access-Control-Allow-Credentials', 'true');
-      }
-    }
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cookie, Cache-Control');
+  const origin = req.get('origin');
+  const sameOrigin = `${req.protocol}://${req.get('host')}`;
+  const configuredOrigin = process.env.APP_URL ? new URL(process.env.APP_URL).origin : sameOrigin;
+  if (origin && origin !== sameOrigin && origin !== configuredOrigin) {
+    return res.status(403).json({ code: 'ORIGIN_NOT_ALLOWED', error: 'El origen de la solicitud no está permitido.' });
   }
-
-  if (req.method === 'OPTIONS') {
-    return res.status(204).end();
-  }
+  if (req.method === 'OPTIONS') return res.status(204).end();
   next();
 });
 
@@ -403,7 +402,7 @@ async function fetchCalendarEvents(
 }
 
 // --- NEWS PULSE ENDPOINTS ---
-app.post(['/api/news/pulse', '/news/pulse'], async (req, res) => {
+app.post('/api/news/pulse', asyncRoute(async (req, res) => {
   const pulseStartTime = Date.now();
   const user = await getSessionUser(req);
 
@@ -491,22 +490,22 @@ app.post(['/api/news/pulse', '/news/pulse'], async (req, res) => {
     dateKey,
     hourKey
   });
-});
+}));
 
 // --- CALENDAR ENDPOINTS ---
-app.post(['/api/calendar/events', '/calendar/events'], async (req, res) => {
+app.post('/api/calendar/events', asyncRoute(async (req, res) => {
   const { portfolioId = 'default', tickers = [], forceRefresh = false } = req.body;
   const result = await fetchCalendarEvents(tickers, portfolioId, forceRefresh);
   return res.json(result);
-});
+}));
 
-app.post(['/api/calendar/check-reminders', '/calendar/check-reminders'], (req, res) => {
+app.post('/api/calendar/check-reminders', (req, res) => {
   const { events = [], sentReminderIds = [] } = req.body;
   const result = checkReminders(events, sentReminderIds);
   return res.json(result);
 });
 
-app.get(['/api/date/info', '/date/info'], (req, res) => {
+app.get('/api/date/info', (req, res) => {
   const now = getNowAR();
   return res.json({
     ...now,
@@ -514,7 +513,7 @@ app.get(['/api/date/info', '/date/info'], (req, res) => {
   });
 });
 
-app.post(['/api/date/simulate-offset', '/date/simulate-offset'], async (req, res) => {
+app.post('/api/date/simulate-offset', asyncRoute(async (req, res) => {
   const user = await getSessionUser(req);
   if (process.env.NODE_ENV === 'production' && (!user || !isUserAdmin(user.email))) {
     return res.status(403).json({ error: 'Solo los administradores pueden simular fechas en producción.' });
@@ -529,43 +528,43 @@ app.post(['/api/date/simulate-offset', '/date/simulate-offset'], async (req, res
     offsetDays,
     nowAR: newDate
   });
-});
+}));
 
 // --- AUTHENTICATION & ACCOUNT ROUTES ---
-app.get(['/api/auth/me', '/auth/me'], handleGetMe);
-app.post(['/api/auth/register', '/auth/register'], handleRegister);
-app.post(['/api/auth/login', '/auth/login'], handleLogin);
-app.post(['/api/auth/logout', '/auth/logout'], handleLogout);
-app.post(['/api/auth/forgot-password', '/auth/forgot-password'], handleForgotPassword);
-app.post(['/api/auth/reset-password', '/auth/reset-password'], handleResetPassword);
-app.put(['/api/auth/user', '/auth/user'], handleUpdateUser);
-app.delete(['/api/auth/account', '/auth/account'], handleDeleteAccount);
-app.post(['/api/auth/draft', '/auth/draft'], handleSaveDraft);
-app.get(['/api/auth/draft', '/auth/draft'], handleGetDraft);
+app.get('/api/auth/me', asyncRoute(handleGetMe));
+app.post('/api/auth/register', asyncRoute(handleRegister));
+app.post('/api/auth/login', asyncRoute(handleLogin));
+app.post('/api/auth/logout', asyncRoute(handleLogout));
+app.post('/api/auth/forgot-password', asyncRoute(handleForgotPassword));
+app.post('/api/auth/reset-password', asyncRoute(handleResetPassword));
+app.put('/api/auth/user', asyncRoute(handleUpdateUser));
+app.delete('/api/auth/account', asyncRoute(handleDeleteAccount));
+app.post('/api/auth/draft', asyncRoute(handleSaveDraft));
+app.get('/api/auth/draft', asyncRoute(handleGetDraft));
 
 // OAuth 2.0 (Google & Microsoft) Endpoints
-app.get(['/api/auth/google/url', '/auth/google/url'], handleGetGoogleAuthUrl);
-app.get(['/api/auth/google/callback', '/auth/google/callback'], handleGoogleCallback);
-app.get(['/api/auth/microsoft/url', '/auth/microsoft/url'], handleGetMicrosoftAuthUrl);
-app.get(['/api/auth/microsoft/callback', '/auth/microsoft/callback'], handleMicrosoftCallback);
+app.get('/api/auth/google/url', asyncRoute(handleGetGoogleAuthUrl));
+app.get('/api/auth/google/callback', asyncRoute(handleGoogleCallback));
+app.get('/api/auth/microsoft/url', asyncRoute(handleGetMicrosoftAuthUrl));
+app.get('/api/auth/microsoft/callback', asyncRoute(handleMicrosoftCallback));
 
 // --- PROTECTED ADMIN PANEL ENDPOINTS ---
-app.get(['/api/admin/check', '/admin/check'], handleAdminCheck);
-app.post(['/api/admin/track', '/admin/track'], handleClientTrackEvent);
+app.get('/api/admin/check', asyncRoute(handleAdminCheck));
+app.post('/api/admin/track', asyncRoute(handleClientTrackEvent));
 
-app.use(['/api/admin', '/admin'], requireAdminMiddleware);
-app.get(['/api/admin/overview', '/admin/overview'], handleAdminOverview);
-app.get(['/api/admin/users', '/admin/users'], handleAdminUsers);
-app.put(['/api/admin/users/:userId/plan', '/admin/users/:userId/plan'], handleAdminUpdateUserPlan);
-app.get(['/api/admin/funnel', '/admin/funnel'], handleAdminFunnel);
-app.get(['/api/admin/usage', '/admin/usage'], handleAdminUsage);
-app.get(['/api/admin/pipeline-health', '/admin/pipeline-health'], handleAdminPipelineHealth);
-app.get(['/api/admin/thesis-financials', '/admin/thesis-financials'], handleAdminThesisFinancials);
+app.use('/api/admin', asyncRoute(requireAdminMiddleware));
+app.get('/api/admin/overview', asyncRoute(handleAdminOverview));
+app.get('/api/admin/users', asyncRoute(handleAdminUsers));
+app.put('/api/admin/users/:userId/plan', asyncRoute(handleAdminUpdateUserPlan));
+app.get('/api/admin/funnel', asyncRoute(handleAdminFunnel));
+app.get('/api/admin/usage', asyncRoute(handleAdminUsage));
+app.get('/api/admin/pipeline-health', asyncRoute(handleAdminPipelineHealth));
+app.get('/api/admin/thesis-financials', asyncRoute(handleAdminThesisFinancials));
 
 // --- AUDIO SENSING & TTS ENDPOINTS ---
 const SAFE_AUDIO_CACHE_DIR = path.join('/tmp', 'faros_audio_cache');
 
-app.get(['/api/audio/file/:filename', '/audio/file/:filename'], (req, res) => {
+app.get('/api/audio/file/:filename', (req, res) => {
   const filename = path.basename(req.params.filename);
   const candidateDirs = [
     SAFE_AUDIO_CACHE_DIR,
@@ -592,7 +591,7 @@ app.get(['/api/audio/file/:filename', '/audio/file/:filename'], (req, res) => {
   res.sendFile(filePath);
 });
 
-app.post(['/api/audio/prefetch', '/audio/prefetch'], (req, res) => {
+app.post('/api/audio/prefetch', (req, res) => {
   const { items = [] } = req.body;
   if (Array.isArray(items) && items.length > 0) {
     prefetchAudioScripts(items);
@@ -600,7 +599,7 @@ app.post(['/api/audio/prefetch', '/audio/prefetch'], (req, res) => {
   return res.json({ success: true, count: items.length });
 });
 
-app.post(['/api/audio/synthesize', '/audio/synthesize'], async (req, res) => {
+app.post('/api/audio/synthesize', asyncRoute(async (req, res) => {
   if (!checkIpRateLimit(req.ip || 'ip', 30)) {
     return res.status(429).json({ 
       success: false, 
@@ -645,14 +644,21 @@ app.post(['/api/audio/synthesize', '/audio/synthesize'], async (req, res) => {
       });
     }
   }
-});
+}));
 
-// Global JSON error handler preventing raw HTML 500 error pages
+// Unknown API paths must never fall through to the React HTML response.
+app.use('/api', (_req, res) => res.status(404).json({ code: 'API_NOT_FOUND', error: 'La ruta de API solicitada no existe.' }));
+
+// Express 4 does not forward rejected controller promises automatically.
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('[SERVER ERROR]', err);
-  if (!res.headersSent) {
-    res.status(500).json({ error: 'Error interno del servidor. Por favor reintentá en unos momentos.' });
+  if (res.headersSent) return next(err);
+  if (err instanceof DatabaseError) {
+    const status = err.code === 'EMAIL_EXISTS' ? 409 : err.code === 'USER_NOT_FOUND' ? 401 : err.code === 'OAUTH_PROOF_INVALID' ? 401 : 503;
+    return res.status(status).json({ code: err.code, error: err.message });
   }
+  if (err?.type === 'entity.parse.failed') return res.status(400).json({ code: 'INVALID_JSON', error: 'El cuerpo de la solicitud no es JSON válido.' });
+  console.error('[SERVER ERROR] Fallo no controlado en una solicitud.');
+  res.status(500).json({ code: 'INTERNAL_ERROR', error: 'Error interno del servidor. Por favor reintentá en unos momentos.' });
 });
 
 export { app };

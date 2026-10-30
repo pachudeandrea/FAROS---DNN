@@ -24,7 +24,6 @@ import {
   buildCalendarCacheKey
 } from './src/utils/calendarGrounding';
 import { checkReminders } from './src/utils/calendarReminders';
-import { ensurePiperDaemon } from './src/server/ttsEngine';
 
 // Re-export required functions as specified in deliverables
 export {
@@ -45,12 +44,9 @@ export default app;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
 
-async function startServer() {
-  // Warm up audio engine safely in background
-  ensurePiperDaemon().catch(() => {});
-
+export async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
@@ -74,6 +70,9 @@ async function startServer() {
 }
 
 // Start standalone server only when not executing in a Vercel serverless function
-if (process.env.VERCEL !== '1' && !process.env.NOW_REGION) {
-  startServer();
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename && process.env.VERCEL !== '1' && !process.env.NOW_REGION) {
+  startServer().catch(() => {
+    console.error('No se pudo iniciar el servidor local de FAROS.');
+    process.exitCode = 1;
+  });
 }

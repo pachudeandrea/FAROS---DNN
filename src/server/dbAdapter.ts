@@ -1,616 +1,136 @@
-import fs from 'fs';
-import path from 'path';
-import crypto from 'crypto';
-import { StoredUser } from './auth';
+import crypto from 'node:crypto';
+import type { StoredUser } from './auth';
 import { UserPlan, FunnelStage, UsageEvent, UsageEventType } from '../types';
+import { DatabaseError, query, transaction } from './database';
 
-import { Pool } from 'pg';
+const hashToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
+const sessionKey = (token: string) => `sha256:${hashToken(token)}`;
 
-const ROOT_DIR = process.cwd();
-
-function getWritableDataDir(): string {
-  const candidates = [
-    path.join('/tmp', 'faros_data'),
-    path.resolve(ROOT_DIR, 'data')
-  ];
-  for (const dir of candidates) {
-    try {
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      const testFile = path.join(dir, `.test_w_${Date.now()}`);
-      fs.writeFileSync(testFile, '1');
-      fs.unlinkSync(testFile);
-      return dir;
-    } catch {}
-  }
-  return '/tmp';
-}
-
-const DATA_DIR = getWritableDataDir();
-const USERS_DB_PATH = path.resolve(DATA_DIR, 'users_db.json');
-const SESSIONS_DB_PATH = path.resolve(DATA_DIR, 'sessions_db.json');
-const EVENTS_DB_PATH = path.resolve(DATA_DIR, 'events_db.json');
-
-// Helper to manage sessions on disk fallback
-interface DiskSession {
-  token: string;
-  userId: string;
-  expiresAt: number;
-  createdAt: number;
-}
-
-function loadDiskSessions(): DiskSession[] {
-  if (fs.existsSync(SESSIONS_DB_PATH)) {
-    try {
-      const data = fs.readFileSync(SESSIONS_DB_PATH, 'utf-8');
-      const parsed = JSON.parse(data);
-      if (Array.isArray(parsed)) return parsed;
-    } catch {}
-  }
-  return [];
-}
-
-function saveDiskSessions(list: DiskSession[]): void {
-  try {
-    fs.writeFileSync(SESSIONS_DB_PATH, JSON.stringify(list, null, 2), 'utf-8');
-  } catch {}
-}
-
-// --- UNIFIED POSTGRESQL / NEON DATABASE CONNECTION ---
-// Prioritizes DATABASE_URL as the primary unified connection string for Neon / PostgreSQL across all modules:
-// - Registro de usuarios
-// - Autenticación y contraseñas
-// - Sesiones de usuario
-// - Carteras y activos (almacenados en faros_users.data)
-// - Telemetría y eventos
-const rawDbUrl = (process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL_NON_POOLING || '').trim();
-const dbUrl = rawDbUrl;
-const activeVarName = process.env.DATABASE_URL 
-  ? 'DATABASE_URL' 
-  : (process.env.POSTGRES_URL 
-    ? 'POSTGRES_URL (fallback)' 
-    : (process.env.POSTGRES_PRISMA_URL 
-      ? 'POSTGRES_PRISMA_URL (fallback)' 
-      : (process.env.POSTGRES_URL_NON_POOLING 
-        ? 'POSTGRES_URL_NON_POOLING (fallback)' 
-        : null)));
-
-let pgPool: Pool | null = null;
-let pgInitialized = false;
-let schemaInitPromise: Promise<void> | null = null;
-
-if (dbUrl) {
-  try {
-    const isLocalhost = dbUrl.includes('localhost') || dbUrl.includes('127.0.0.1');
-    const isServerless = Boolean(process.env.VERCEL || process.env.NOW_REGION);
-    const isNeon = dbUrl.includes('neon.tech');
-
-    pgPool = new Pool({
-      connectionString: dbUrl,
-      // Neon & modern cloud PostgreSQL require TLS. On localhost SSL is disabled.
-      ssl: isLocalhost ? false : { rejectUnauthorized: false },
-      // Tune max connections: serverless lambdas need conservative pool sizes to prevent Neon connection exhaustion
-      max: isServerless ? 4 : 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000
-    });
-
-    pgPool.on('error', (err) => {
-      console.warn('[DB ADAPTER] Unexpected error on idle PostgreSQL client:', err?.message || err);
-    });
-
-    console.log(`[DB ADAPTER] PostgreSQL database pool successfully initialized via ${activeVarName} (${isNeon ? 'Neon Serverless' : 'PostgreSQL'}).`);
-  } catch (err) {
-    console.warn('[DB ADAPTER] Error initializing PostgreSQL pool, falling back to durable JSON store:', err);
-  }
-} else {
-  console.log('[DB ADAPTER] No DATABASE_URL configured. Running with local persistent file store.');
-}
-
-/**
- * Initializes PostgreSQL tables if pool is active (singleton promise)
- */
-export async function initPostgresSchema(): Promise<void> {
-  if (!pgPool || pgInitialized) return;
-  if (schemaInitPromise) return schemaInitPromise;
-
-  schemaInitPromise = (async () => {
-    try {
-      const client = await pgPool.connect();
-      try {
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS faros_users (
-            id VARCHAR(128) PRIMARY KEY,
-            email VARCHAR(255) UNIQUE NOT NULL,
-            data JSONB NOT NULL,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-          );
-          CREATE INDEX IF NOT EXISTS idx_faros_users_email ON faros_users(email);
-
-          CREATE TABLE IF NOT EXISTS faros_sessions (
-            token VARCHAR(255) PRIMARY KEY,
-            user_id VARCHAR(128) NOT NULL,
-            expires_at BIGINT NOT NULL,
-            created_at BIGINT NOT NULL
-          );
-          CREATE INDEX IF NOT EXISTS idx_faros_sessions_user_id ON faros_sessions(user_id);
-
-          CREATE TABLE IF NOT EXISTS faros_events (
-            id VARCHAR(128) PRIMARY KEY,
-            user_id VARCHAR(128),
-            event_type VARCHAR(128) NOT NULL,
-            metadata JSONB,
-            created_at TIMESTAMPTZ DEFAULT NOW()
-          );
-        `);
-        pgInitialized = true;
-        console.log('[DB ADAPTER] PostgreSQL database tables and indices verified.');
-      } finally {
-        client.release();
-      }
-    } catch (err) {
-      console.warn('[DB ADAPTER] Failed to initialize PostgreSQL tables, continuing with file store:', err);
-    } finally {
-      schemaInitPromise = null;
-    }
-  })();
-
-  return schemaInitPromise;
-}
-
-// Auto-run schema init if pool is present
-if (pgPool) {
-  initPostgresSchema().catch(() => {});
-}
-
-export function isPostgresActive(): boolean {
-  return Boolean(pgPool && pgInitialized);
-}
-
-/**
- * Checks if a given email is listed in ADMIN_EMAILS
- */
 export function isUserAdmin(email?: string): boolean {
   if (!email) return false;
-  const rawAdminEmails = process.env.ADMIN_EMAILS || 'marudeandrea@gmail.com,pachudeandrea@gmail.com';
-  const allowedList = rawAdminEmails
-    .split(',')
-    .map(e => e.trim().toLowerCase())
-    .filter(Boolean);
-  return allowedList.includes(email.trim().toLowerCase());
+  return (process.env.ADMIN_EMAILS || '').split(',').some(e => e.trim().toLowerCase() === email.trim().toLowerCase());
 }
 
-/**
- * In-memory buffer of events for sub-millisecond retrieval and batch saving
- */
-let inMemoryEvents: UsageEvent[] = [];
-let isEventsLoaded = false;
+export async function loadAllUsersFromStorage(): Promise<StoredUser[]> {
+  const result = await query('SELECT data FROM faros_users ORDER BY created_at DESC');
+  return result.rows.map(row => row.data);
+}
 
-function loadEventsFromDisk(): void {
-  if (isEventsLoaded) return;
-  if (fs.existsSync(EVENTS_DB_PATH)) {
-    try {
-      const data = fs.readFileSync(EVENTS_DB_PATH, 'utf-8');
-      const parsed = JSON.parse(data);
-      if (Array.isArray(parsed)) {
-        inMemoryEvents = parsed;
+export const getAllUsers = loadAllUsersFromStorage;
+
+export async function getUserFromDbById(id: string): Promise<StoredUser | null> {
+  const result = await query('SELECT data FROM faros_users WHERE id = $1', [id]);
+  return result.rows[0]?.data || null;
+}
+
+export async function getUserFromDbByEmail(email: string): Promise<StoredUser | null> {
+  const result = await query('SELECT data FROM faros_users WHERE lower(email) = $1', [email.trim().toLowerCase()]);
+  return result.rows[0]?.data || null;
+}
+
+export async function getUserFromDbByOAuth(provider: 'google' | 'microsoft', id: string): Promise<StoredUser | null> {
+  const field = provider === 'google' ? 'googleSub' : 'microsoftOid';
+  const result = await query('SELECT data FROM faros_users WHERE data->>$1 = $2', [field, id]);
+  return result.rows[0]?.data || null;
+}
+
+// Registration and its first session either both commit or both roll back.
+export async function createUserAndSessionDb(user: StoredUser, token: string, expiresAt: number, signupTicket?: string): Promise<void> {
+  await transaction(async client => {
+    if (signupTicket) {
+      const proof = await client.query("DELETE FROM faros_auth_flows WHERE token_hash = $1 AND kind = 'signup' AND expires_at > $2 RETURNING data", [hashToken(signupTicket), Date.now()]);
+      if (!proof.rowCount || proof.rows[0].data.email !== user.email ||
+          proof.rows[0].data.provider !== user.provider ||
+          (user.provider === 'google' ? proof.rows[0].data.googleSub !== user.googleSub : proof.rows[0].data.microsoftOid !== user.microsoftOid)) {
+        throw new DatabaseError('OAUTH_PROOF_INVALID', 'La verificación externa venció o no es válida. Volvé a iniciar sesión con el proveedor.');
       }
-    } catch (err) {
-      console.warn('[DB ADAPTER] Error loading events_db.json:', err);
     }
-  }
-  isEventsLoaded = true;
-}
-
-function persistEventsToDisk(): void {
-  try {
-    // Keep last 15,000 events to prevent disk bloat
-    if (inMemoryEvents.length > 15000) {
-      inMemoryEvents = inMemoryEvents.slice(-15000);
-    }
-    fs.writeFileSync(EVENTS_DB_PATH, JSON.stringify(inMemoryEvents, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('[DB ADAPTER] Failed to persist events to disk:', err);
-  }
-}
-
-// Debounced disk save for events to avoid blocking I/O on high-frequency routes
-let saveEventsTimer: NodeJS.Timeout | null = null;
-function scheduleEventsPersist(): void {
-  if (saveEventsTimer) return;
-  saveEventsTimer = setTimeout(() => {
-    saveEventsTimer = null;
-    persistEventsToDisk();
-  }, 2000);
-}
-
-/**
- * Completely non-blocking usage event recorder
- * NEVER throws, never halts request/response lifecycle.
- */
-export function trackEventNonBlocking(
-  eventType: UsageEventType | string,
-  params: {
-    userId?: string | null;
-    metadata?: Record<string, any>;
-    userAgent?: string;
-  } = {}
-): void {
-  setImmediate(() => {
-    try {
-      loadEventsFromDisk();
-      const event: UsageEvent = {
-        id: `evt_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
-        userId: params.userId || null,
-        eventType,
-        metadata: params.metadata || {},
-        timestamp: Date.now(),
-        dateIso: new Date().toISOString(),
-        userAgent: params.userAgent?.slice(0, 200)
-      };
-
-      inMemoryEvents.push(event);
-      scheduleEventsPersist();
-    } catch (err) {
-      // Intentionally silent: telemetry should never crash or impact user requests
-    }
+    await client.query('INSERT INTO faros_users (id, email, data) VALUES ($1, $2, $3)', [user.id, user.email.toLowerCase(), JSON.stringify(user)]);
+    await client.query('INSERT INTO faros_sessions (token, user_id, expires_at, created_at) VALUES ($1, $2, $3, $4)', [sessionKey(token), user.id, expiresAt, Date.now()]);
   });
 }
 
-/**
- * Read all users from PostgreSQL or disk store
- */
-export async function loadAllUsersFromStorage(): Promise<StoredUser[]> {
-  if (pgPool) {
-    try {
-      await initPostgresSchema();
-      if (pgInitialized) {
-        const res = await pgPool.query('SELECT data FROM faros_users ORDER BY created_at DESC');
-        if (res.rows && res.rows.length > 0) {
-          return res.rows.map(r => r.data as StoredUser);
-        }
-
-        // If PostgreSQL table is empty in production, return empty list without auto-seeding mock accounts
-        const shouldSeed = !process.env.VERCEL && process.env.NODE_ENV !== 'production' && process.env.SEED_TEST_USERS === 'true';
-        if (shouldSeed) {
-          const diskUsers = getAllUsers();
-          if (diskUsers.length > 0) {
-            console.log(`[DB ADAPTER] Seeding ${diskUsers.length} initial user(s) into PostgreSQL...`);
-            for (const u of diskUsers) {
-              try {
-                await pgPool.query(
-                  `INSERT INTO faros_users (id, email, data, created_at, updated_at)
-                   VALUES ($1, $2, $3, NOW(), NOW())
-                   ON CONFLICT (id) DO UPDATE
-                   SET email = EXCLUDED.email,
-                       data = EXCLUDED.data,
-                       updated_at = NOW()`,
-                  [u.id, u.email.toLowerCase(), JSON.stringify(u)]
-                );
-              } catch {}
-            }
-            return diskUsers;
-          }
-        }
-        return [];
-      }
-    } catch (err) {
-      console.warn('[DB ADAPTER] PostgreSQL query notice, falling back to disk store:', err);
-    }
-  }
-
-  // Fallback to disk JSON file
-  if (fs.existsSync(USERS_DB_PATH)) {
-    try {
-      const data = fs.readFileSync(USERS_DB_PATH, 'utf-8');
-      const parsed = JSON.parse(data);
-      if (Array.isArray(parsed)) return parsed;
-    } catch {}
-  }
-  return [];
-}
-
-/**
- * Fetches a user directly by ID from PostgreSQL (or disk fallback)
- */
-export async function getUserFromDbById(userId: string): Promise<StoredUser | null> {
-  if (pgPool) {
-    try {
-      await initPostgresSchema();
-      if (pgInitialized) {
-        const res = await pgPool.query('SELECT data FROM faros_users WHERE id = $1', [userId]);
-        if (res.rows && res.rows.length > 0) {
-          return res.rows[0].data as StoredUser;
-        }
-      }
-    } catch (err) {
-      console.warn('[DB ADAPTER] PostgreSQL query error for userId:', err);
-    }
-  }
-
-  const diskUsers = getAllUsers();
-  return diskUsers.find(u => u.id === userId) || null;
-}
-
-/**
- * Fetches a user directly by email from PostgreSQL (or disk fallback)
- */
-export async function getUserFromDbByEmail(email: string): Promise<StoredUser | null> {
-  const norm = (email || '').trim().toLowerCase();
-  if (!norm) return null;
-
-  if (pgPool) {
-    try {
-      await initPostgresSchema();
-      if (pgInitialized) {
-        const res = await pgPool.query('SELECT data FROM faros_users WHERE email = $1', [norm]);
-        if (res.rows && res.rows.length > 0) {
-          return res.rows[0].data as StoredUser;
-        }
-      }
-    } catch (err) {
-      console.warn('[DB ADAPTER] PostgreSQL query error for user email:', err);
-    }
-  }
-
-  const diskUsers = getAllUsers();
-  return diskUsers.find(u => (u.email || '').trim().toLowerCase() === norm) || null;
-}
-
-/**
- * Fetches a user by OAuth provider ID (Google sub or Microsoft oid)
- */
-export async function getUserFromDbByOAuth(provider: 'google' | 'microsoft', id: string): Promise<StoredUser | null> {
-  if (!id) return null;
-
-  if (pgPool) {
-    try {
-      await initPostgresSchema();
-      if (pgInitialized) {
-        const field = provider === 'google' ? 'googleSub' : 'microsoftOid';
-        const res = await pgPool.query(`SELECT data FROM faros_users WHERE data->>'${field}' = $1`, [id]);
-        if (res.rows && res.rows.length > 0) {
-          return res.rows[0].data as StoredUser;
-        }
-      }
-    } catch (err) {
-      console.warn('[DB ADAPTER] PostgreSQL query error for OAuth id:', err);
-    }
-  }
-
-  const diskUsers = getAllUsers();
-  return diskUsers.find(u => provider === 'google' ? u.googleSub === id : u.microsoftOid === id) || null;
-}
-
-/**
- * Persists a user to PostgreSQL and syncs to disk file
- */
+// Update only: a stale request must never recreate a deleted account.
 export async function saveUserDb(user: StoredUser): Promise<void> {
-  // 1. PostgreSQL (if available)
-  if (pgPool) {
-    try {
-      await initPostgresSchema();
-      if (pgInitialized) {
-        await pgPool.query(
-          `INSERT INTO faros_users (id, email, data, created_at, updated_at)
-           VALUES ($1, $2, $3, NOW(), NOW())
-           ON CONFLICT (id) DO UPDATE
-           SET email = EXCLUDED.email,
-               data = EXCLUDED.data,
-               updated_at = NOW()`,
-          [user.id, user.email.toLowerCase(), JSON.stringify(user)]
-        );
-      }
-    } catch (err) {
-      console.warn('[DB ADAPTER] PostgreSQL save notice, writing to disk:', err);
-    }
-  }
-
-  // 2. Synchronize to disk store
-  try {
-    const users = getAllUsers();
-    const idx = users.findIndex(u => u.id === user.id);
-    if (idx >= 0) {
-      users[idx] = user;
-    } else {
-      users.push(user);
-    }
-    fs.writeFileSync(USERS_DB_PATH, JSON.stringify(users, null, 2), 'utf-8');
-  } catch (err) {
-    console.warn('[DB ADAPTER] Disk persist notice:', err);
-  }
+  const result = await query('UPDATE faros_users SET data = $2, updated_at = NOW() WHERE id = $1', [user.id, JSON.stringify(user)]);
+  if (!result.rowCount) throw new DatabaseError('USER_NOT_FOUND', 'La cuenta ya no existe.');
 }
 
-/**
- * Deletes a user from PostgreSQL and disk
- */
-export async function deleteUserDb(userId: string): Promise<void> {
-  if (pgPool) {
-    try {
-      await initPostgresSchema();
-      if (pgInitialized) {
-        await pgPool.query('DELETE FROM faros_users WHERE id = $1', [userId]);
-        await pgPool.query('DELETE FROM faros_sessions WHERE user_id = $1', [userId]);
-      }
-    } catch (err) {
-      console.warn('[DB ADAPTER] Error deleting user from PostgreSQL:', err);
-    }
-  }
-
-  try {
-    const users = getAllUsers().filter(u => u.id !== userId);
-    fs.writeFileSync(USERS_DB_PATH, JSON.stringify(users, null, 2), 'utf-8');
-  } catch {}
+// Merge only approved top-level fields under a row lock to preserve simultaneous
+// portfolio/preferences updates from different serverless instances.
+export async function updateUserDb(id: string, updates: Partial<StoredUser>): Promise<StoredUser> {
+  const result = await query('UPDATE faros_users SET data = data || $2::jsonb, updated_at = NOW() WHERE id = $1 RETURNING data', [id, JSON.stringify(updates)]);
+  if (!result.rowCount) throw new DatabaseError('USER_NOT_FOUND', 'La cuenta ya no existe.');
+  return result.rows[0].data;
 }
 
-/**
- * Persists session to PostgreSQL and disk fallback
- */
+export async function deleteUserDb(id: string): Promise<void> {
+  await transaction(async client => {
+    // Lock user first, in the same order as session creation.
+    await client.query('SELECT id FROM faros_users WHERE id = $1 FOR UPDATE', [id]);
+    await client.query('DELETE FROM faros_sessions WHERE user_id = $1', [id]);
+    await client.query('DELETE FROM faros_events WHERE user_id = $1', [id]);
+    await client.query('DELETE FROM faros_users WHERE id = $1', [id]);
+  });
+}
+
 export async function saveSessionDb(token: string, userId: string, expiresAt: number): Promise<void> {
-  // 1. PostgreSQL (if available)
-  if (pgPool) {
-    try {
-      await initPostgresSchema();
-      if (pgInitialized) {
-        await pgPool.query(
-          `INSERT INTO faros_sessions (token, user_id, expires_at, created_at)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (token) DO UPDATE
-           SET expires_at = EXCLUDED.expires_at`,
-          [token, userId, expiresAt, Date.now()]
-        );
-      }
-    } catch (err) {
-      console.warn('[DB ADAPTER] Error saving session to PostgreSQL:', err);
-    }
-  }
-
-  // 2. Disk store fallback
-  try {
-    const sessions = loadDiskSessions().filter(s => s.token !== token);
-    sessions.push({
-      token,
-      userId,
-      expiresAt,
-      createdAt: Date.now()
-    });
-    // Purge expired sessions (keep max 1,000)
-    const now = Date.now();
-    const valid = sessions.filter(s => s.expiresAt > now).slice(-1000);
-    saveDiskSessions(valid);
-  } catch {}
+  await transaction(async client => {
+    const user = await client.query('SELECT id FROM faros_users WHERE id = $1 FOR UPDATE', [userId]);
+    if (!user.rowCount) throw new DatabaseError('USER_NOT_FOUND', 'La cuenta ya no existe.');
+    await client.query('INSERT INTO faros_sessions (token, user_id, expires_at, created_at) VALUES ($1, $2, $3, $4)', [sessionKey(token), userId, expiresAt, Date.now()]);
+  });
 }
 
-/**
- * Reads a session from PostgreSQL or disk fallback
- */
 export async function getSessionDb(token: string): Promise<{ userId: string; expiresAt: number } | null> {
-  if (!token) return null;
-
-  // 1. PostgreSQL
-  if (pgPool) {
-    try {
-      await initPostgresSchema();
-      if (pgInitialized) {
-        const res = await pgPool.query('SELECT user_id, expires_at FROM faros_sessions WHERE token = $1', [token]);
-        if (res.rows && res.rows.length > 0) {
-          const row = res.rows[0];
-          const expiresAt = Number(row.expires_at);
-          if (Date.now() > expiresAt) {
-            await deleteSessionDb(token);
-            return null;
-          }
-          return { userId: row.user_id, expiresAt };
-        }
-      }
-    } catch (err) {
-      console.warn('[DB ADAPTER] Error fetching session from PostgreSQL:', err);
-    }
-  }
-
-  // 2. Disk fallback
-  const sessions = loadDiskSessions();
-  const session = sessions.find(s => s.token === token);
-  if (session) {
-    if (Date.now() > session.expiresAt) {
-      deleteSessionFromDisk(token);
-      return null;
-    }
-    return { userId: session.userId, expiresAt: session.expiresAt };
-  }
-
-  return null;
+  // Existing sessions remain usable while new sessions store only token hashes.
+  const result = await query('SELECT user_id, expires_at FROM faros_sessions WHERE token IN ($1, $2) AND expires_at > $3', [sessionKey(token), token, Date.now()]);
+  const row = result.rows[0];
+  return row ? { userId: row.user_id, expiresAt: Number(row.expires_at) } : null;
 }
 
-function deleteSessionFromDisk(token: string): void {
-  try {
-    const sessions = loadDiskSessions().filter(s => s.token !== token);
-    saveDiskSessions(sessions);
-  } catch {}
-}
-
-/**
- * Deletes session from PostgreSQL and disk
- */
 export async function deleteSessionDb(token: string): Promise<void> {
-  if (pgPool) {
-    try {
-      await initPostgresSchema();
-      if (pgInitialized) {
-        await pgPool.query('DELETE FROM faros_sessions WHERE token = $1', [token]);
-      }
-    } catch {}
-  }
-  deleteSessionFromDisk(token);
+  await query('DELETE FROM faros_sessions WHERE token IN ($1, $2)', [sessionKey(token), token]);
 }
 
-/**
- * Read all users from disk (synchronous helper)
- */
-export function getAllUsers(): StoredUser[] {
-  const candidatePaths = [
-    USERS_DB_PATH,
-    path.resolve(ROOT_DIR, 'data', 'users_db.json'),
-    path.join('/tmp', 'faros_data', 'users_db.json')
-  ];
-  for (const p of candidatePaths) {
-    if (fs.existsSync(p)) {
-      try {
-        const data = fs.readFileSync(p, 'utf-8');
-        const parsed = JSON.parse(data);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch {}
-    }
-  }
-  return [];
+export async function saveAuthFlow(token: string, kind: string, data: object, expiresAt: number): Promise<void> {
+  await query('INSERT INTO faros_auth_flows (token_hash, kind, data, expires_at) VALUES ($1, $2, $3, $4)', [hashToken(token), kind, JSON.stringify(data), expiresAt]);
 }
 
-/**
- * Update plan or funnel stage for an individual user
- */
-export function updateUserPlanAndStage(
-  userId: string,
-  updates: { plan?: UserPlan; funnelStage?: FunnelStage }
-): boolean {
-  try {
-    const users = getAllUsers();
-    let found = false;
-    const nextUsers = users.map(u => {
-      if (u.id === userId) {
-        found = true;
-        return {
-          ...u,
-          plan: updates.plan !== undefined ? updates.plan : u.plan,
-          funnelStage: updates.funnelStage !== undefined ? updates.funnelStage : u.funnelStage,
-          updatedAt: new Date().toISOString()
-        };
-      }
-      return u;
-    });
-
-    if (found) {
-      fs.writeFileSync(USERS_DB_PATH, JSON.stringify(nextUsers, null, 2), 'utf-8');
-      trackEventNonBlocking('admin_plan_updated', {
-        userId,
-        metadata: { updates }
-      });
-      return true;
-    }
-  } catch (err) {
-    console.error('[DB ADAPTER] Error updating user plan:', err);
-  }
-  return false;
+export async function getAuthFlow(token: string, kind: string): Promise<any | null> {
+  const result = await query('SELECT data FROM faros_auth_flows WHERE token_hash = $1 AND kind = $2 AND expires_at > $3', [hashToken(token), kind, Date.now()]);
+  return result.rows[0]?.data || null;
 }
 
-/**
- * Get all usage events (filtered by days if needed)
- */
-export function getUsageEvents(sinceTimestamp?: number): UsageEvent[] {
-  loadEventsFromDisk();
-  if (!sinceTimestamp) return inMemoryEvents;
-  return inMemoryEvents.filter(e => e.timestamp >= sinceTimestamp);
+export async function consumeAuthFlow(token: string, kind: string): Promise<any | null> {
+  const result = await query('DELETE FROM faros_auth_flows WHERE token_hash = $1 AND kind = $2 AND expires_at > $3 RETURNING data', [hashToken(token), kind, Date.now()]);
+  return result.rows[0]?.data || null;
+}
+
+export async function updateUserPlanAndStage(userId: string, updates: { plan?: UserPlan; funnelStage?: FunnelStage }): Promise<boolean> {
+  const user = await getUserFromDbById(userId);
+  if (!user) return false;
+  await updateUserDb(userId, updates);
+  trackEventNonBlocking('admin_plan_updated', { userId, metadata: { updates } });
+  return true;
+}
+
+// Telemetry is optional and must never block account operations or initialize
+// files/services during module import. Persist when the database is available.
+export function trackEventNonBlocking(eventType: UsageEventType | string, params: { userId?: string | null; metadata?: Record<string, any>; userAgent?: string } = {}): void {
+  void query('INSERT INTO faros_events (id, user_id, event_type, metadata) VALUES ($1, $2, $3, $4)', [
+    `evt_${crypto.randomUUID()}`, params.userId || null, eventType,
+    JSON.stringify({ ...params.metadata, userAgent: params.userAgent?.slice(0, 200) })
+  ]).catch(() => {});
+}
+
+export async function getUsageEvents(sinceTimestamp = 0): Promise<UsageEvent[]> {
+  const result = await query('SELECT * FROM faros_events WHERE created_at >= $1 ORDER BY created_at', [new Date(sinceTimestamp)]);
+  return result.rows.map(row => ({
+    id: row.id, userId: row.user_id, eventType: row.event_type,
+    metadata: row.metadata || {}, timestamp: new Date(row.created_at).getTime(),
+    dateIso: new Date(row.created_at).toISOString(), userAgent: row.metadata?.userAgent
+  }));
 }
 
 /**

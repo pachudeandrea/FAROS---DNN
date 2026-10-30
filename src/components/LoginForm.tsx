@@ -13,14 +13,14 @@ import {
   KeyRound
 } from 'lucide-react';
 import { UserAccount } from '../types';
-import { saveUserToVault, verifyVaultLogin } from '../utils/accountVault';
+import { apiRequest } from '../utils/apiClient';
 
 interface LoginFormProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (user: UserAccount, token?: string) => void;
   onSwitchToSignUp: () => void;
-  onNeedsOnboarding: (tempUser: { email: string; name: string; provider: 'google' | 'microsoft'; picture?: string }) => void;
+  onNeedsOnboarding: (tempUser: { email: string; name: string; provider: 'google' | 'microsoft'; picture?: string; signupTicket?: string }) => void;
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({
@@ -58,76 +58,14 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     const normalizedEmail = email.trim().toLowerCase();
 
     try {
-      const abortController = new AbortController();
-      const timeoutId = setTimeout(() => abortController.abort(), 25000);
-
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          email: normalizedEmail,
-          password,
-          rememberMe
-        }),
-        signal: abortController.signal
+      const data = await apiRequest('/api/auth/login', {
+        method: 'POST', body: JSON.stringify({ email: normalizedEmail, password, rememberMe })
       });
-
-      clearTimeout(timeoutId);
-
-      let data: any = null;
-      const contentType = res.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        try { data = await res.json(); } catch {}
-      } else {
-        const textBody = await res.text();
-        try { data = JSON.parse(textBody); } catch {}
-      }
-
-      if (res.ok && data?.user) {
-        if (data.token) {
-          localStorage.setItem('faros_session_token', data.token);
-        }
-        await saveUserToVault(data.user, password);
-        onSuccess(data.user, data.token);
-        onClose();
-        return;
-      }
-
-      // If server explicitly reported invalid credentials or rate limiting
-      if (res.status === 401 || res.status === 400 || res.status === 429) {
-        throw new Error(data?.error || 'Email o contraseña incorrectos.');
-      }
-
-      if (res.status === 404) {
-        throw new Error('Servicio de inicio de sesión no encontrado (404). Por favor recargá la página.');
-      }
-
-      if (res.status >= 500) {
-        throw new Error(data?.error || `Error temporal del servidor (${res.status}). Por favor reintentá en unos momentos.`);
-      }
-
-      // If server returned another status, check local vault as offline fallback
-      const vaultAuth = await verifyVaultLogin(normalizedEmail, password);
-      if (vaultAuth.success && vaultAuth.user) {
-        onSuccess(vaultAuth.user, vaultAuth.token);
-        onClose();
-        return;
-      }
-
-      throw new Error(data?.error || 'Email o contraseña incorrectos.');
+      if (!data.user || !data.success) throw new Error('El servidor no confirmó el inicio de sesión.');
+      onSuccess(data.user, data.token);
+      onClose();
     } catch (err: any) {
-      // Check local vault in case of network disconnect or server unavailability
-      const vaultAuth = await verifyVaultLogin(normalizedEmail, password);
-      if (vaultAuth.success && vaultAuth.user) {
-        onSuccess(vaultAuth.user, vaultAuth.token);
-        onClose();
-        return;
-      }
-      setErrorMessage(err.message || 'Error al iniciar sesión. Verificá tus credenciales.');
+      setErrorMessage(err.message || 'No se pudo iniciar sesión.');
     } finally {
       setIsLoading(false);
     }
@@ -138,8 +76,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     setErrorMessage(null);
     setOauthNotice(null);
     try {
-      const res = await fetch('/api/auth/google/url');
-      const data = await res.json();
+      const data = await apiRequest('/api/auth/google/url');
 
       if (!data.configured) {
         setOauthNotice({
@@ -160,8 +97,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     setErrorMessage(null);
     setOauthNotice(null);
     try {
-      const res = await fetch('/api/auth/microsoft/url');
-      const data = await res.json();
+      const data = await apiRequest('/api/auth/microsoft/url');
 
       if (!data.configured) {
         setOauthNotice({
@@ -196,6 +132,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     }
 
     const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== popup) return;
       if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
         window.removeEventListener('message', handleMessage);
         onSuccess(event.data.user, event.data.token);
@@ -221,12 +158,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     setIsLoading(true);
 
     try {
-      const res = await fetch('/api/auth/forgot-password', {
+      const data = await apiRequest('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: forgotEmail.trim().toLowerCase() })
       });
-      const data = await res.json();
       setForgotSuccess(data.message);
       if (data.resetToken) {
         setResetToken(data.resetToken);
@@ -246,13 +182,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     setErrorMessage(null);
 
     try {
-      const res = await fetch('/api/auth/reset-password', {
+      const data = await apiRequest('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: resetToken, newPassword })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
 
       setForgotSuccess(data.message);
       setIsForgotMode(false);
