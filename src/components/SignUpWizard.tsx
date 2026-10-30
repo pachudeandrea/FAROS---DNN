@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { LighthouseLogo } from './LighthouseLogo';
 import { ProfileSelector } from './ProfileCard';
 import { 
@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { RiskProfile, UserAccount, OnboardingDraft } from '../types';
 import { apiRequest } from '../utils/apiClient';
+import { launchOAuth, type OAuthProvider } from '../utils/oauthPopup';
 
 interface SignUpWizardProps {
   isOpen: boolean;
@@ -163,83 +164,38 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
     return { label: 'Fuerte', score: 3, color: 'bg-emerald-600' };
   }, [password]);
 
-  // Google OAuth popup
-  const handleGoogleOAuth = async () => {
+  const oauthRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => oauthRequest.current?.abort(), []);
+
+  const handleOAuth = async (provider: OAuthProvider) => {
     setStepError(null);
     setOauthNotice(null);
+    oauthRequest.current?.abort();
+    const controller = new AbortController();
+    oauthRequest.current = controller;
     try {
-      const data = await apiRequest('/api/auth/google/url');
-      if (!data.configured) {
-        setOauthNotice({
-          provider: 'Google',
-          message: data.instructions || 'Faltan configurar credenciales GOOGLE_CLIENT_ID en las variables de entorno.'
-        });
-        return;
-      }
-      openOAuthPopup(data.url);
-    } catch {
-      setStepError('No se pudo conectar con Google.');
-    }
-  };
-
-  // Microsoft OAuth popup
-  const handleMicrosoftOAuth = async () => {
-    setStepError(null);
-    setOauthNotice(null);
-    try {
-      const data = await apiRequest('/api/auth/microsoft/url');
-      if (!data.configured) {
-        setOauthNotice({
-          provider: 'Microsoft',
-          message: data.instructions || 'Faltan configurar credenciales MICROSOFT_CLIENT_ID en las variables de entorno.'
-        });
-        return;
-      }
-      openOAuthPopup(data.url);
-    } catch {
-      setStepError('No se pudo conectar con Microsoft.');
-    }
-  };
-
-  const openOAuthPopup = (authUrl: string) => {
-    const width = 600;
-    const height = 700;
-    const left = window.screen.width / 2 - width / 2;
-    const top = window.screen.height / 2 - height / 2;
-    const popup = window.open(
-      authUrl,
-      'faros_oauth_signup',
-      `toolbar=no, location=no, directories=no, status=no, menubar=no, scrollbars=yes, resizable=yes, copyhistory=no, width=${width}, height=${height}, top=${top}, left=${left}`
-    );
-
-    if (!popup) { setStepError('Habilitá las ventanas emergentes para iniciar sesión.'); return; }
-    const handleMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin || event.source !== popup) return;
-      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
-        window.removeEventListener('message', handleMessage);
-        if (popup && !popup.closed) popup.close();
-        if (event.data.user) {
-          onSuccess(event.data.user, event.data.token, true);
-        }
-      } else if (event.data?.type === 'OAUTH_AUTH_NEW_USER') {
-        window.removeEventListener('message', handleMessage);
-        if (popup && !popup.closed) popup.close();
-        const temp = event.data.tempUser;
-        setName(temp.name || '');
-        setEmail(temp.email || '');
+      const result = await launchOAuth(provider, controller.signal);
+      if (result.type === 'not_configured') {
+        setOauthNotice({ provider: provider === 'google' ? 'Google' : 'Microsoft', message: result.instructions });
+      } else if (result.type === 'authenticated') {
+        onSuccess(result.user, result.token);
+      } else {
+        const temp = result.tempUser;
+        setName(temp.name);
+        setEmail(temp.email);
         setAuthProvider(temp.provider);
-        setSignupTicket(temp.signupTicket || null);
-        if (temp.picture) setOauthPicture(temp.picture);
+        setSignupTicket(temp.signupTicket);
+        setOauthPicture(temp.picture || null);
         setStep(2);
-      } else if (event.data?.type === 'OAUTH_AUTH_ERROR') {
-        window.removeEventListener('message', handleMessage);
-        if (popup && !popup.closed) popup.close();
-        setStepError(event.data.error || 'Error en autenticación externa.');
       }
-    };
-
-    window.addEventListener('message', handleMessage);
+    } catch (error: any) {
+      if (error?.name !== 'AbortError') setStepError(error?.message || 'No se pudo iniciar el acceso con el proveedor.');
+    } finally {
+      if (oauthRequest.current === controller) oauthRequest.current = null;
+    }
   };
+  const handleGoogleOAuth = () => handleOAuth('google');
+  const handleMicrosoftOAuth = () => handleOAuth('microsoft');
 
   // Step validation and transition
   const handleNextStep = () => {

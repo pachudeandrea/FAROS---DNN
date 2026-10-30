@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LighthouseLogo } from './LighthouseLogo';
 import { 
   X, 
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { UserAccount } from '../types';
 import { apiRequest } from '../utils/apiClient';
+import { launchOAuth, type OAuthProvider } from '../utils/oauthPopup';
 
 interface LoginFormProps {
   isOpen: boolean;
@@ -71,85 +72,37 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     }
   };
 
-  // Google OAuth Popup Trigger
-  const handleGoogleLogin = async () => {
+  const oauthRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => oauthRequest.current?.abort(), []);
+
+  const handleOAuthLogin = async (provider: OAuthProvider) => {
     setErrorMessage(null);
     setOauthNotice(null);
+    setOauthErrorProvider(null);
+    oauthRequest.current?.abort();
+    const controller = new AbortController();
+    oauthRequest.current = controller;
     try {
-      const data = await apiRequest('/api/auth/google/url');
-
-      if (!data.configured) {
-        setOauthNotice({
-          provider: 'Google',
-          message: data.instructions || 'Faltan configurar las credenciales GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en las variables de entorno.'
-        });
-        return;
-      }
-
-      openOAuthPopup(data.url);
-    } catch (err) {
-      setErrorMessage('No se pudo iniciar el flujo de autenticación con Google.');
-    }
-  };
-
-  // Microsoft OAuth Popup Trigger
-  const handleMicrosoftLogin = async () => {
-    setErrorMessage(null);
-    setOauthNotice(null);
-    try {
-      const data = await apiRequest('/api/auth/microsoft/url');
-
-      if (!data.configured) {
-        setOauthNotice({
-          provider: 'Microsoft',
-          message: data.instructions || 'Faltan configurar las credenciales MICROSOFT_CLIENT_ID y MICROSOFT_CLIENT_SECRET en las variables de entorno.'
-        });
-        return;
-      }
-
-      openOAuthPopup(data.url);
-    } catch (err) {
-      setErrorMessage('No se pudo iniciar el flujo de autenticación con Microsoft.');
-    }
-  };
-
-  // Generic OAuth popup helper with postMessage listener
-  const openOAuthPopup = (authUrl: string) => {
-    const width = 600;
-    const height = 700;
-    const left = window.screen.width / 2 - width / 2;
-    const top = window.screen.height / 2 - height / 2;
-
-    const popup = window.open(
-      authUrl,
-      'faros_oauth_popup',
-      `toolbar=no, location=no, directories=no, status=no, menubar=no, scrollbars=yes, resizable=yes, copyhistory=no, width=${width}, height=${height}, top=${top}, left=${left}`
-    );
-
-    if (!popup) {
-      setErrorMessage('El navegador bloqueó la ventana emergente. Por favor habilitá las ventanas emergentes para continuar.');
-      return;
-    }
-
-    const handleMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin || event.source !== popup) return;
-      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
-        window.removeEventListener('message', handleMessage);
-        onSuccess(event.data.user, event.data.token);
+      const result = await launchOAuth(provider, controller.signal);
+      if (result.type === 'not_configured') {
+        setOauthNotice({ provider: provider === 'google' ? 'Google' : 'Microsoft', message: result.instructions });
+      } else if (result.type === 'authenticated') {
+        onSuccess(result.user, result.token);
         onClose();
-      } else if (event.data?.type === 'OAUTH_AUTH_NEW_USER') {
-        window.removeEventListener('message', handleMessage);
-        onNeedsOnboarding(event.data.tempUser);
+      } else {
+        onNeedsOnboarding(result.tempUser);
         onClose();
-      } else if (event.data?.type === 'OAUTH_AUTH_ERROR' || event.data?.error) {
-        window.removeEventListener('message', handleMessage);
-        setErrorMessage(event.data.error || 'Error durante la autenticación con el proveedor.');
-        setOauthErrorProvider(event.data.provider || null);
       }
-    };
-
-    window.addEventListener('message', handleMessage);
+    } catch (error: any) {
+      if (error?.name === 'AbortError') return;
+      setErrorMessage(error?.message || 'No se pudo iniciar el acceso con el proveedor.');
+      setOauthErrorProvider(provider);
+    } finally {
+      if (oauthRequest.current === controller) oauthRequest.current = null;
+    }
   };
+  const handleGoogleLogin = () => handleOAuthLogin('google');
+  const handleMicrosoftLogin = () => handleOAuthLogin('microsoft');
 
   // Forgot password request
   const handleForgotSubmit = async (e: React.FormEvent) => {
