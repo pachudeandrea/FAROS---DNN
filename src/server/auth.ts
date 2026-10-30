@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { UserAccount, RiskProfile, Portfolio } from '../types';
-import { DEFAULT_PREFERENCES } from '../data/mockData';
+import { UserAccount, RiskProfile, Portfolio } from '../types/index.js';
+import { DEFAULT_PREFERENCES } from '../data/mockData.js';
 import { 
   trackEventNonBlocking, 
   isUserAdmin, 
@@ -16,7 +16,7 @@ import {
   createUserAndSessionDb,
   updateUserDb,
   saveAuthFlow, getAuthFlow, consumeAuthFlow
-} from './dbAdapter';
+} from './dbAdapter.js';
 
 // Accounts and sessions are always read from PostgreSQL, never process caches.
 export interface StoredUser extends UserAccount {

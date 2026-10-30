@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { closeDatabase, DatabaseError, transaction } from '../src/server/database';
+import { closeDatabase, DatabaseError, transaction } from '../src/server/database.js';
 
 try {
   const sql = await readFile(new URL('../migrations/001_auth_persistence.sql', import.meta.url), 'utf8');

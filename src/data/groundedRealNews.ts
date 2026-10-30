@@ -1,4 +1,4 @@
-import { NewsItem } from '../types';
+import { NewsItem } from '../types/index.js';
 
 /**
  * Curated dataset of 24 real grounded news items directly retrieved from real Argentine financial coverage.

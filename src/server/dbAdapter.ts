@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
-import type { StoredUser } from './auth';
-import { UserPlan, FunnelStage, UsageEvent, UsageEventType } from '../types';
-import { DatabaseError, query, transaction } from './database';
+import type { StoredUser } from './auth.js';
+import { UserPlan, FunnelStage, UsageEvent, UsageEventType } from '../types/index.js';
+import { DatabaseError, query, transaction } from './database.js';
 
 const hashToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
 const sessionKey = (token: string) => `sha256:${hashToken(token)}`;

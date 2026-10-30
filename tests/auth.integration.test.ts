@@ -1,15 +1,36 @@
-import { test } from 'node:test';
+import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { fork, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { randomBytes, createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdtemp, writeFile, symlink, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Pool } from 'pg';
 import bcrypt from 'bcryptjs';
 import { databaseConfig } from '../src/server/database';
 
 const root = new URL('../', import.meta.url);
 const children = new Set<ChildProcess>();
+let artifact: string;
+
+before(async () => {
+  artifact = await mkdtemp(path.join(tmpdir(), 'faros-native-api-'));
+  const compiler = spawn(process.execPath, ['node_modules/typescript/bin/tsc', '--project', 'tsconfig.server.json', '--outDir', artifact], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+  let output = '';
+  compiler.stdout.on('data', chunk => { output += chunk; });
+  compiler.stderr.on('data', chunk => { output += chunk; });
+  const [code] = await once(compiler, 'exit');
+  assert.equal(code, 0, output);
+  await writeFile(path.join(artifact, 'package.json'), JSON.stringify({ type: 'module' }));
+  await symlink(fileURLToPath(new URL('../node_modules', import.meta.url)), path.join(artifact, 'node_modules'), 'dir');
+});
+
+after(async () => {
+  for (const child of children) await stop(child);
+  if (artifact) await rm(artifact, { recursive: true, force: true });
+});
 
 function environment(url = '') {
   const env = { ...process.env };
@@ -22,8 +43,8 @@ function environment(url = '') {
 }
 
 async function start(url = '', overrides: Record<string, string> = {}) {
-  const child = fork(new URL('fixtures/api-server.ts', import.meta.url), [], {
-    cwd: root, execArgv: ['--import', 'tsx'], env: { ...environment(url), ...overrides }, silent: true
+  const child = fork(new URL('fixtures/native-api-server.mjs', import.meta.url), [pathToFileURL(path.join(artifact, 'api/index.js')).href], {
+    cwd: root, execArgv: [], env: { ...environment(url), ...overrides }, silent: true
   });
   children.add(child);
   let output = '';

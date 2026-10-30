@@ -4,8 +4,8 @@ import {
   NewsItem, 
   CalendarEvent, 
   UserPreferences 
-} from '../types';
-import { REAL_GROUNDED_NEWS } from './groundedRealNews';
+} from '../types/index.js';
+import { REAL_GROUNDED_NEWS } from './groundedRealNews.js';
 
 export const MOCK_ASSETS: Asset[] = [
   {

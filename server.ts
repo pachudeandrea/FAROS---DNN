@@ -1,12 +1,12 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { app } from './src/server/app';
+import { app } from './src/server/app.js';
 import {
   getNowAR,
   setSimulatedDayOffset,
   getSimulatedDayOffset
-} from './src/utils/dateAR';
+} from './src/utils/dateAR.js';
 import {
   buildCacheKey,
   resolveFinalUrl,
@@ -16,14 +16,14 @@ import {
   verifySourceUrl,
   purgeUrlVerificationCache,
   getArgentinaDateInfo
-} from './src/utils/urlResolver';
+} from './src/utils/urlResolver.js';
 import {
   getBondSchedule,
   validateSource,
   getVerifiedCalendarEvents,
   buildCalendarCacheKey
-} from './src/utils/calendarGrounding';
-import { checkReminders } from './src/utils/calendarReminders';
+} from './src/utils/calendarGrounding.js';
+import { checkReminders } from './src/utils/calendarReminders.js';
 
 // Re-export required functions as specified in deliverables
 export {

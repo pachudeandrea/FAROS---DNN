@@ -1,7 +1,7 @@
 import * as cheerio from 'cheerio';
-import { NewsItem, MediaCoverage } from '../types';
-import { verifySourceUrl, filterByFreshness, getArgentinaDateInfo, DISALLOWED_PATH_PATTERNS } from './urlResolver';
-import { areSourcesReportingSameEvent } from './sourceGrounding';
+import { NewsItem, MediaCoverage } from '../types/index.js';
+import { verifySourceUrl, filterByFreshness, getArgentinaDateInfo, DISALLOWED_PATH_PATTERNS } from './urlResolver.js';
+import { areSourcesReportingSameEvent } from './sourceGrounding.js';
 
 interface RawFeedItem {
   title: string;

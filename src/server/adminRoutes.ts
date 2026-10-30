@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { getSessionUser } from './auth';
+import { getSessionUser } from './auth.js';
 import { 
   isUserAdmin, 
   getAllUsers, 
@@ -7,8 +7,8 @@ import {
   getUsageEvents, 
   generateDemoAdminData,
   trackEventNonBlocking 
-} from './dbAdapter';
-import { UserPlan, FunnelStage } from '../types';
+} from './dbAdapter.js';
+import { UserPlan, FunnelStage } from '../types/index.js';
 
 /**
  * Server-side Admin Authorization Middleware

@@ -1,4 +1,4 @@
-import { MediaCoverage } from '../types';
+import { MediaCoverage } from '../types/index.js';
 
 export const DOMAIN_MEDIA_MAP: Record<string, string> = {
   'cronista.com': 'El Cronista',

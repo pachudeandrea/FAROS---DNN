@@ -1,6 +1,6 @@
-import { CalendarEvent } from '../types';
-import { getNowAR } from './dateAR';
-import { resolveFinalUrl } from './urlResolver';
+import { CalendarEvent } from '../types/index.js';
+import { getNowAR } from './dateAR.js';
+import { resolveFinalUrl } from './urlResolver.js';
 
 export const ALLOWED_CALENDAR_SOURCES = [
   'argentina.gob.ar',

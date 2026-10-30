@@ -12,6 +12,14 @@ La importación no crea carpetas ni conecta a la base. La ausencia de credencial
 
 El diseño y los estilos se conservaron. OAuth verifica estado/PKCE persistido y vinculado al navegador, consulta la identidad al proveedor y entrega tickets de registro de un solo uso. Enviar email, `googleSub` o `microsoftOid` desde el formulario no autentica a nadie. No se vinculan cuentas existentes automáticamente por coincidencia de correo. Los mensajes del popup verifican origen y ventana.
 
+## Arranque de la función: FUNCTION_INVOCATION_FAILED
+
+Se reprodujo con el empaquetador oficial `@vercel/node` 29.0.0 un fallo anterior a Express: los imports relativos sin extensión, válidos bajo `tsx` y el resolver de Vite, quedaban sin extensión en el JavaScript emitido. Node 24 rechazaba la entrada con `ERR_MODULE_NOT_FOUND` al intentar cargar `src/server/app`. Por eso un despliegue podía figurar Ready y fallar al invocar cualquier ruta API.
+
+La entrada y todos los módulos que importa el backend ahora usan rutas ESM explícitas `.js`, incluyendo `types/index.js` para imports de directorio. Los archivos fuente siguen siendo TypeScript. `tsconfig.server.json` comprueba ese grafo con `NodeNext` y forma parte de `npm run lint`, para detectar rutas que funcionen en el cargador local pero fallen en Node.
+
+Las pruebas de autenticación ahora compilan ese backend a JavaScript y lo arrancan con Node sin `tsx` ni otro cargador de TypeScript. Además se generó la función con el empaquetador oficial: antes de la corrección fallaba su importación; después importó y respondió por HTTP con JSON (401 para sesión anónima, 400 para registro inválido y 503 controlado sin conexión configurada). También se conectó ese artefacto oficial a un esquema PostgreSQL descartable: salud 200, registro 201 y recuperación de sesión 200. Esa reproducción local no sustituye comprobar `/api/health` en el nuevo despliegue real.
+
 ## Variables de Vercel
 
 | Variable | Configuración |
@@ -77,7 +85,7 @@ docker stop faros-auth-test
 
 La configuración sin contraseña es exclusiva de esa base local descartable; no usarla para un servidor compartido o público. Si una base de pruebas necesita contraseña, suministrarla mediante configuración segura.
 
-Se verifican TypeScript (`npm run lint`), compilación (`npm run build`) y pruebas funcionales (`npm test`). La suite cubre registro, duplicados/carrera concurrente, validación, hashes, cookies, login, sesión entre instancias y reinicios, cartera/preferencias, autorización, logout, eliminación/revocación, tickets OAuth, migración repetida y clasificación de errores. Las pruebas controladas de OAuth verifican el protocolo interno, no una autenticación real contra Google/Microsoft.
+Se verifican TypeScript (`npm run lint`), compilación (`npm run build`) y pruebas funcionales (`npm test`). Las instancias API de la suite ejecutan JavaScript compilado en Node sin cargador de TypeScript. La suite cubre registro, duplicados/carrera concurrente, validación, hashes, cookies, login, sesión entre instancias y reinicios, cartera/preferencias, autorización, logout, eliminación/revocación, tickets OAuth, migración repetida y clasificación de errores. Las pruebas controladas de OAuth verifican el protocolo interno, no una autenticación real contra Google/Microsoft.
 
 Resultado en este entorno: **18 pruebas aprobadas, 0 fallidas y 0 omitidas**, sobre PostgreSQL 17. También se comprobó el rollback del registro al fallar la primera sesión y el error 503 con una base inaccesible. TypeScript y compilación aprobaron; Vite mantiene una advertencia no bloqueante por tamaño del bundle. En desarrollo y con `dist` se verificaron `/`, `/admin`, `/cartera`, los recursos JS/CSS y las respuestas JSON del registro inválido y de sesión anónima. El calendario respondió sin credenciales de Gemini. Se ejecutó el comando real configurado en `vercel.json` sobre una base vacía mediante `POSTGRES_URL`, luego se repitió con cuentas/sesiones existentes comprobando que no cambiaran. Se verificó también que la ausencia de base o una conexión fallida detienen el build antes de Vite y no imprimen credenciales.
 
@@ -94,6 +102,7 @@ La publicación Git y la finalización del despliegue son operaciones distintas.
 - Entrada/rutas: `api/index.ts`, `vercel.json`, `server.ts`, `src/server/app.ts`.
 - Base/autenticación: `src/server/database.ts`, `src/server/dbAdapter.ts`, `src/server/auth.ts`, `src/server/adminRoutes.ts`, `migrations/001_auth_persistence.sql`, `scripts/migrate.ts`.
 - Cliente: `src/utils/apiClient.ts`, `src/components/SignUpWizard.tsx`, `src/components/LoginForm.tsx`, `src/App.tsx`.
+- Imports ESM de módulos compartidos: `src/data/mockData.ts`, `src/data/groundedRealNews.ts` y las utilidades importadas por el backend (sin modificar su contenido editorial).
 - Inicio opcional de audio: `src/server/ttsEngine.ts`.
-- Configuración/documentación: `package.json`, `package-lock.json` (solo el requisito de Node.js, sin cambiar dependencias), `.env.example`, este documento.
-- Pruebas: `tests/apiClient.test.ts`, `tests/auth.integration.test.ts`, `tests/fixtures/api-server.ts`.
+- Configuración/documentación: `tsconfig.server.json`, `package.json`, `package-lock.json` (solo el requisito de Node.js, sin cambiar dependencias), `.env.example`, este documento.
+- Pruebas: `tests/apiClient.test.ts`, `tests/auth.integration.test.ts`, `tests/fixtures/native-api-server.mjs`.

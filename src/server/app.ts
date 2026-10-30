@@ -1,11 +1,11 @@
 import express, { type RequestHandler } from 'express';
-import { DatabaseError, query } from './database';
+import { DatabaseError, query } from './database.js';
 import fs from 'fs';
 import path from 'path';
 import cookieParser from 'cookie-parser';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
-import { sanitizeGroundingSources } from '../utils/sourceGrounding';
+import { sanitizeGroundingSources } from '../utils/sourceGrounding.js';
 import {
   buildCacheKey,
   resolveFinalUrl,
@@ -15,21 +15,21 @@ import {
   verifySourceUrl,
   purgeUrlVerificationCache,
   getArgentinaDateInfo
-} from '../utils/urlResolver';
-import { getLiveVerifiedArgentineNews } from '../utils/liveFinancialNews';
+} from '../utils/urlResolver.js';
+import { getLiveVerifiedArgentineNews } from '../utils/liveFinancialNews.js';
 import {
   getNowAR,
   setSimulatedDayOffset,
   getSimulatedDayOffset
-} from '../utils/dateAR';
+} from '../utils/dateAR.js';
 import {
   getBondSchedule,
   validateSource,
   getVerifiedCalendarEvents,
   buildCalendarCacheKey
-} from '../utils/calendarGrounding';
-import { checkReminders } from '../utils/calendarReminders';
-import { NewsItem, CalendarEvent } from '../types';
+} from '../utils/calendarGrounding.js';
+import { checkReminders } from '../utils/calendarReminders.js';
+import { NewsItem, CalendarEvent } from '../types/index.js';
 import {
   handleGetMe,
   handleRegister,
@@ -46,7 +46,7 @@ import {
   handleGetMicrosoftAuthUrl,
   handleMicrosoftCallback,
   getSessionUser
-} from './auth';
+} from './auth.js';
 import {
   requireAdminMiddleware,
   handleAdminCheck,
@@ -58,13 +58,13 @@ import {
   handleAdminUsage,
   handleAdminPipelineHealth,
   handleAdminThesisFinancials
-} from './adminRoutes';
-import { trackEventNonBlocking, isUserAdmin } from './dbAdapter';
+} from './adminRoutes.js';
+import { trackEventNonBlocking, isUserAdmin } from './dbAdapter.js';
 import { 
   synthesizeArgentineSpeech, 
   prefetchAudioScripts, 
   computeScriptHash 
-} from './ttsEngine';
+} from './ttsEngine.js';
 
 dotenv.config();
 

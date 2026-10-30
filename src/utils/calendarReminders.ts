@@ -1,5 +1,5 @@
-import { CustomCalendarEvent, ReminderTiming } from '../types';
-import { NowAR, getNowAR } from './dateAR';
+import { CustomCalendarEvent, ReminderTiming } from '../types/index.js';
+import { NowAR, getNowAR } from './dateAR.js';
 
 export interface ReminderAlert {
   id: string; // unique reminder key: eventId_timing_date
