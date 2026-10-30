@@ -1,11 +1,13 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { closeDatabase, DatabaseError, transaction } from '../src/server/database.js';
 
 try {
-  const sql = await readFile(new URL('../migrations/001_auth_persistence.sql', import.meta.url), 'utf8');
+  const directory = new URL('../migrations/', import.meta.url);
+  const names = (await readdir(directory)).filter(name => /^\d+_[a-z0-9_]+\.sql$/.test(name)).sort();
+  const migrations = await Promise.all(names.map(name => readFile(new URL(name, directory), 'utf8')));
   await transaction(async client => {
     await client.query("SELECT pg_advisory_xact_lock(hashtext('faros_auth_migration'))");
-    await client.query(sql);
+    for (const sql of migrations) await client.query(sql);
   });
   console.log('[FAROS MIGRATION] Migración aplicada. Tablas y cuentas existentes conservadas.');
 } catch (error) {

@@ -35,7 +35,7 @@ after(async () => {
 function environment(url = '') {
   const env = { ...process.env };
   for (const name of Object.keys(env)) {
-    if (/^(DATABASE_URL|POSTGRES_|GOOGLE_|MICROSOFT_|GEMINI_API_KEY|APP_URL|ADMIN_EMAILS)/.test(name)) delete env[name];
+    if (/^(DATABASE_URL|POSTGRES_|GOOGLE_|MICROSOFT_|GEMINI_API_KEY|APP_URL|ADMIN_EMAILS|EMAIL_|BREVO_API_KEY|RESEND_API_KEY)/.test(name)) delete env[name];
   }
   return { ...env, DATABASE_URL: url, POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '',
     GEMINI_API_KEY: '', GOOGLE_CLIENT_ID: '', GOOGLE_CLIENT_SECRET: '', MICROSOFT_CLIENT_ID: '', MICROSOFT_CLIENT_SECRET: '',
@@ -120,7 +120,7 @@ test('la API arranca sin credenciales y responde errores JSON sin archivos local
   assert.equal((await request(api.url, '/api/auth/microsoft/url')).data.configured, false);
   const recovery = await request(api.url, '/api/auth/forgot-password', 'POST', { email: 'any@example.test' });
   assert.equal(recovery.status, 503); assert.equal(recovery.data.resetToken, undefined);
-  assert.equal((await request(api.url, '/api/auth/reset-password', 'POST', {})).status, 503);
+  assert.equal((await request(api.url, '/api/auth/reset-password', 'POST', {})).status, 400);
   assert.equal((await request(api.url, '/api/audio/synthesize', 'POST', { text: '' })).status, 400);
   const calendar = await request(api.url, '/api/calendar/events', 'POST', { tickers: [], portfolioId: 'test-no-credentials' });
   assert.equal(calendar.status, 200); assert.ok(Array.isArray(calendar.data.events));

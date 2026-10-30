@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { readFileSync } from 'node:fs';
 import { Pool, type PoolConfig, type PoolClient, type QueryResultRow } from 'pg';
+import { RequestError } from './requestError.js';
 
 export class DatabaseError extends Error {
   constructor(public code: string, message: string, public causeCode?: string) {
@@ -51,7 +52,7 @@ export function getPool(): Pool {
 }
 
 function databaseFailure(error: unknown): never {
-  if (error instanceof DatabaseError) throw error;
+  if (error instanceof DatabaseError || error instanceof RequestError) throw error;
   const code = (error as { code?: string })?.code;
   const safeCode = typeof code === 'string' && /^[A-Z0-9_]+$/i.test(code) ? code : undefined;
   if (code === '23505') throw new DatabaseError('EMAIL_EXISTS', 'Este correo electrónico ya se encuentra registrado en FAROS.', safeCode);

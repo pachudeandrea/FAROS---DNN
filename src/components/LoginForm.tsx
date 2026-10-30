@@ -9,11 +9,11 @@ import {
   ArrowRight, 
   AlertCircle, 
   CheckCircle2, 
-  Loader2,
-  KeyRound
+  Loader2
 } from 'lucide-react';
 import { UserAccount } from '../types';
 import { apiRequest } from '../utils/apiClient';
+import { EmailVerificationNotice } from './EmailVerificationNotice';
 
 interface LoginFormProps {
   isOpen: boolean;
@@ -35,14 +35,12 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
 
   // Forgot password flow state
   const [isForgotMode, setIsForgotMode] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
-  const [resetToken, setResetToken] = useState<string | null>(null);
-  const [newPassword, setNewPassword] = useState('');
-  const [isResetting, setIsResetting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +57,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       onSuccess(data.user, data.token);
       onClose();
     } catch (err: any) {
+      if (err?.code === 'EMAIL_NOT_VERIFIED') { setVerificationEmail(normalizedEmail); return; }
       setErrorMessage(err.message || 'No se pudo iniciar sesión.');
     } finally {
       setIsLoading(false);
@@ -78,39 +77,10 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         body: JSON.stringify({ email: forgotEmail.trim().toLowerCase() })
       });
       setForgotSuccess(data.message);
-      if (data.resetToken) {
-        setResetToken(data.resetToken);
-      }
     } catch (err: any) {
       setErrorMessage(err.message || 'Error al procesar la solicitud.');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  // Reset password submit
-  const handleResetSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!resetToken || !newPassword) return;
-    setIsResetting(true);
-    setErrorMessage(null);
-
-    try {
-      const data = await apiRequest('/api/auth/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: resetToken, newPassword })
-      });
-
-      setForgotSuccess(data.message);
-      setIsForgotMode(false);
-      setResetToken(null);
-      setPassword(newPassword);
-      setEmail(forgotEmail);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Error al restablecer contraseña.');
-    } finally {
-      setIsResetting(false);
     }
   };
 
@@ -158,7 +128,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             </div>
           )}
 
-          {!isForgotMode ? (
+          {verificationEmail ? <EmailVerificationNotice email={verificationEmail} onLogin={() => setVerificationEmail(null)} /> : !isForgotMode ? (
             <>
               {/* Email & Password Form */}
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -257,34 +227,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                     <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
                     <span>{forgotSuccess}</span>
                   </div>
-
-                  {resetToken && (
-                    <form onSubmit={handleResetSubmit} className="space-y-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-950">
-                        <KeyRound className="w-4 h-4 text-emerald-800" />
-                        <span>Restablecer contraseña inmediatamente</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500">
-                        Enlace de recuperación verificado. Ingresá tu nueva clave (mínimo 8 caracteres):
-                      </p>
-                      <input
-                        type="password"
-                        required
-                        minLength={8}
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Nueva contraseña"
-                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-800 bg-white"
-                      />
-                      <button
-                        type="submit"
-                        disabled={isResetting}
-                        className="w-full py-2 rounded-xl bg-emerald-800 text-white text-xs font-bold hover:bg-emerald-900 transition-colors"
-                      >
-                        {isResetting ? 'Actualizando...' : 'Guardar nueva contraseña'}
-                      </button>
-                    </form>
-                  )}
 
                   <button
                     type="button"

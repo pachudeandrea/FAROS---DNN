@@ -1,5 +1,6 @@
 import express, { type RequestHandler } from 'express';
 import { DatabaseError, query } from './database.js';
+import { RequestError } from './requestError.js';
 import fs from 'fs';
 import path from 'path';
 import cookieParser from 'cookie-parser';
@@ -37,6 +38,8 @@ import {
   handleLogout,
   handleForgotPassword,
   handleResetPassword,
+  handleVerifyEmail,
+  handleResendVerification,
   handleUpdateUser,
   handleDeleteAccount,
   handleSaveDraft,
@@ -537,6 +540,8 @@ app.post('/api/auth/login', asyncRoute(handleLogin));
 app.post('/api/auth/logout', asyncRoute(handleLogout));
 app.post('/api/auth/forgot-password', asyncRoute(handleForgotPassword));
 app.post('/api/auth/reset-password', asyncRoute(handleResetPassword));
+app.post('/api/auth/verify-email', asyncRoute(handleVerifyEmail));
+app.post('/api/auth/resend-verification', asyncRoute(handleResendVerification));
 app.put('/api/auth/user', asyncRoute(handleUpdateUser));
 app.delete('/api/auth/account', asyncRoute(handleDeleteAccount));
 app.post('/api/auth/draft', asyncRoute(handleSaveDraft));
@@ -652,6 +657,7 @@ app.use('/api', (_req, res) => res.status(404).json({ code: 'API_NOT_FOUND', err
 // Express 4 does not forward rejected controller promises automatically.
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (res.headersSent) return next(err);
+  if (err instanceof RequestError) return res.status(err.status).json({ code: err.code, error: err.message });
   if (err instanceof DatabaseError) {
     const status = err.code === 'EMAIL_EXISTS' ? 409 : err.code === 'USER_NOT_FOUND' ? 401 : err.code === 'OAUTH_PROOF_INVALID' ? 401 : 503;
     return res.status(status).json({ code: err.code, error: err.message });

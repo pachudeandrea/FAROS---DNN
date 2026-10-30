@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { RiskProfile, UserAccount, OnboardingDraft } from '../types';
 import { apiRequest } from '../utils/apiClient';
+import { EmailVerificationNotice } from './EmailVerificationNotice';
 
 interface SignUpWizardProps {
   isOpen: boolean;
@@ -74,6 +75,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
   // UI status
   const [isLoading, setIsLoading] = useState(false);
   const [stepError, setStepError] = useState<string | null>(null);
+  const [pendingVerification, setPendingVerification] = useState<{ email: string; message: string } | null>(null);
 
   // Load draft from localStorage on mount
   useEffect(() => {
@@ -221,10 +223,21 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
 
     try {
       const data = await apiRequest('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) });
+      if (data.success && data.verificationRequired) {
+        try { localStorage.removeItem('faros_onboarding_draft'); } catch {}
+        setPassword(''); setConfirmPassword('');
+        setPendingVerification({ email: normalizedEmail, message: data.message });
+        return;
+      }
       if (!data.success || !data.user) throw new Error('El servidor no confirmó la creación de la cuenta.');
       try { localStorage.removeItem('faros_onboarding_draft'); } catch {}
       onSuccess(data.user, data.token, true);
     } catch (err: any) {
+      if (err?.code === 'EMAIL_DELIVERY_FAILED') {
+        setPassword(''); setConfirmPassword('');
+        setPendingVerification({ email: normalizedEmail, message: 'La cuenta quedó pendiente de confirmación. No se pudo enviar el correo; podés solicitar otro enlace.' });
+        return;
+      }
       setStepError(err?.message || 'No se pudo completar el registro.');
     } finally {
       setIsLoading(false);
@@ -232,6 +245,13 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
   };
 
   if (!isOpen) return null;
+
+  if (pendingVerification) return <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
+    <div className="relative bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl">
+      <button onClick={onClose} aria-label="Cerrar" className="absolute right-4 top-4 text-slate-400 cursor-pointer"><X className="w-5 h-5" /></button>
+      <EmailVerificationNotice email={pendingVerification.email} initialMessage={pendingVerification.message} onLogin={onSwitchToLogin} />
+    </div>
+  </div>;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">

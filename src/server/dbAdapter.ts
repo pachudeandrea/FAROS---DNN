@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { StoredUser } from './auth.js';
 import { UserPlan, FunnelStage, UsageEvent, UsageEventType } from '../types/index.js';
 import { DatabaseError, query, transaction } from './database.js';
+import { RequestError } from './requestError.js';
 
 const hashToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
 const sessionKey = (token: string) => `sha256:${hashToken(token)}`;
@@ -74,10 +75,13 @@ export async function deleteUserDb(id: string): Promise<void> {
   });
 }
 
-export async function saveSessionDb(token: string, userId: string, expiresAt: number): Promise<void> {
+export async function saveSessionDb(token: string, userId: string, expiresAt: number, expectedPasswordHash?: string): Promise<void> {
   await transaction(async client => {
-    const user = await client.query('SELECT id FROM faros_users WHERE id = $1 FOR UPDATE', [userId]);
+    const user = await client.query('SELECT id, data FROM faros_users WHERE id = $1 FOR UPDATE', [userId]);
     if (!user.rowCount) throw new DatabaseError('USER_NOT_FOUND', 'La cuenta ya no existe.');
+    if (expectedPasswordHash !== undefined && user.rows[0].data.passwordHash !== expectedPasswordHash) {
+      throw new RequestError('CREDENTIALS_CHANGED', 'La contraseña cambió durante el inicio de sesión. Volvé a ingresar tu contraseña actual.', 401);
+    }
     await client.query('INSERT INTO faros_sessions (token, user_id, expires_at, created_at) VALUES ($1, $2, $3, $4)', [sessionKey(token), userId, expiresAt, Date.now()]);
   });
 }
