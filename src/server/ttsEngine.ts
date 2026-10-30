@@ -4,13 +4,25 @@ import crypto from 'crypto';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 
 const ROOT_DIR = process.cwd();
-const AUDIO_CACHE_DIR = path.resolve(ROOT_DIR, 'audio_cache');
-const VOICE_ARGENTINA = 'es-AR-ElenaNeural';
 
-// Ensure audio cache directory exists
-if (!fs.existsSync(AUDIO_CACHE_DIR)) {
-  fs.mkdirSync(AUDIO_CACHE_DIR, { recursive: true });
+function getSafeAudioCacheDir(): string {
+  const candidates = [
+    path.join('/tmp', 'faros_audio_cache'),
+    path.resolve(ROOT_DIR, 'audio_cache')
+  ];
+  for (const dir of candidates) {
+    try {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      return dir;
+    } catch {}
+  }
+  return path.join('/tmp', 'faros_audio_cache');
 }
+
+const AUDIO_CACHE_DIR = getSafeAudioCacheDir();
+const VOICE_ARGENTINA = 'es-AR-ElenaNeural';
 
 export interface SynthesisResult {
   success: boolean;

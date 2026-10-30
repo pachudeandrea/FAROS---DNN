@@ -111,10 +111,10 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onStartTour}
               title="Iniciar tutorial interactivo de FAROS"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-950 bg-emerald-50 hover:bg-emerald-100 rounded-full border border-emerald-200/90 transition-all cursor-pointer shadow-2xs"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold text-emerald-950 bg-emerald-50 hover:bg-emerald-100 rounded-full border border-emerald-200/90 transition-all cursor-pointer shadow-2xs"
             >
               <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
-              <span>Tutorial</span>
+              <span className="hidden xs:inline sm:inline">Tutorial</span>
             </button>
           )}
 

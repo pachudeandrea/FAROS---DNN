@@ -5,14 +5,22 @@ import fs from 'fs';
 import path from 'path';
 import { UserAccount, RiskProfile, Portfolio, OnboardingDraft, UserPreferences } from '../types';
 import { DEFAULT_PREFERENCES } from '../data/mockData';
-import { trackEventNonBlocking, isUserAdmin } from './dbAdapter';
+import { 
+  trackEventNonBlocking, 
+  isUserAdmin, 
+  saveUserDb, 
+  deleteUserDb, 
+  loadAllUsersFromStorage, 
+  saveSessionDb, 
+  deleteSessionDb 
+} from './dbAdapter';
 
 const ROOT_DIR = process.cwd();
 
 function getWritableDataDir(): string {
   const candidates = [
-    path.resolve(ROOT_DIR, 'data'),
-    path.join('/tmp', 'faros_data')
+    path.join('/tmp', 'faros_data'),
+    path.resolve(ROOT_DIR, 'data')
   ];
 
   for (const dir of candidates) {
@@ -26,7 +34,7 @@ function getWritableDataDir(): string {
       return dir;
     } catch {}
   }
-  return path.resolve(ROOT_DIR, 'data');
+  return '/tmp';
 }
 
 const DATA_DIR = getWritableDataDir();
@@ -72,94 +80,49 @@ const userDrafts = new Map<string, OnboardingDraft>();
 const oauthStates = new Map<string, OAuthStateRecord>();
 
 /**
- * Remote Vercel KV / Upstash Redis synchronization helper
+ * Saves current in-memory database to persistent storage (PostgreSQL + JSON fallback)
  */
-async function syncFromRemoteKV(): Promise<boolean> {
-  const kvUrl = process.env.KV_REST_API_URL;
-  const kvToken = process.env.KV_REST_API_TOKEN;
-  if (!kvUrl || !kvToken) return false;
-  try {
-    const res = await fetch(`${kvUrl}/get/faros_users_db`, {
-      headers: { Authorization: `Bearer ${kvToken}` }
+export function persistDatabase(targetUser?: StoredUser): void {
+  // If targetUser is given, persist specifically to PostgreSQL/storage
+  if (targetUser) {
+    saveUserDb(targetUser).catch(err => {
+      console.warn('[AUTH DB] Error syncing user to persistent storage:', err);
     });
-    if (res.ok) {
-      const data = await res.json();
-      const rawResult = data?.result;
-      const list: StoredUser[] = typeof rawResult === 'string' ? JSON.parse(rawResult) : rawResult;
-      if (Array.isArray(list) && list.length > 0) {
-        for (const u of list) indexUser(u);
-        console.log(`[AUTH DB] Synchronized ${list.length} user(s) from Vercel KV.`);
-        return true;
-      }
-    }
-  } catch (err) {
-    console.warn('[AUTH DB] Remote KV fetch warning:', err);
   }
-  return false;
-}
 
-function syncToRemoteKV(): void {
-  const kvUrl = process.env.KV_REST_API_URL;
-  const kvToken = process.env.KV_REST_API_TOKEN;
-  if (!kvUrl || !kvToken) return;
-  const userList = Array.from(usersById.values());
-  fetch(`${kvUrl}/set/faros_users_db`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${kvToken}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(JSON.stringify(userList))
-  }).catch(err => {
-    console.warn('[AUTH DB] Remote KV write warning:', err);
-  });
-}
-
-/**
- * Saves current in-memory database to persistent JSON file on disk and remote KV if configured
- */
-function persistDatabase(): void {
-  const userList = Array.from(usersById.values());
-  let wrote = false;
-
-  // 1. Try primary DB_PATH
   try {
-    const dir = path.dirname(DB_PATH);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const userList = Array.from(usersById.values());
     fs.writeFileSync(DB_PATH, JSON.stringify(userList, null, 2), 'utf-8');
-    wrote = true;
   } catch (err) {
-    console.warn('[AUTH DB] Primary save failed, attempting fallback write:', err);
+    try {
+      const fallbackDir = path.join('/tmp', 'faros_data');
+      if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
+      fs.writeFileSync(path.join(fallbackDir, 'users_db.json'), JSON.stringify(Array.from(usersById.values()), null, 2), 'utf-8');
+    } catch {}
   }
-
-  // 2. Try fallback in /tmp/faros_data (always writable in Vercel Serverless)
-  try {
-    const fallbackDir = path.join('/tmp', 'faros_data');
-    if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
-    fs.writeFileSync(path.join(fallbackDir, 'users_db.json'), JSON.stringify(userList, null, 2), 'utf-8');
-    wrote = true;
-  } catch {}
-
-  // 3. Try repo data/ directory if writable
-  try {
-    const repoData = path.resolve(ROOT_DIR, 'data', 'users_db.json');
-    if (repoData !== DB_PATH) {
-      fs.writeFileSync(repoData, JSON.stringify(userList, null, 2), 'utf-8');
-    }
-  } catch {}
-
-  // 4. Remote KV sync if configured
-  syncToRemoteKV();
 }
 
 /**
- * Loads database from persistent disk file or remote KV
+ * Loads database from persistent storage (PostgreSQL first, then candidate disk paths)
  */
-function loadDatabase(): void {
+export async function loadDatabase(): Promise<void> {
   usersById.clear();
   usersByEmail.clear();
   usersByGoogleSub.clear();
   usersByMicrosoftOid.clear();
+
+  try {
+    const persistentList = await loadAllUsersFromStorage();
+    if (Array.isArray(persistentList) && persistentList.length > 0) {
+      for (const u of persistentList) {
+        indexUser(u);
+      }
+      console.log(`[AUTH DB] Loaded ${persistentList.length} user(s) from primary database storage.`);
+      return;
+    }
+  } catch (err) {
+    console.warn('[AUTH DB] Primary storage load warning:', err);
+  }
 
   const candidatePaths = [
     DB_PATH,
@@ -167,7 +130,6 @@ function loadDatabase(): void {
     path.join('/tmp', 'faros_data', 'users_db.json')
   ];
 
-  let loaded = false;
   for (const p of candidatePaths) {
     if (fs.existsSync(p)) {
       try {
@@ -178,8 +140,7 @@ function loadDatabase(): void {
             indexUser(u);
           }
           console.log(`[AUTH DB] Loaded ${list.length} user(s) from ${p}.`);
-          loaded = true;
-          break;
+          return;
         }
       } catch (err) {
         console.warn(`[AUTH DB] Error loading ${p}:`, err);
@@ -187,13 +148,8 @@ function loadDatabase(): void {
     }
   }
 
-  if (!loaded) {
-    // Initial seed accounts for testing real multi-user isolation
-    seedInitialTestAccounts();
-  }
-
-  // Non-blocking sync from remote KV if available
-  syncFromRemoteKV().catch(() => {});
+  // Initial seed accounts for testing real multi-user isolation
+  seedInitialTestAccounts();
 }
 
 /**
@@ -271,49 +227,15 @@ function sanitizeUser(user: StoredUser): UserAccount {
   safeUser.isAdmin = isUserAdmin(user.email);
   return safeUser;
 }
-const SESSION_SECRET = process.env.SESSION_SECRET || 'faros_secure_session_key_v1_2026';
 
 /**
- * Extracts session user from cookie or Authorization header.
- * Validates cryptographically signed HMAC token so sessions survive serverless cold starts.
+ * Extracts session user from cookie or Authorization header
  */
 export function getSessionUser(req: Request): UserAccount | null {
-  const rawHeader = req.headers.authorization;
-  const token = req.cookies?.faros_session || (rawHeader?.startsWith('Bearer ') ? rawHeader.slice(7) : rawHeader);
+  const token = req.cookies?.faros_session || req.headers.authorization?.replace(/^Bearer\s+/i, '');
   if (!token) return null;
 
-  // 1. Check in-memory session cache first
-  let session = sessions.get(token);
-
-  // 2. If not found in memory (e.g. fresh lambda instance or restart), verify HMAC token
-  if (!session && token.includes('.')) {
-    try {
-      const parts = token.split('.');
-      if (parts.length === 2) {
-        const [payloadB64, signature] = parts;
-        const expectedSig = crypto.createHmac('sha256', SESSION_SECRET).update(payloadB64).digest('base64url');
-        
-        // Timing-safe comparison to prevent timing attacks
-        const sigBuffer = Buffer.from(signature);
-        const expectedBuffer = Buffer.from(expectedSig);
-        if (sigBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(sigBuffer, expectedBuffer)) {
-          const payloadJson = Buffer.from(payloadB64, 'base64url').toString('utf-8');
-          const parsed = JSON.parse(payloadJson);
-          if (parsed && parsed.userId && parsed.expiresAt && parsed.expiresAt > Date.now()) {
-            session = {
-              userId: parsed.userId,
-              createdAt: parsed.createdAt || Date.now(),
-              expiresAt: parsed.expiresAt
-            };
-            sessions.set(token, session);
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('[AUTH SESSION] Error verifying HMAC token:', err);
-    }
-  }
-
+  const session = sessions.get(token);
   if (!session) return null;
 
   if (Date.now() > session.expiresAt) {
@@ -321,36 +243,25 @@ export function getSessionUser(req: Request): UserAccount | null {
     return null;
   }
 
-  let user = usersById.get(session.userId);
-  if (!user) {
-    // If user not in memory yet, reload database from disk/KV
-    loadDatabase();
-    user = usersById.get(session.userId);
-  }
-
+  const user = usersById.get(session.userId);
   if (!user) return null;
 
   return sanitizeUser(user);
 }
 
 /**
- * Creates new HMAC-SHA256 signed session token
- * Self-verifying across serverless restarts without requiring persistent server memory
+ * Creates new session token
  */
 export function createSession(userId: string, rememberMe = true): string {
+  const token = crypto.randomBytes(32).toString('hex');
   const duration = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
-  const now = Date.now();
-  const sessionData = {
+  const expiresAt = Date.now() + duration;
+  sessions.set(token, {
     userId,
-    createdAt: now,
-    expiresAt: now + duration
-  };
-
-  const payloadB64 = Buffer.from(JSON.stringify(sessionData)).toString('base64url');
-  const signature = crypto.createHmac('sha256', SESSION_SECRET).update(payloadB64).digest('base64url');
-  const token = `${payloadB64}.${signature}`;
-
-  sessions.set(token, sessionData);
+    createdAt: Date.now(),
+    expiresAt
+  });
+  saveSessionDb(token, userId, expiresAt).catch(() => {});
   return token;
 }
 
@@ -450,7 +361,9 @@ export async function handleRegister(req: Request, res: Response) {
     if (googleSub && !existingUser.googleSub) existingUser.googleSub = googleSub;
     if (microsoftOid && !existingUser.microsoftOid) existingUser.microsoftOid = microsoftOid;
     if (picture && !existingUser.picture) existingUser.picture = picture;
-    persistDatabase();
+    existingUser.updatedAt = new Date().toISOString();
+    indexUser(existingUser);
+    persistDatabase(existingUser);
 
     const sessionToken = createSession(existingUser.id, true);
     setSessionCookie(res, sessionToken, true);
@@ -546,7 +459,7 @@ export async function handleRegister(req: Request, res: Response) {
   };
 
   indexUser(newUser);
-  persistDatabase();
+  persistDatabase(newUser);
 
   // Non-blocking telemetry event
   trackEventNonBlocking('signup', {
@@ -644,11 +557,13 @@ export function handleLogout(req: Request, res: Response) {
   const token = req.cookies?.faros_session || req.headers.authorization?.replace(/^Bearer\s+/i, '');
   if (token) {
     sessions.delete(token);
+    deleteSessionDb(token).catch(() => {});
   }
   res.clearCookie('faros_session', {
     httpOnly: true,
     secure: true,
-    sameSite: 'none'
+    sameSite: 'lax',
+    path: '/'
   });
   return res.json({ success: true, message: 'Sesión cerrada correctamente.' });
 }
@@ -701,8 +616,9 @@ export async function handleResetPassword(req: Request, res: Response) {
   }
 
   user.passwordHash = await bcrypt.hash(newPassword, 10);
+  user.updatedAt = new Date().toISOString();
   passwordResetTokens.delete(token);
-  persistDatabase();
+  persistDatabase(user);
 
   return res.json({
     success: true,
@@ -732,7 +648,7 @@ export function handleUpdateUser(req: Request, res: Response) {
   if (preferences) target.preferences = preferences;
   target.updatedAt = new Date().toISOString();
 
-  persistDatabase();
+  persistDatabase(target);
 
   return res.json({
     success: true,
@@ -757,19 +673,22 @@ export function handleDeleteAccount(req: Request, res: Response) {
     if (target.googleSub) usersByGoogleSub.delete(target.googleSub);
     if (target.microsoftOid) usersByMicrosoftOid.delete(target.microsoftOid);
     userDrafts.delete(target.email.toLowerCase());
+    deleteUserDb(target.id).catch(() => {});
     persistDatabase();
   }
 
   for (const [token, session] of sessions.entries()) {
     if (session.userId === currentUser.id) {
       sessions.delete(token);
+      deleteSessionDb(token).catch(() => {});
     }
   }
 
   res.clearCookie('faros_session', {
     httpOnly: true,
     secure: true,
-    sameSite: 'none'
+    sameSite: 'lax',
+    path: '/'
   });
 
   return res.json({
@@ -946,7 +865,7 @@ export async function handleGoogleCallback(req: Request, res: Response) {
       if (picture && !existingUser.picture) existingUser.picture = picture;
       existingUser.updatedAt = new Date().toISOString();
       indexUser(existingUser);
-      persistDatabase();
+      persistDatabase(existingUser);
 
       const sessionToken = createSession(existingUser.id, true);
       setSessionCookie(res, sessionToken, true);
@@ -1126,7 +1045,7 @@ export async function handleMicrosoftCallback(req: Request, res: Response) {
       if (!existingUser.microsoftOid) existingUser.microsoftOid = oid;
       existingUser.updatedAt = new Date().toISOString();
       indexUser(existingUser);
-      persistDatabase();
+      persistDatabase(existingUser);
 
       const sessionToken = createSession(existingUser.id, true);
       setSessionCookie(res, sessionToken, true);

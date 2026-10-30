@@ -424,7 +424,7 @@ export default function App() {
         if (storedToken) {
           headers['Authorization'] = `Bearer ${storedToken}`;
         }
-        const res = await fetch('/api/auth/me', { headers });
+        const res = await fetch('/api/auth/me', { headers, credentials: 'include' });
         if (res.ok) {
           const data = await res.json();
           if (data.authenticated && data.user && isMounted) {
@@ -450,7 +450,12 @@ export default function App() {
     // CRITICAL: Stop and clean up all audio upon logging out
     audioController.stopAll('logout');
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      const storedToken = localStorage.getItem('faros_session_token');
+      await fetch('/api/auth/logout', { 
+        method: 'POST',
+        headers: storedToken ? { 'Authorization': `Bearer ${storedToken}` } : {},
+        credentials: 'include'
+      });
     } catch {}
     localStorage.removeItem('faros_session_token');
     clearActiveLocalSession();
@@ -468,7 +473,8 @@ export default function App() {
       const storedToken = localStorage.getItem('faros_session_token');
       await fetch('/api/auth/account', {
         method: 'DELETE',
-        headers: storedToken ? { 'Authorization': `Bearer ${storedToken}` } : {}
+        headers: storedToken ? { 'Authorization': `Bearer ${storedToken}` } : {},
+        credentials: 'include'
       });
     } catch {}
     localStorage.removeItem('faros_session_token');
@@ -635,9 +641,58 @@ export default function App() {
     preferences
   ]);
 
-  // Handler for saving portfolio settings
+  // Handler for saving portfolio settings and syncing to backend database
   const handleSavePortfolioSettings = (updated: Portfolio) => {
     setPortfolios(prev => prev.map(p => p.id === updated.id ? updated : p));
+    if (currentUser) {
+      const updatedUser: UserAccount = {
+        ...currentUser,
+        portfolio: updated,
+        profile: updated.profile
+      };
+      setCurrentUser(updatedUser);
+      saveUserToVault(updatedUser);
+
+      const storedToken = localStorage.getItem('faros_session_token');
+      fetch('/api/auth/user', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(storedToken ? { 'Authorization': `Bearer ${storedToken}` } : {})
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          portfolio: updated,
+          profile: updated.profile
+        })
+      }).catch(() => {});
+    }
+  };
+
+  // Handler for saving preferences and syncing to backend database
+  const handleSavePreferences = (updated: UserPreferences) => {
+    setPreferences(updated);
+    if (currentUser) {
+      const updatedUser: UserAccount = {
+        ...currentUser,
+        preferences: updated
+      };
+      setCurrentUser(updatedUser);
+      saveUserToVault(updatedUser);
+
+      const storedToken = localStorage.getItem('faros_session_token');
+      fetch('/api/auth/user', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(storedToken ? { 'Authorization': `Bearer ${storedToken}` } : {})
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          preferences: updated
+        })
+      }).catch(() => {});
+    }
   };
 
   // Toggle impact filter (toggles off if already active)
@@ -1083,7 +1138,7 @@ export default function App() {
             onSelectPortfolio={(p) => setActivePortfolioId(p.id)}
             onSavePortfolio={handleSavePortfolioSettings}
             preferences={preferences}
-            onSavePreferences={(upd) => setPreferences(upd)}
+            onSavePreferences={handleSavePreferences}
             onOpenCreateNew={() => setShowOnboarding(true)}
             currentUser={currentUser}
             onLogout={handleLogout}
@@ -1269,12 +1324,14 @@ export default function App() {
         </div>
       )}
 
-      {/* 7. Comprehensive 3-Stage Guided Interactive Tour */}
+      {/* 7. Comprehensive 3-Stage Guided Interactive Tour (15 Steps) */}
       <InteractiveTour
         isActive={isTourActive}
         onClose={() => setIsTourActive(false)}
         currentTab={currentTab}
         onSelectTab={handleSelectTab}
+        onOpenNewsDetail={(item) => setSelectedNews(item)}
+        sampleNews={newsList[0] || REAL_GROUNDED_NEWS[0]}
       />
     </div>
   );

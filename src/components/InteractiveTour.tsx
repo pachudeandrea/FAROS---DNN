@@ -1,18 +1,12 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  ArrowRight, 
-  ArrowLeft, 
   X, 
   Sparkles, 
   Check, 
-  Wallet, 
-  Newspaper, 
-  Calendar as CalendarIcon, 
-  ChevronRight,
-  TrendingUp,
-  ShieldCheck,
-  Info
+  Minimize2,
+  Maximize2
 } from 'lucide-react';
+import { NewsItem } from '../types';
 
 export interface TourStep {
   stage: 1 | 2 | 3;
@@ -23,319 +17,169 @@ export interface TourStep {
   title: string;
   description: string;
   tabRequired: 'settings' | 'feed' | 'calendar';
-  exampleSnippet?: React.ReactNode;
   isStageEnd?: boolean;
   nextStageName?: string;
 }
 
 export const TOUR_STEPS: TourStep[] = [
-  // ================= STAGE 1: MI CARTERA (9 Steps) =================
+  // ================= ETAPA 1: MI CARTERA (5 Pasos) =================
   {
     stage: 1,
     stageName: 'Mi Cartera',
     stepNumber: 1,
-    totalInStage: 9,
+    totalInStage: 5,
     targetId: 'portfolio-title',
     tabRequired: 'settings',
-    title: 'Presentación de Mi Cartera',
-    description: 'Este es tu espacio personal de inversión. Acá podés agregar los activos que querés monitorear y configurar qué información te interesa recibir.'
+    title: 'Tu Cartera',
+    description: 'Acá gestionás tus activos y personalizás el seguimiento. Podés empezar con tu cartera vacía o sumar los que operás.'
   },
   {
     stage: 1,
     stageName: 'Mi Cartera',
     stepNumber: 2,
-    totalInStage: 9,
+    totalInStage: 5,
     targetId: 'portfolio-search',
     tabRequired: 'settings',
-    title: 'Cómo agregar tickers a tu cartera',
-    description: 'Podés buscar por ticker o nombre del activo (acciones como YPFD o GGAL, bonos soberanos como AL30 y GD30, CEDEARs de Apple y Nvidia, o divisas). Al escribir aparecen sugerencias automáticas. Podés sumar todos los activos que desees, sin obligación de hacerlo ahora.',
-    exampleSnippet: (
-      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-700 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">YPFD</span>
-          <span>YPF S.A. · Renta Variable</span>
-        </div>
-        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">Ejemplo demostrativo</span>
-      </div>
-    )
+    title: 'Buscador y posiciones',
+    description: 'Buscá un activo como YPFD o AL30 y definí LONG o SHORT antes de sumarlo.'
   },
   {
     stage: 1,
     stageName: 'Mi Cartera',
     stepNumber: 3,
-    totalInStage: 9,
-    targetId: 'portfolio-long-short-demo',
+    totalInStage: 5,
+    targetId: 'portfolio-assets-list',
     tabRequired: 'settings',
-    title: 'Posición LONG o SHORT',
-    description: 'Por defecto, tus activos se agregan como LONG (te beneficiás de una suba). Si tenés una posición SHORT (te beneficiás de una baja o cobertura), podés seleccionarla antes de agregar el activo. FAROS utiliza esta información para interpretar cómo las noticias afectan tu cartera sin alterar el hecho financiero original.',
-    exampleSnippet: (
-      <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200 text-[11px] text-slate-800 space-y-1.5">
-        <div className="flex items-center gap-2 font-mono font-bold text-xs">
-          <span>YPFD</span>
-          <span className="text-[10px] px-2 py-0.2 rounded bg-blue-600 text-white font-sans">LONG ✓</span>
-          <span className="text-[10px] px-2 py-0.2 rounded bg-amber-400 text-amber-950 font-sans border border-amber-500/60">SHORT</span>
-        </div>
-        <p className="text-[10px] text-slate-600">LONG viene seleccionado por defecto. Podés cambiarlo con un clic antes o después de incorporarlo.</p>
-      </div>
-    )
+    title: 'Administrar activos',
+    description: 'Probá cambiar entre LONG y SHORT o eliminar un activo. También podés gestionar distintas carteras.'
   },
   {
     stage: 1,
     stageName: 'Mi Cartera',
     stepNumber: 4,
-    totalInStage: 9,
-    targetId: 'portfolio-assets-list',
+    totalInStage: 5,
+    targetId: 'portfolio-profile',
     tabRequired: 'settings',
-    title: 'Administrar tus activos',
-    description: 'En esta grilla podés visualizar todos tus tickers incorporados, identificar cuáles están en LONG (azul) y cuáles en SHORT (amarillo), cambiar el tipo de posición con un solo clic o eliminar activos. Tu cartera puede tener los instrumentos que quieras o quedar vacía.'
+    title: 'Perfil y temas clave',
+    description: 'Elegí tu perfil inversor y activá las temáticas de mercado que te interesa priorizar.'
   },
   {
     stage: 1,
     stageName: 'Mi Cartera',
     stepNumber: 5,
-    totalInStage: 9,
-    targetId: 'portfolio-cards',
-    tabRequired: 'settings',
-    title: 'Carteras disponibles',
-    description: 'Acá podés visualizar tu cartera activa, alternar entre carteras existentes con un clic y utilizar "Crear nueva cartera" para separar diferentes estrategias de inversión.'
-  },
-  {
-    stage: 1,
-    stageName: 'Mi Cartera',
-    stepNumber: 6,
-    totalInStage: 9,
-    targetId: 'portfolio-profile',
-    tabRequired: 'settings',
-    title: 'Mi Perfil de Inversor',
-    description: 'Podés elegir entre perfil Conservador, Moderado o Dinámico. Esta calibración define el tono y la jerarquización del contexto informativo sin sesgar las noticias.'
-  },
-  {
-    stage: 1,
-    stageName: 'Mi Cartera',
-    stepNumber: 7,
-    totalInStage: 9,
-    targetId: 'portfolio-relevance',
-    tabRequired: 'settings',
-    title: 'Qué noticias me importan',
-    description: 'FAROS clasifica el flujo informativo en 4 categorías: Impacto en precio, Valoración de mercado, Ruido de mercado y Contexto macro. Podés activar o desactivar las que quieras priorizar.'
-  },
-  {
-    stage: 1,
-    stageName: 'Mi Cartera',
-    stepNumber: 8,
-    totalInStage: 9,
+    totalInStage: 5,
     targetId: 'portfolio-notifications',
     tabRequired: 'settings',
-    title: 'Notificaciones y opciones avanzadas',
-    description: 'Activá las notificaciones de eventos relevantes y desplegá las opciones avanzadas para seleccionar temáticas específicas con prioridad (deuda soberana, energía, balances, normativa del BCRA o inflación).'
-  },
-  {
-    stage: 1,
-    stageName: 'Mi Cartera',
-    stepNumber: 9,
-    totalInStage: 9,
-    targetId: 'portfolio-account',
-    tabRequired: 'settings',
-    title: 'Cuenta y privacidad',
-    description: 'Acá podés consultar tus datos registrados, gestionar tu sesión y acceder a las opciones de privacidad y eliminación definitiva de cuenta de forma segura.',
+    title: 'Notificaciones y opciones',
+    description: 'Activá las alertas de impacto o desplegá opciones avanzadas para seguir temas estratégicos.',
     isStageEnd: true,
     nextStageName: 'Noticias'
   },
 
-  // ================= STAGE 2: NOTICIAS (9 Steps) =================
+  // ================= ETAPA 2: NOTICIAS (5 Pasos) =================
   {
     stage: 2,
     stageName: 'Noticias',
     stepNumber: 1,
-    totalInStage: 9,
-    targetId: 'feed-title',
+    totalInStage: 5,
+    targetId: 'feed-hero-pulso',
     tabRequired: 'feed',
-    title: 'Noticias en FAROS',
-    description: 'FAROS reúne y analiza noticias financieras de distintos medios verificados (Ámbito, El Cronista, Infobae, Bloomberg Línea, BCRA e INDEC) para ayudarte a identificar cuáles son relevantes para tus inversiones.'
+    title: 'Pulso Diario',
+    description: 'Revisá la dirección del mercado según tus posiciones y filtrá por Favorable, Alerta o Neutral.'
   },
   {
     stage: 2,
     stageName: 'Noticias',
     stepNumber: 2,
-    totalInStage: 9,
-    targetId: 'feed-hero-pulso',
+    totalInStage: 5,
+    targetId: 'feed-audio-brief',
     tabRequired: 'feed',
-    title: 'Pulso Diario de Mercado',
-    description: 'Sintetiza la dirección general de las noticias (Favorable, Alerta o Neutral) teniendo en cuenta si tus posiciones son LONG o SHORT, y muestra el balance objetivo de noticias del día sin porcentajes inventados.'
+    title: 'Audio y actualización',
+    description: 'Escuchá la síntesis del día con voz neuronal y usá Actualizar para recibir novedades frescas.'
   },
   {
     stage: 2,
     stageName: 'Noticias',
     stepNumber: 3,
-    totalInStage: 9,
-    targetId: 'feed-refresh-btn',
+    totalInStage: 5,
+    targetId: 'feed-news-section',
     tabRequired: 'feed',
-    title: 'Actualización en tiempo real',
-    description: 'Este botón te permite consultar novedades de última hora y refrescar la información disponible con fuentes periodísticas verificadas.'
+    title: 'Noticias clasificadas',
+    description: 'Revisá las notas del mercado filtradas por su impacto directo sobre tus activos.'
   },
   {
     stage: 2,
     stageName: 'Noticias',
     stepNumber: 4,
-    totalInStage: 9,
-    targetId: 'feed-audio-brief',
+    totalInStage: 5,
+    targetId: 'feed-filters',
     tabRequired: 'feed',
-    title: 'Resumen del día en audio',
-    description: 'Podés escuchar un resumen completo de 2 a 3 minutos con voz neuronal argentina para ponerte al día sin necesidad de leer todas las notas. El reproductor te permite pausar, regular velocidad y leer la transcripción.'
+    title: 'Búsqueda y filtros',
+    description: 'Filtrá el feed por palabra clave, tipo de impacto o consultá tus notas guardadas.'
   },
   {
     stage: 2,
     stageName: 'Noticias',
     stepNumber: 5,
-    totalInStage: 9,
-    targetId: 'feed-news-section',
-    tabRequired: 'feed',
-    title: 'Noticias Clasificadas',
-    description: 'Cada tarjeta contiene el titular, resumen conciso, categoría, fecha, tickers vinculados con badge LONG/SHORT, dirección del impacto y medios que reportaron la noticia.'
-  },
-  {
-    stage: 2,
-    stageName: 'Noticias',
-    stepNumber: 6,
-    totalInStage: 9,
-    targetId: 'feed-filters',
-    tabRequired: 'feed',
-    title: 'Filtros interactivos de noticias',
-    description: 'Podés combinar filtros por categoría (Impacto, Valoración, Ruido, Macro), por dirección (Favorables, Alertas, Neutrales), por activo específico o buscar por palabra clave.'
-  },
-  {
-    stage: 2,
-    stageName: 'Noticias',
-    stepNumber: 7,
-    totalInStage: 9,
-    targetId: 'feed-card-bookmark',
-    tabRequired: 'feed',
-    title: 'Noticias guardadas',
-    description: 'Con el ícono de marcador podés guardar noticias clave para revisarlas más tarde y alternar fácilmente entre tus guardadas y el feed completo.'
-  },
-  {
-    stage: 2,
-    stageName: 'Noticias',
-    stepNumber: 8,
-    totalInStage: 9,
+    totalInStage: 5,
     targetId: 'feed-card-detail',
     tabRequired: 'feed',
-    title: 'Análisis detallado de una noticia',
-    description: 'Al abrir cualquier tarjeta accedés al análisis cualitativo completo: mecanismo de transmisión, factores a monitorear, impacto por activo según posición LONG/SHORT, síntesis en audio y enlaces a los artículos originales.'
-  },
-  {
-    stage: 2,
-    stageName: 'Noticias',
-    stepNumber: 9,
-    totalInStage: 9,
-    targetId: 'header-notifications',
-    tabRequired: 'feed',
-    title: 'Alertas de Cartera',
-    description: 'En la campana de notificaciones recibís avisos inmediatos: noticias adversas para tus activos, fechas de riesgo del calendario y aclaraciones regulatorias, con enlace directo a las fuentes originales.',
+    title: 'Detalle de noticia',
+    description: 'Abrí cualquier noticia para ver su análisis económico y los enlaces a las fuentes originales.',
     isStageEnd: true,
     nextStageName: 'Calendario'
   },
 
-  // ================= STAGE 3: CALENDARIO (10 Steps) =================
+  // ================= ETAPA 3: CALENDARIO (5 Pasos) =================
   {
     stage: 3,
     stageName: 'Calendario',
     stepNumber: 1,
-    totalInStage: 10,
-    targetId: 'calendar-header',
+    totalInStage: 5,
+    targetId: 'calendar-summary-metrics',
     tabRequired: 'calendar',
-    title: 'Calendario Financiero',
-    description: 'El Calendario Financiero te ayuda a seguir fechas importantes relacionadas con tus inversiones y acontecimientos macroeconómicos clave del mercado argentino e internacional.'
+    title: 'Métricas de calendario',
+    description: 'Anticipá los cobros de renta, balances de empresas y datos macroeconómicos del mes.'
   },
   {
     stage: 3,
     stageName: 'Calendario',
     stepNumber: 2,
-    totalInStage: 10,
-    targetId: 'calendar-summary-metrics',
+    totalInStage: 5,
+    targetId: 'calendar-grid',
     tabRequired: 'calendar',
-    title: 'Resumen mensual de eventos',
-    description: 'Indicadores superiores que resumen cobros de rentas y cupones, balances corporativos y publicaciones macroeconómicas (como el IPC del INDEC y licitaciones del Tesoro).'
+    title: 'Vista del calendario',
+    description: 'Navegá entre meses y tocá cualquier fecha para revisar los eventos financieros del día.'
   },
   {
     stage: 3,
     stageName: 'Calendario',
     stepNumber: 3,
-    totalInStage: 10,
-    targetId: 'calendar-grid',
+    totalInStage: 5,
+    targetId: 'calendar-events-list',
     tabRequired: 'calendar',
-    title: 'Navegación del calendario',
-    description: 'Podés consultar el mes actual, avanzar o retroceder entre meses, identificar días con eventos mediante colores por categoría y seleccionar cualquier fecha para ver su detalle.'
+    title: 'Detalle de eventos',
+    description: 'Pulsá un evento para ver su horario oficial, activo relacionado y enlace a la fuente.'
   },
   {
     stage: 3,
     stageName: 'Calendario',
     stepNumber: 4,
-    totalInStage: 10,
-    targetId: 'calendar-filters',
+    totalInStage: 5,
+    targetId: 'calendar-add-event-btn',
     tabRequired: 'calendar',
-    title: 'Filtros de eventos',
-    description: 'Filtrá rápidamente por tipo de acontecimiento: Todos, Pagos de Bonos y Renta, Balances Corporativos, Datos Macro y BCRA, o Política Monetaria.'
+    title: 'Crear eventos propios',
+    description: 'Pulsá "Agregar evento" para registrar tus propios vencimientos y programar recordatorios.'
   },
   {
     stage: 3,
     stageName: 'Calendario',
     stepNumber: 5,
-    totalInStage: 10,
-    targetId: 'calendar-events-list',
-    tabRequired: 'calendar',
-    title: 'Consultar un evento del día',
-    description: 'Hacé clic en cualquier fecha para consultar el nombre del evento, horario, descripción oficial, activo relacionado, estado (confirmada o estimada) y enlace oficial.'
-  },
-  {
-    stage: 3,
-    stageName: 'Calendario',
-    stepNumber: 6,
-    totalInStage: 10,
-    targetId: 'calendar-refresh-btn',
-    tabRequired: 'calendar',
-    title: 'Actualizar calendario',
-    description: 'Refrescá en cualquier momento los cronogramas y fechas confirmadas con las últimas circulares y avisos oficiales emitidos.'
-  },
-  {
-    stage: 3,
-    stageName: 'Calendario',
-    stepNumber: 7,
-    totalInStage: 10,
-    targetId: 'calendar-add-event-btn',
-    tabRequired: 'calendar',
-    title: 'Crear tus propios eventos',
-    description: 'Podés agendar tus propios hitos financieros: seleccioná la fecha, elegí el activo, indicá la acción (comprar, vender, cobrar renta), sumá notas personales y configurá recordatorios.'
-  },
-  {
-    stage: 3,
-    stageName: 'Calendario',
-    stepNumber: 8,
-    totalInStage: 10,
+    totalInStage: 5,
     targetId: 'calendar-reminders-info',
     tabRequired: 'calendar',
-    title: 'Recordatorios anticipados',
-    description: 'Elegí cuándo querés que FAROS te avise: el mismo día, 1 día antes, 3 días antes o una semana antes del acontecimiento programado.'
-  },
-  {
-    stage: 3,
-    stageName: 'Calendario',
-    stepNumber: 9,
-    totalInStage: 10,
-    targetId: 'calendar-events-list',
-    tabRequired: 'calendar',
-    title: 'Editar o eliminar eventos propios',
-    description: 'Tus eventos personalizados se pueden editar o eliminar en cualquier momento sin alterar los eventos oficiales del mercado.'
-  },
-  {
-    stage: 3,
-    stageName: 'Calendario',
-    stepNumber: 10,
-    totalInStage: 10,
-    targetId: 'calendar-browser-notifications',
-    tabRequired: 'calendar',
-    title: 'Notificaciones del navegador',
-    description: 'Podés activar las notificaciones web del navegador para recibir alertas de tus eventos agendados incluso cuando no tengas la pestaña abierta. Solo se activan si vos decidís conceder el permiso.',
+    title: 'Recordatorios',
+    description: 'Administrá tus alertas personales para no perder ningún vencimiento clave.',
     isStageEnd: true
   }
 ];
@@ -345,20 +189,33 @@ interface InteractiveTourProps {
   onClose: () => void;
   onSelectTab: (tab: 'settings' | 'feed' | 'calendar') => void;
   currentTab: 'settings' | 'feed' | 'calendar';
+  onOpenNewsDetail?: (news: NewsItem) => void;
+  sampleNews?: NewsItem;
 }
 
 export const InteractiveTour: React.FC<InteractiveTourProps> = ({
   isActive,
   onClose,
   onSelectTab,
-  currentTab
+  currentTab,
+  onOpenNewsDetail,
+  sampleNews
 }) => {
   const [stepIndex, setStepIndex] = useState<number>(0);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
-  const [isTransitioning, setIsTransitioning] = useState<boolean>(false);
+  const [hasInteracted, setHasInteracted] = useState<boolean>(false);
   const [showCompletionModal, setShowCompletionModal] = useState<boolean>(false);
+  const [isMinimized, setIsMinimized] = useState<boolean>(false);
 
   const currentStep = TOUR_STEPS[stepIndex] || TOUR_STEPS[0];
+
+  // Reset step index and interaction when activated
+  useEffect(() => {
+    if (isActive) {
+      setHasInteracted(false);
+      setIsMinimized(false);
+    }
+  }, [isActive]);
 
   // Sync tab with step requirements
   useEffect(() => {
@@ -368,7 +225,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
     }
   }, [stepIndex, isActive, currentStep.tabRequired, currentTab, onSelectTab]);
 
-  // Update target bounding rect and smooth scroll
+  // Update target bounding rect
   const updateTargetRect = useCallback(() => {
     if (!isActive) return;
 
@@ -376,28 +233,247 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
     if (el) {
       const rect = el.getBoundingClientRect();
       setTargetRect(rect);
-      // Smooth scroll target into view if offscreen
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } else {
       setTargetRect(null);
     }
   }, [isActive, currentStep.targetId]);
 
+  // Dynamic placement calculator: guarantees card NEVER obstructs the interactive element
+  // Detects dynamically if highlighted element is in the upper or lower area of the screen:
+  // - If target is in UPPER area -> FORCES card to the BOTTOM
+  // - If target is in LOWER area -> FORCES card to the TOP
+  const computePlacement = useCallback(() => {
+    const vpWidth = window.visualViewport ? window.visualViewport.width : window.innerWidth;
+    const vpHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    const isDesktop = vpWidth >= 1024;
+
+    if (!targetRect) {
+      return {
+        style: {
+          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)',
+          right: isDesktop ? '24px' : undefined,
+          left: isDesktop ? undefined : '50%',
+          transform: isDesktop ? undefined : 'translateX(-50%)',
+        } as React.CSSProperties,
+        pillStyle: {
+          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)',
+          right: isDesktop ? '24px' : undefined,
+          left: isDesktop ? undefined : '50%',
+          transform: isDesktop ? undefined : 'translateX(-50%)',
+        } as React.CSSProperties,
+      };
+    }
+
+    // Measure vertical midpoint of target in current viewport
+    const targetMidY = (targetRect.top + targetRect.bottom) / 2;
+    const isTargetInUpperArea = targetMidY < vpHeight * 0.5;
+
+    if (isTargetInUpperArea) {
+      // Element is in the UPPER area of screen -> FORCE card to the BOTTOM
+      const bottomPos = isDesktop
+        ? 'calc(env(safe-area-inset-bottom, 0px) + 20px)'
+        : 'calc(env(safe-area-inset-bottom, 0px) + 14px)';
+
+      if (isDesktop) {
+        // Place in bottom corner with maximum horizontal clearance away from target
+        const targetMidX = (targetRect.left + targetRect.right) / 2;
+        if (targetMidX > vpWidth * 0.5) {
+          // Target is in the right half -> place card in bottom-left corner
+          return {
+            style: { bottom: bottomPos, left: '24px' } as React.CSSProperties,
+            pillStyle: { bottom: bottomPos, left: '24px' } as React.CSSProperties,
+          };
+        } else {
+          // Target is in the left half or centered -> place card in bottom-right corner
+          return {
+            style: { bottom: bottomPos, right: '24px' } as React.CSSProperties,
+            pillStyle: { bottom: bottomPos, right: '24px' } as React.CSSProperties,
+          };
+        }
+      }
+
+      // Mobile / Tablet: pinned bottom center
+      return {
+        style: {
+          bottom: bottomPos,
+          left: '50%',
+          transform: 'translateX(-50%)',
+        } as React.CSSProperties,
+        pillStyle: {
+          bottom: bottomPos,
+          left: '50%',
+          transform: 'translateX(-50%)',
+        } as React.CSSProperties,
+      };
+    } else {
+      // Element is in the LOWER area of screen -> FORCE card to the TOP
+      const topPos = isDesktop
+        ? 'calc(env(safe-area-inset-top, 0px) + 76px)'
+        : 'calc(env(safe-area-inset-top, 0px) + 74px)';
+
+      if (isDesktop) {
+        // Place in top corner with maximum horizontal clearance away from target
+        const targetMidX = (targetRect.left + targetRect.right) / 2;
+        if (targetMidX > vpWidth * 0.5) {
+          // Target is in the right half -> place card in top-left corner
+          return {
+            style: { top: topPos, left: '24px' } as React.CSSProperties,
+            pillStyle: { top: topPos, left: '24px' } as React.CSSProperties,
+          };
+        } else {
+          // Target is in the left half or centered -> place card in top-right corner
+          return {
+            style: { top: topPos, right: '24px' } as React.CSSProperties,
+            pillStyle: { top: topPos, right: '24px' } as React.CSSProperties,
+          };
+        }
+      }
+
+      // Mobile / Tablet: pinned top center
+      return {
+        style: {
+          top: topPos,
+          left: '50%',
+          transform: 'translateX(-50%)',
+        } as React.CSSProperties,
+        pillStyle: {
+          top: topPos,
+          left: '50%',
+          transform: 'translateX(-50%)',
+        } as React.CSSProperties,
+      };
+    }
+  }, [targetRect]);
+
+  const placement = computePlacement();
+
+  // Smart offset scroll: keeps target element fully visible without jarring jumps
   useEffect(() => {
     if (!isActive) return;
-    const timer = setTimeout(updateTargetRect, 250);
-    window.addEventListener('resize', updateTargetRect);
-    window.addEventListener('scroll', updateTargetRect, true);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('resize', updateTargetRect);
-      window.removeEventListener('scroll', updateTargetRect, true);
+
+    const timer = setTimeout(() => {
+      const el = document.querySelector(`[data-tour="${currentStep.targetId}"]`) as HTMLElement | null;
+      if (!el) return;
+
+      const rect = el.getBoundingClientRect();
+      const currentScrollY = window.scrollY || window.pageYOffset;
+      const targetAbsTop = rect.top + currentScrollY;
+      const vpHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+
+      // Check whether target is in upper or lower part of document
+      const isTargetNearDocumentTop = targetAbsTop < 550;
+
+      if (isTargetNearDocumentTop) {
+        // Target is intended for upper screen area (card at bottom):
+        // If not already comfortably positioned near top, scroll gently
+        if (rect.top < 75 || rect.bottom > vpHeight - 165) {
+          const idealScroll = Math.max(0, targetAbsTop - 90);
+          window.scrollTo({ top: idealScroll, behavior: 'smooth' });
+        }
+      } else {
+        // Target is intended for lower screen area (card at top):
+        // Keep it visible below the top card zone (~220px)
+        if (rect.top < 220 || rect.bottom > vpHeight - 20) {
+          const idealScroll = Math.max(0, targetAbsTop - 220);
+          window.scrollTo({ top: idealScroll, behavior: 'smooth' });
+        }
+      }
+
+      updateTargetRect();
+      setTimeout(updateTargetRect, 200);
+      setTimeout(updateTargetRect, 450);
+    }, 180);
+
+    return () => clearTimeout(timer);
+  }, [isActive, stepIndex, currentTab, currentStep.targetId, updateTargetRect]);
+
+  // Listen to window resize, scroll, visualViewport and DOM mutations (menus, modals, accordions)
+  useEffect(() => {
+    if (!isActive) return;
+
+    const handleUpdate = () => {
+      updateTargetRect();
     };
-  }, [updateTargetRect, isActive, stepIndex, currentTab]);
+
+    window.addEventListener('resize', handleUpdate);
+    window.addEventListener('scroll', handleUpdate, true);
+
+    const vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener('resize', handleUpdate);
+      vv.addEventListener('scroll', handleUpdate);
+    }
+
+    const observer = new MutationObserver(handleUpdate);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+
+    return () => {
+      window.removeEventListener('resize', handleUpdate);
+      window.removeEventListener('scroll', handleUpdate, true);
+      if (vv) {
+        vv.removeEventListener('resize', handleUpdate);
+        vv.removeEventListener('scroll', handleUpdate);
+      }
+      observer.disconnect();
+    };
+  }, [updateTargetRect, isActive]);
+
+  // Auto-minimize on small screens when space is critical
+  useEffect(() => {
+    if (!isActive || !targetRect) return;
+    const vpHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    const spaceBelow = vpHeight - targetRect.bottom;
+    const spaceAbove = targetRect.top;
+
+    if (window.innerWidth < 640 && spaceBelow < 130 && spaceAbove < 130) {
+      setIsMinimized(true);
+    }
+  }, [isActive, targetRect, stepIndex]);
+
+  // Elevate highlighted target above dark backdrop
+  useEffect(() => {
+    if (!isActive) return;
+
+    const el = document.querySelector(`[data-tour="${currentStep.targetId}"]`) as HTMLElement | null;
+    if (el) {
+      const prevPosition = el.style.position;
+      const prevZIndex = el.style.zIndex;
+      el.style.position = prevPosition || 'relative';
+      el.style.zIndex = '46';
+
+      return () => {
+        el.style.zIndex = prevZIndex;
+        el.style.position = prevPosition;
+      };
+    }
+  }, [isActive, currentStep.targetId, stepIndex]);
+
+  // Real-time Action Recognition: listen to user clicks, typing and changes on highlighted element
+  useEffect(() => {
+    setHasInteracted(false);
+    if (!isActive) return;
+
+    const el = document.querySelector(`[data-tour="${currentStep.targetId}"]`);
+    if (!el) return;
+
+    const onUserAction = () => {
+      setHasInteracted(true);
+    };
+
+    el.addEventListener('click', onUserAction, true);
+    el.addEventListener('input', onUserAction, true);
+    el.addEventListener('change', onUserAction, true);
+
+    return () => {
+      el.removeEventListener('click', onUserAction, true);
+      el.removeEventListener('input', onUserAction, true);
+      el.removeEventListener('change', onUserAction, true);
+    };
+  }, [isActive, currentStep.targetId, stepIndex]);
 
   const handleNext = () => {
     if (currentStep.isStageEnd && currentStep.stage === 3) {
-      // Completed full tour!
+      // Completed full 15-step tour!
       setShowCompletionModal(true);
       try {
         localStorage.setItem('faros_tour_completed', 'true');
@@ -407,12 +483,16 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
 
     if (stepIndex < TOUR_STEPS.length - 1) {
       setStepIndex(stepIndex + 1);
+      setHasInteracted(false);
+      setIsMinimized(false);
     }
   };
 
   const handlePrev = () => {
     if (stepIndex > 0) {
       setStepIndex(stepIndex - 1);
+      setHasInteracted(false);
+      setIsMinimized(false);
     }
   };
 
@@ -423,126 +503,198 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
 
   if (!isActive) return null;
 
+  // Calculate inverted clip-path cutout polygon for the overlay
+  // This leaves a clean transparent hole over targetRect so clicks pass through 100%
+  const pad = 8;
+  const t = targetRect ? Math.max(0, targetRect.top - pad) : 0;
+  const l = targetRect ? Math.max(0, targetRect.left - pad) : 0;
+  const r = targetRect ? Math.min(window.innerWidth, targetRect.right + pad) : 0;
+  const b = targetRect ? Math.min(window.innerHeight, targetRect.bottom + pad) : 0;
+
+  const clipPathStyle = targetRect ? {
+    clipPath: `polygon(
+      0% 0%, 
+      0% 100%, 
+      ${l}px 100%, 
+      ${l}px ${t}px, 
+      ${r}px ${t}px, 
+      ${r}px ${b}px, 
+      ${l}px ${b}px, 
+      ${l}px 100%, 
+      100% 100%, 
+      100% 0%
+    )`
+  } : undefined;
+
   return (
     <>
-      {/* Semi-transparent dark overlay */}
+      {/* Semi-transparent dark overlay with inverted cutout polygon */}
+      {/* Clicks inside the hole pass right through to the underlying element! */}
       <div 
-        className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-[1px] transition-opacity duration-300 pointer-events-auto"
+        style={clipPathStyle}
+        className="fixed inset-0 z-40 bg-slate-950/65 backdrop-blur-[1px] transition-all duration-200 pointer-events-auto"
         onClick={(e) => e.stopPropagation()}
       />
 
-      {/* Target spotlight cutout if target exists */}
+      {/* Target spotlight glowing ring directly framing the interactive area */}
       {targetRect && (
         <div
           style={{
             position: 'fixed',
-            top: targetRect.top - 6,
-            left: targetRect.left - 6,
-            width: targetRect.width + 12,
-            height: targetRect.height + 12,
+            top: t,
+            left: l,
+            width: r - l,
+            height: b - t,
             zIndex: 45,
             pointerEvents: 'none'
           }}
-          className="rounded-2xl ring-4 ring-emerald-400 ring-offset-2 ring-offset-slate-950/80 shadow-[0_0_30px_rgba(16,185,129,0.35)] transition-all duration-300 animate-pulse"
-        />
+          className="rounded-2xl ring-4 ring-emerald-400 ring-offset-2 ring-offset-slate-950/80 shadow-[0_0_35px_rgba(16,185,129,0.38)] transition-all duration-200"
+        >
+          {/* Interactive badge pill */}
+          <div className="absolute -top-3.5 left-4 px-2.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 text-[10px] font-black uppercase tracking-wider shadow-sm flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />
+            <span>Zona interactiva</span>
+          </div>
+        </div>
       )}
 
-      {/* Floating Tooltip Card */}
-      <div className="fixed inset-x-0 bottom-4 sm:bottom-6 z-50 flex items-center justify-center p-3 pointer-events-none">
+      {/* Minimized Pill */}
+      {isMinimized ? (
         <div 
-          className="w-full max-w-lg bg-white rounded-3xl border-2 border-emerald-600/90 shadow-2xl overflow-hidden pointer-events-auto flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-200"
-          onClick={(e) => e.stopPropagation()}
+          style={placement.pillStyle}
+          className="fixed z-50 pointer-events-auto"
         >
-          {/* Header */}
-          <div className="px-5 py-3.5 bg-gradient-to-r from-emerald-950 via-emerald-900 to-slate-950 text-white flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-lg bg-emerald-800 text-emerald-200 flex items-center justify-center text-xs font-black">
-                {currentStep.stage}
-              </span>
-              <div>
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-300 block">
-                  Etapa {currentStep.stage} de 3: {currentStep.stageName}
-                </span>
-                <span className="text-xs font-bold text-white block">
-                  Paso {currentStep.stepNumber} de {currentStep.totalInStage}
-                </span>
-              </div>
-            </div>
-
-            <button
-              onClick={onClose}
-              className="p-1 text-slate-300 hover:text-white rounded-lg hover:bg-emerald-900/60 transition-colors cursor-pointer"
-              title="Salir del tutorial"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Body */}
-          <div className="p-5 sm:p-6 space-y-3.5 max-h-[50vh] overflow-y-auto">
-            <h4 className="text-base sm:text-lg font-black text-slate-900 leading-tight">
+          <div 
+            className="bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-lg rounded-full px-3 py-1.5 flex items-center gap-2 text-xs animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="font-bold text-slate-800 text-[11px] shrink-0">{stepIndex + 1}/15</span>
+            <span className="font-semibold text-slate-700 text-[11px] truncate max-w-[130px] sm:max-w-[190px]">
               {currentStep.title}
-            </h4>
-
-            <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-normal">
-              {currentStep.description}
-            </p>
-
-            {currentStep.exampleSnippet && (
-              <div className="pt-1">
-                {currentStep.exampleSnippet}
-              </div>
-            )}
-          </div>
-
-          {/* Footer Controls */}
-          <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
-            >
-              Salir del tutorial
-            </button>
-
-            <div className="flex items-center gap-2">
+            </span>
+            <div className="flex items-center gap-1 border-l border-slate-200 pl-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsMinimized(false)}
+                className="p-1 text-emerald-800 hover:text-emerald-950 rounded-full hover:bg-emerald-50 transition-colors cursor-pointer"
+                title="Expandir instructivo"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+              </button>
               {stepIndex > 0 && (
                 <button
                   type="button"
                   onClick={handlePrev}
-                  className="inline-flex items-center gap-1 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 rounded-xl transition-all cursor-pointer"
+                  className="px-1 py-0.5 text-slate-500 hover:text-slate-800 text-xs font-semibold cursor-pointer"
+                  title="Anterior"
                 >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Anterior</span>
+                  ‹
                 </button>
               )}
-
               <button
                 type="button"
                 onClick={handleNext}
-                className="inline-flex items-center gap-1.5 px-4 sm:px-5 py-2 bg-emerald-950 hover:bg-emerald-900 text-white text-xs font-extrabold rounded-xl transition-all shadow-xs cursor-pointer"
+                className="px-2 py-0.5 bg-[#0d4f3b] hover:bg-[#093d2d] text-white text-[10px] font-bold rounded-full transition-colors cursor-pointer"
+                title="Siguiente"
               >
-                {currentStep.isStageEnd && currentStep.nextStageName ? (
-                  <>
-                    <span>Continuar a {currentStep.nextStageName}</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </>
-                ) : currentStep.isStageEnd && currentStep.stage === 3 ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 stroke-[3]" />
-                    <span>Empezar a usar FAROS</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Siguiente</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </>
-                )}
+                ›
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                title="Salir del tutorial"
+              >
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
         </div>
-      </div>
+      ) : (
+        /* Mini Floating Card — Exactly as requested in image_7d59e02d.png */
+        <div 
+          style={placement.style}
+          className="fixed z-50 pointer-events-auto"
+        >
+          <div 
+            className="w-[320px] max-w-[calc(100vw-24px)] bg-white rounded-2xl border border-slate-200/90 shadow-xl p-3.5 flex flex-col justify-between animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header: One single line */}
+            <div className="flex items-center justify-between pb-1">
+              <div className="flex items-baseline gap-2 min-w-0">
+                <span className="text-xs font-bold text-slate-900 shrink-0">
+                  {stepIndex + 1}/15
+                </span>
+                <h4 className="text-xs font-bold text-slate-900 truncate">
+                  {currentStep.title}
+                </h4>
+              </div>
+
+              <div className="flex items-center gap-1 shrink-0 ml-2">
+                <button
+                  type="button"
+                  onClick={() => setIsMinimized(true)}
+                  className="p-1 text-slate-400 hover:text-slate-700 rounded-md transition-colors cursor-pointer"
+                  title="Minimizar instructivo"
+                >
+                  <Minimize2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="p-1 text-slate-400 hover:text-slate-700 rounded-md transition-colors cursor-pointer"
+                  title="Salir del tutorial"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Body: exactly 1 or 2 concise practical sentences */}
+            <div className="py-2">
+              <p className="text-xs sm:text-[13px] text-slate-700 leading-snug font-normal">
+                {currentStep.description}
+              </p>
+            </div>
+
+            {/* Divider & Footer */}
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+              <div>
+                {stepIndex > 0 ? (
+                  <button
+                    type="button"
+                    onClick={handlePrev}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+                  >
+                    <span>‹</span>
+                    <span>Anterior</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="text-[11px] font-medium text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                  >
+                    Salir
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleNext}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer active:scale-95 ${
+                  hasInteracted ? 'bg-[#0d4f3b] hover:bg-[#093d2d] ring-2 ring-emerald-400/40' : 'bg-[#0d4f3b] hover:bg-[#093d2d]'
+                }`}
+              >
+                <span>{currentStep.isStageEnd && currentStep.stage === 3 ? 'Comenzar' : 'Siguiente'}</span>
+                <span>→</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tour Completion Celebration Modal */}
       {showCompletionModal && (
@@ -573,7 +725,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
                 <span>¿Necesitás repasar alguna sección?</span>
               </div>
               <p className="text-[11px] text-slate-500 leading-normal">
-                Podés volver a iniciar este tutorial interactivo cuando quieras haciendo clic en el botón <strong>"Ver tutorial"</strong> en la cabecera o en la pestaña Mi Cartera.
+                Podés volver a iniciar este tutorial interactivo cuando quieras haciendo clic en el botón <strong>"Tutorial"</strong> en la cabecera o en la pestaña Mi Cartera.
               </p>
             </div>
 

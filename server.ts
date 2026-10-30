@@ -5,11 +5,7 @@ import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
-import {
-  sanitizeGroundingSources,
-  validateAndFilterSourcesForHeadline,
-  areSourcesReportingSameEvent
-} from './src/utils/sourceGrounding';
+import { sanitizeGroundingSources } from './src/utils/sourceGrounding';
 import {
   buildCacheKey,
   resolveFinalUrl,
@@ -89,35 +85,22 @@ const app = express();
 app.use(express.json());
 app.use(cookieParser());
 
-// URL path normalization for Vercel Serverless Functions
-// Ensures routes match whether Vercel preserves or strips the /api prefix
-app.use((req, res, next) => {
-  if (!req.url.startsWith('/api') && (
-    req.url.startsWith('/auth') ||
-    req.url.startsWith('/news') ||
-    req.url.startsWith('/calendar') ||
-    req.url.startsWith('/admin') ||
-    req.url.startsWith('/audio') ||
-    req.url.startsWith('/events')
-  )) {
-    req.url = '/api' + req.url;
-  }
-  next();
-});
-
 // Universal CORS & preflight OPTIONS handler for mobile Safari, webviews & cross-origin requests
 app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
+  const reqOrigin = req.headers.origin;
+  if (reqOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', reqOrigin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   } else {
-    // If no origin header is sent (e.g. same-origin Safari mobile fetch), allow all without credentials flag
-    // Never combine Access-Control-Allow-Origin: '*' with Access-Control-Allow-Credentials: 'true' (fatal in WebKit)
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    const host = req.headers.host;
+    if (host) {
+      const proto = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+      res.setHeader('Access-Control-Allow-Origin', `${proto}://${host}`);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cookie');
+  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cookie, Cache-Control');
 
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
@@ -289,35 +272,27 @@ Detallá los hechos concretos, cifras y mecanismos de transmisión respaldados p
     // Step 2: Structure news into JSON referencing sources solely by numeric ID
     const structurePrompt = `A partir del texto sintetizado y de la lista de fuentes reales numeradas, estructurá las noticias financieras relevantes para los activos [${tickersStr}] con fecha ${argDate.formattedSpanish}.
 
-REGLAS ABSOLUTAS DE COHERENCIA, OBJETIVIDAD Y SIMETRÍA:
-1. REGLA FUNDAMENTAL DE AGRUPACIÓN DE FUENTES:
-   - DOS O MÁS FUENTES SOLO PUEDEN ASOCIARSE EN "sourceIds" SI HABLAN EXACTAMENTE DEL MISMO ACONTECIMIENTO CONCRETO (mismo hecho específico, mismos protagonistas, misma medida o cotización).
-   - QUEDA TERMINANTEMENTE PROHIBIDO asociar fuentes solo porque pertenezcan a la misma categoría económica o compartan palabras como "tasas", "dólar", "bancos" o "mercado".
-   - EJEMPLO PROHIBIDO: Jamás agrupar una nota sobre Wall Street (Dow Jones, S&P 500, Nasdaq) con una de créditos hipotecarios en Argentina. Son hechos completamente diferentes.
-   - EJEMPLO PROHIBIDO: Jamás agrupar compras de reservas del BCRA con licitaciones de deuda del Tesoro o medidas de créditos.
-   - EJEMPLO PROHIBIDO: Jamás agrupar suba de naftas en surtidores con obras de oleoductos en Vaca Muerta.
-2. NOTICIAS CON UNA SOLA FUENTE SON PREFERIBLES:
-   - Si una fuente trata sobre un hecho único, asignale su propia noticia con esa única fuente en "sourceIds" (ej: [1]).
-   - Es 100% preferible y esperado tener noticias de 1 sola fuente antes que inventar relaciones entre artículos dispares.
-3. EVALUACIÓN BALANCEADA SIN SESGO: Tratá con el mismo rigor las noticias favorables, las alertas/riesgos adversos y las neutras. Prohibido suavizar malas noticias o forzar conclusiones optimistas.
-4. DIRECCIÓN DEL IMPACTO ("impact"):
-   - "alerta": presiones a la baja en cotizaciones, suba de riesgo país, devaluación, aceleración inflacionaria, mayores costos, caídas de ventas/márgenes, endurecimiento regulatorio o shocks desfavorables.
-   - "favorable": hechos concretos de superávit, compras genuinas de reservas, compresión de riesgo, expansión operativa o desregulación positiva respaldada.
-   - "neutral": contexto general, desmentida o datos dentro de lo esperado. Si la evidencia es mixta, usar "neutral".
-5. IMPACTO POR ACTIVO: En "portfolioImpactAnalysis.affectedHoldings", evaluá el impacto ticker por ticker.
-6. CERO ALUCINACIÓN DE URLs: El modelo NUNCA escribe URLs ni nombres de archivo. Asociá únicamente los IDs numéricos provistos en "sourceIds".
-7. Devolvé un arreglo JSON con el siguiente formato:
+REGLAS ABSOLUTAS DE OBJETIVIDAD Y SIMETRÍA:
+1. EVALUACIÓN BALANCEADA SIN SESGO: Tratá con el mismo rigor y peso las noticias favorables, las alertas/riesgos adversos y las neutras. Queda estrictamente prohibido suavizar malas noticias, omitir riesgos o forzar conclusiones optimistas.
+2. DIRECCIÓN DEL IMPACTO ("impact"):
+   - "alerta": cuando la noticia reporte presiones a la baja en cotizaciones, suba de riesgo país, devaluación, aceleración inflacionaria, mayores costos, caídas de ventas/márgenes, endurecimiento regulatorio o shocks desfavorables.
+   - "favorable": cuando la noticia reporte hechos concretos de superávit, compras genuinas de reservas, compresión de riesgo, expansión operativa o desregulación positiva respaldada.
+   - "neutral": cuando el acontecimiento sea de contexto general, desmentida sin daño estructural o datos dentro de lo esperado. Si la evidencia es mixta o insuficiente, la dirección DEBE ser "neutral", NUNCA "favorable" por defecto.
+3. IMPACTO POR ACTIVO (afectación cruzada): En "portfolioImpactAnalysis.affectedHoldings", evaluá el impacto ticker por ticker. Un mismo acontecimiento puede ser adverso para un activo y favorable para otro (ej: suba del dólar financiero puede generar alerta para títulos en pesos y ser favorable para activos dolarizados).
+4. CERO ALUCINACIÓN DE URLs: El modelo NUNCA escribe URLs ni nombres de archivo. Cada noticia DEBE asociar en "sourceIds" únicamente los IDs numéricos de las fuentes reales provistas (ejemplo: [1, 2]). Si una noticia no tiene fuente en la lista, DESCARTALA.
+5. NO RECOMENDACIONES FINANCIERAS: Prohibido dar consejos de compra o venta. Estricto análisis objetivo de mercado y variables.
+6. Devolvé un arreglo JSON con el siguiente formato:
 [
   {
     "id": "gen-1",
-    "headline": "Título descriptivo y fiel del acontecimiento específico",
+    "headline": "Título descriptivo, neutral y objetivo del acontecimiento",
     "briefSummary": "Resumen conciso y equilibrado de 2-3 líneas",
     "fullSynthesis": ["Punto clave 1", "Punto clave 2", "Punto clave 3"],
     "publishedAgo": "Hace 1h",
     "affectedAssetIds": ["AL30", "GD30"],
     "impact": "favorable" | "alerta" | "neutral",
     "relevanceType": "impacto_precio" | "valoracion_mercado" | "ruido" | "contexto_macro",
-    "sourceIds": [1],
+    "sourceIds": [1, 2],
     "audioDuration": "1:00 min",
     "audioScript": "Resumen FAROS conciso y balanceado para reproducción de audio",
     "factCheck": {
@@ -374,79 +349,40 @@ ${searchResponse.text?.slice(0, 4000) || ''}`;
 
       const sanitizedSources = sanitizeGroundingSources(realSources);
 
+      // Rule: Every news item must have at least 1 real verified source
       if (sanitizedSources.length === 0) {
         continue;
       }
 
-      // STRICT EVENT COHERENCE VALIDATION:
-      // Verify that every secondary source actually talks about the exact same concrete event!
-      const coherentSources = validateAndFilterSourcesForHeadline(item.headline, sanitizedSources);
-      const discardedSources = sanitizedSources.filter(s => !coherentSources.some(cs => cs.sourceUrl === s.sourceUrl));
-
-      if (coherentSources.length > 0) {
-        assembledNews.push({
-          id: item.id || `news-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          headline: item.headline,
-          briefSummary: item.briefSummary,
-          fullSynthesis: Array.isArray(item.fullSynthesis) ? item.fullSynthesis : [item.briefSummary],
-          publishedAgo: item.publishedAgo || 'Reciente',
-          timestamp: coherentSources[0]?.publishedTime || argDate.formattedSpanish,
-          coverageCount: coherentSources.length,
-          sources: coherentSources,
-          affectedAssetIds: Array.isArray(item.affectedAssetIds) && item.affectedAssetIds.length > 0 
-            ? item.affectedAssetIds 
-            : tickers.slice(0, 2),
-          impact: item.impact || 'neutral',
-          relevanceType: item.relevanceType || 'contexto_macro',
-          portfolioImpactAnalysis: item.portfolioImpactAnalysis || {
-            directExplanation: item.briefSummary,
-            affectedHoldings: [],
-            horizon: 'Corto plazo'
-          },
-          audioDuration: item.audioDuration || '1:00 min',
-          audioScript: item.audioScript || item.briefSummary,
-          factCheck: item.factCheck || {
-            status: 'confirmado',
-            officialSource: coherentSources.map(s => s.mediaName).join(', '),
-            credibilityScore: 98,
-            detail: 'Verificado mediante cruce periodístico oficial'
-          },
-          topicCategory: item.topicCategory || 'deuda_soberana'
-        });
-      }
-
-      // If any source was discarded because it spoke of an independent event, create a dedicated news item
-      for (const disc of discardedSources) {
-        assembledNews.push({
-          id: `news-split-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          headline: disc.originalHeadline,
-          briefSummary: `${disc.originalHeadline}. Cobertura informada por ${disc.mediaName}.`,
-          fullSynthesis: [
-            `Hecho independiente informado por ${disc.mediaName} (${disc.publishedTime || argDate.formattedSpanish}).`,
-            `Monitoreo específico de impacto en variables financieras.`
-          ],
-          publishedAgo: disc.publishedTime || 'Reciente',
-          timestamp: disc.publishedTime || argDate.formattedSpanish,
-          coverageCount: 1,
-          sources: [disc],
-          affectedAssetIds: tickers.slice(0, 2),
-          impact: item.impact || 'neutral',
-          relevanceType: item.relevanceType || 'contexto_macro',
-          portfolioImpactAnalysis: {
-            directExplanation: `Hecho reportado por ${disc.mediaName} con incidencia en las cotizaciones.`,
-            affectedHoldings: [],
-            horizon: 'Corto plazo'
-          },
-          audioDuration: '1:00 min',
-          audioScript: `Resumen FAROS. ${disc.originalHeadline}. Información reportada por ${disc.mediaName}.`,
-          factCheck: {
-            status: 'confirmado',
-            officialSource: disc.mediaName,
-            detail: `Publicación confirmada en ${disc.mediaName}.`
-          },
-          topicCategory: item.topicCategory || 'deuda_soberana'
-        });
-      }
+      assembledNews.push({
+        id: item.id || `news-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        headline: item.headline,
+        briefSummary: item.briefSummary,
+        fullSynthesis: Array.isArray(item.fullSynthesis) ? item.fullSynthesis : [item.briefSummary],
+        publishedAgo: item.publishedAgo || 'Reciente',
+        timestamp: sanitizedSources[0]?.publishedTime || argDate.formattedSpanish,
+        coverageCount: sanitizedSources.length,
+        sources: sanitizedSources,
+        affectedAssetIds: Array.isArray(item.affectedAssetIds) && item.affectedAssetIds.length > 0 
+          ? item.affectedAssetIds 
+          : tickers.slice(0, 2),
+        impact: item.impact || 'neutral',
+        relevanceType: item.relevanceType || 'contexto_macro',
+        portfolioImpactAnalysis: item.portfolioImpactAnalysis || {
+          directExplanation: item.briefSummary,
+          affectedHoldings: [],
+          horizon: 'Corto plazo'
+        },
+        audioDuration: item.audioDuration || '1:00 min',
+        audioScript: item.audioScript || item.briefSummary,
+        factCheck: item.factCheck || {
+          status: 'confirmado',
+          officialSource: sanitizedSources.map(s => s.mediaName).join(', '),
+          credibilityScore: 98,
+          detail: 'Verificado mediante cruce periodístico oficial'
+        },
+        topicCategory: item.topicCategory || 'deuda_soberana'
+      });
     }
 
     // Filter by freshness (Today / 48h)
