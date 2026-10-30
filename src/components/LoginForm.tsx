@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { LighthouseLogo } from './LighthouseLogo';
 import { 
   X, 
@@ -14,22 +14,19 @@ import {
 } from 'lucide-react';
 import { UserAccount } from '../types';
 import { apiRequest } from '../utils/apiClient';
-import { launchOAuth, type OAuthProvider } from '../utils/oauthPopup';
 
 interface LoginFormProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (user: UserAccount, token?: string) => void;
   onSwitchToSignUp: () => void;
-  onNeedsOnboarding: (tempUser: { email: string; name: string; provider: 'google' | 'microsoft'; picture?: string; signupTicket?: string }) => void;
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({
   isOpen,
   onClose,
   onSuccess,
-  onSwitchToSignUp,
-  onNeedsOnboarding
+  onSwitchToSignUp
 }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -38,7 +35,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [oauthErrorProvider, setOauthErrorProvider] = useState<'google' | 'microsoft' | null>(null);
 
   // Forgot password flow state
   const [isForgotMode, setIsForgotMode] = useState(false);
@@ -47,9 +43,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   const [resetToken, setResetToken] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [isResetting, setIsResetting] = useState(false);
-
-  // OAuth info modal state (when credentials missing in dev)
-  const [oauthNotice, setOauthNotice] = useState<{ provider: string; message: string } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,38 +64,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       setIsLoading(false);
     }
   };
-
-  const oauthRequest = useRef<AbortController | null>(null);
-  useEffect(() => () => oauthRequest.current?.abort(), []);
-
-  const handleOAuthLogin = async (provider: OAuthProvider) => {
-    setErrorMessage(null);
-    setOauthNotice(null);
-    setOauthErrorProvider(null);
-    oauthRequest.current?.abort();
-    const controller = new AbortController();
-    oauthRequest.current = controller;
-    try {
-      const result = await launchOAuth(provider, controller.signal);
-      if (result.type === 'not_configured') {
-        setOauthNotice({ provider: provider === 'google' ? 'Google' : 'Microsoft', message: result.instructions });
-      } else if (result.type === 'authenticated') {
-        onSuccess(result.user, result.token);
-        onClose();
-      } else {
-        onNeedsOnboarding(result.tempUser);
-        onClose();
-      }
-    } catch (error: any) {
-      if (error?.name === 'AbortError') return;
-      setErrorMessage(error?.message || 'No se pudo iniciar el acceso con el proveedor.');
-      setOauthErrorProvider(provider);
-    } finally {
-      if (oauthRequest.current === controller) oauthRequest.current = null;
-    }
-  };
-  const handleGoogleLogin = () => handleOAuthLogin('google');
-  const handleMicrosoftLogin = () => handleOAuthLogin('microsoft');
 
   // Forgot password request
   const handleForgotSubmit = async (e: React.FormEvent) => {
@@ -187,83 +148,18 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
         {/* Content Body */}
         <div className="p-6 space-y-5 overflow-y-auto max-h-[75vh]">
-          {/* Error Message with Provider Retry */}
+          {/* Error Message */}
           {errorMessage && (
             <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-2">
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                 <span className="leading-relaxed font-medium">{errorMessage}</span>
               </div>
-              {oauthErrorProvider && (
-                <div className="pl-6 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setErrorMessage(null);
-                      if (oauthErrorProvider === 'google') handleGoogleLogin();
-                      else handleMicrosoftLogin();
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-rose-300 hover:bg-rose-100/60 rounded-lg text-rose-900 font-bold text-[11px] cursor-pointer transition-colors shadow-2xs"
-                  >
-                    <span>Reintentar inicio con {oauthErrorProvider === 'google' ? 'Google' : 'Microsoft'}</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* OAuth Notice if credentials missing in dev */}
-          {oauthNotice && (
-            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1.5">
-              <div className="flex items-center gap-1.5 font-bold text-amber-800">
-                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>Configuración de {oauthNotice.provider} requerida</span>
-              </div>
-              <p className="text-[11px] text-amber-800/90 leading-relaxed">
-                {oauthNotice.message}
-              </p>
             </div>
           )}
 
           {!isForgotMode ? (
             <>
-              {/* OAuth Providers */}
-              <div className="space-y-2.5">
-                <button
-                  type="button"
-                  onClick={handleGoogleLogin}
-                  className="w-full py-2.5 px-4 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-xs sm:text-sm font-semibold text-slate-700 flex items-center justify-center gap-3 transition-colors cursor-pointer"
-                >
-                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
-                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
-                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
-                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-                  </svg>
-                  <span>Continuar con Google</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleMicrosoftLogin}
-                  className="w-full py-2.5 px-4 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-xs sm:text-sm font-semibold text-slate-700 flex items-center justify-center gap-3 transition-colors cursor-pointer"
-                >
-                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 21 21">
-                    <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
-                    <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
-                    <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
-                    <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
-                  </svg>
-                  <span>Continuar con Microsoft</span>
-                </button>
-              </div>
-
-              <div className="flex items-center gap-3 my-1">
-                <div className="flex-1 border-t border-slate-200" />
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">o con email</span>
-                <div className="flex-1 border-t border-slate-200" />
-              </div>
-
               {/* Email & Password Form */}
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>

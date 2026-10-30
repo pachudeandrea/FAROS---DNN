@@ -64,15 +64,6 @@ export default function App() {
   const [isSessionLoading, setIsSessionLoading] = useState<boolean>(true);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
   const [showSignUpModal, setShowSignUpModal] = useState<boolean>(false);
-  const [oauthTempUser, setOauthTempUser] = useState<{
-    email: string;
-    name: string;
-    provider: 'google' | 'microsoft';
-    picture?: string;
-    googleSub?: string;
-    microsoftOid?: string;
-    signupTicket?: string;
-  } | null>(null);
 
   // Active news item for detail modal & audio drawer
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
@@ -729,27 +720,18 @@ export default function App() {
               setShowLoginModal(false);
               setShowSignUpModal(true);
             }}
-            onNeedsOnboarding={(temp) => {
-              setOauthTempUser(temp);
-              setShowLoginModal(false);
-              setShowSignUpModal(true);
-            }}
           />
         )}
 
         {showSignUpModal && (
           <SignUpWizard
             isOpen={showSignUpModal}
-            onClose={() => {
-              setShowSignUpModal(false);
-              setOauthTempUser(null);
-            }}
+            onClose={() => setShowSignUpModal(false)}
             onSuccess={handleSessionSuccess}
             onSwitchToLogin={() => {
               setShowSignUpModal(false);
               setShowLoginModal(true);
             }}
-            initialTempUser={oauthTempUser}
           />
         )}
       </>
@@ -1227,16 +1209,12 @@ export default function App() {
       {showSignUpModal && (
         <SignUpWizard
           isOpen={showSignUpModal}
-          onClose={() => {
-            setShowSignUpModal(false);
-            setOauthTempUser(null);
-          }}
+          onClose={() => setShowSignUpModal(false)}
           onSuccess={handleSessionSuccess}
           onSwitchToLogin={() => {
             setShowSignUpModal(false);
             setShowLoginModal(true);
           }}
-          initialTempUser={oauthTempUser}
         />
       )}
 
@@ -1247,11 +1225,6 @@ export default function App() {
           onClose={() => setShowLoginModal(false)}
           onSuccess={handleSessionSuccess}
           onSwitchToSignUp={() => {
-            setShowLoginModal(false);
-            setShowSignUpModal(true);
-          }}
-          onNeedsOnboarding={(temp) => {
-            setOauthTempUser(temp);
             setShowLoginModal(false);
             setShowSignUpModal(true);
           }}
