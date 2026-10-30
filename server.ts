@@ -82,6 +82,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+// Middleware to prevent Express from hanging on pre-parsed bodies in Vercel Serverless
+app.use((req, res, next) => {
+  if (req.body && typeof req.body === 'object') {
+    (req as any)._body = true;
+  }
+  next();
+});
+
 app.use(express.json());
 app.use(cookieParser());
 
@@ -438,13 +447,13 @@ export async function fetchCalendarEvents(
 }
 
 // API endpoint to fetch news for a portfolio
-app.post('/api/news/pulse', async (req, res) => {
+app.post(['/api/news/pulse', '/news/pulse'], async (req, res) => {
   if (!checkIpRateLimit(req.ip || 'ip', 45)) {
     return res.status(429).json({ error: 'Demasiadas consultas de pulso de mercado. Aguardá unos segundos.' });
   }
 
   const pulseStartTime = Date.now();
-  const user = getSessionUser(req);
+  const user = await getSessionUser(req);
   const { portfolioId, tickers = [], profile = 'moderado', forceRefresh = false } = req.body;
   
   // Dynamic cache key based on portfolio, date and hour in Argentina
@@ -585,15 +594,15 @@ app.post('/api/news/pulse', async (req, res) => {
 });
 
 // API endpoint to fetch calendar events for a portfolio
-app.post('/api/calendar/events', async (req, res) => {
+app.post(['/api/calendar/events', '/calendar/events'], async (req, res) => {
   const { portfolioId = 'default', tickers = [], forceRefresh = false } = req.body;
   const result = await fetchCalendarEvents(tickers, portfolioId, forceRefresh);
   return res.json(result);
 });
 
 // API endpoint for simulated day offset (Secured: development or admin only)
-app.post('/api/calendar/simulate-day', (req, res) => {
-  const user = getSessionUser(req);
+app.post(['/api/calendar/simulate-day', '/calendar/simulate-day'], async (req, res) => {
+  const user = await getSessionUser(req);
   if (process.env.NODE_ENV === 'production' && (!user || !isUserAdmin(user.email))) {
     return res.status(403).json({ 
       error: 'Simulación de fecha deshabilitada en producción para usuarios no administradores' 
@@ -614,36 +623,36 @@ app.post('/api/calendar/simulate-day', (req, res) => {
 });
 
 // Authentication & Account Routes
-app.get('/api/auth/me', handleGetMe);
-app.post('/api/auth/register', handleRegister);
-app.post('/api/auth/login', handleLogin);
-app.post('/api/auth/logout', handleLogout);
-app.post('/api/auth/forgot-password', handleForgotPassword);
-app.post('/api/auth/reset-password', handleResetPassword);
-app.put('/api/auth/user', handleUpdateUser);
-app.delete('/api/auth/account', handleDeleteAccount);
-app.post('/api/auth/draft', handleSaveDraft);
-app.get('/api/auth/draft', handleGetDraft);
+app.get(['/api/auth/me', '/auth/me'], handleGetMe);
+app.post(['/api/auth/register', '/auth/register'], handleRegister);
+app.post(['/api/auth/login', '/auth/login'], handleLogin);
+app.post(['/api/auth/logout', '/auth/logout'], handleLogout);
+app.post(['/api/auth/forgot-password', '/auth/forgot-password'], handleForgotPassword);
+app.post(['/api/auth/reset-password', '/auth/reset-password'], handleResetPassword);
+app.put(['/api/auth/user', '/auth/user'], handleUpdateUser);
+app.delete(['/api/auth/account', '/auth/account'], handleDeleteAccount);
+app.post(['/api/auth/draft', '/auth/draft'], handleSaveDraft);
+app.get(['/api/auth/draft', '/auth/draft'], handleGetDraft);
 
 // OAuth 2.0 (Google & Microsoft) Endpoints
-app.get('/api/auth/google/url', handleGetGoogleAuthUrl);
-app.get('/api/auth/google/callback', handleGoogleCallback);
-app.get('/api/auth/microsoft/url', handleGetMicrosoftAuthUrl);
-app.get('/api/auth/microsoft/callback', handleMicrosoftCallback);
+app.get(['/api/auth/google/url', '/auth/google/url'], handleGetGoogleAuthUrl);
+app.get(['/api/auth/google/callback', '/auth/google/callback'], handleGoogleCallback);
+app.get(['/api/auth/microsoft/url', '/auth/microsoft/url'], handleGetMicrosoftAuthUrl);
+app.get(['/api/auth/microsoft/callback', '/auth/microsoft/callback'], handleMicrosoftCallback);
 
 // --- PROTECTED ADMIN PANEL ENDPOINTS ---
-app.get('/api/admin/check', handleAdminCheck);
-app.post('/api/admin/track', handleClientTrackEvent);
+app.get(['/api/admin/check', '/admin/check'], handleAdminCheck);
+app.post(['/api/admin/track', '/admin/track'], handleClientTrackEvent);
 
 // Admin-only middleware barrier for all management routes
-app.use('/api/admin', requireAdminMiddleware);
-app.get('/api/admin/overview', handleAdminOverview);
-app.get('/api/admin/users', handleAdminUsers);
-app.put('/api/admin/users/:userId/plan', handleAdminUpdateUserPlan);
-app.get('/api/admin/funnel', handleAdminFunnel);
-app.get('/api/admin/usage', handleAdminUsage);
-app.get('/api/admin/pipeline-health', handleAdminPipelineHealth);
-app.get('/api/admin/thesis-financials', handleAdminThesisFinancials);
+app.use(['/api/admin', '/admin'], requireAdminMiddleware);
+app.get(['/api/admin/overview', '/admin/overview'], handleAdminOverview);
+app.get(['/api/admin/users', '/admin/users'], handleAdminUsers);
+app.put(['/api/admin/users/:userId/plan', '/admin/users/:userId/plan'], handleAdminUpdateUserPlan);
+app.get(['/api/admin/funnel', '/admin/funnel'], handleAdminFunnel);
+app.get(['/api/admin/usage', '/admin/usage'], handleAdminUsage);
+app.get(['/api/admin/pipeline-health', '/admin/pipeline-health'], handleAdminPipelineHealth);
+app.get(['/api/admin/thesis-financials', '/admin/thesis-financials'], handleAdminThesisFinancials);
 
 import { 
   synthesizeArgentineSpeech, 
@@ -658,7 +667,7 @@ const AUDIO_CACHE_DIR = path.resolve(__dirname, 'audio_cache');
  * Static route to serve generated MP3 files directly with HTTP byte ranges
  * Enables instant seeking and sub-second browser audio playback start (< 50ms).
  */
-app.get('/api/audio/file/:filename', (req, res) => {
+app.get(['/api/audio/file/:filename', '/audio/file/:filename'], (req, res) => {
   const filename = path.basename(req.params.filename);
   const filePath = path.join(AUDIO_CACHE_DIR, filename);
 
@@ -676,7 +685,7 @@ app.get('/api/audio/file/:filename', (req, res) => {
 /**
  * Background prefetch endpoint for news and daily summary scripts
  */
-app.post('/api/audio/prefetch', (req, res) => {
+app.post(['/api/audio/prefetch', '/audio/prefetch'], (req, res) => {
   const { items = [] } = req.body;
   if (Array.isArray(items) && items.length > 0) {
     prefetchAudioScripts(items);
@@ -691,7 +700,7 @@ app.post('/api/audio/prefetch', (req, res) => {
  *
  * Streams first-sentence immediately if uncached, or serves cached 64kbps MP3 instantly.
  */
-app.post('/api/audio/synthesize', async (req, res) => {
+app.post(['/api/audio/synthesize', '/audio/synthesize'], async (req, res) => {
   if (!checkIpRateLimit(req.ip || 'ip', 30)) {
     return res.status(429).json({ 
       success: false, 

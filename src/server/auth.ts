@@ -12,7 +12,11 @@ import {
   deleteUserDb, 
   loadAllUsersFromStorage, 
   saveSessionDb, 
-  deleteSessionDb 
+  deleteSessionDb,
+  getUserFromDbById,
+  getUserFromDbByEmail,
+  getUserFromDbByOAuth,
+  getSessionDb
 } from './dbAdapter';
 
 const ROOT_DIR = process.cwd();
@@ -82,12 +86,14 @@ const oauthStates = new Map<string, OAuthStateRecord>();
 /**
  * Saves current in-memory database to persistent storage (PostgreSQL + JSON fallback)
  */
-export function persistDatabase(targetUser?: StoredUser): void {
+export async function persistDatabase(targetUser?: StoredUser): Promise<void> {
   // If targetUser is given, persist specifically to PostgreSQL/storage
   if (targetUser) {
-    saveUserDb(targetUser).catch(err => {
+    try {
+      await saveUserDb(targetUser);
+    } catch (err) {
       console.warn('[AUTH DB] Error syncing user to persistent storage:', err);
-    });
+    }
   }
 
   try {
@@ -230,29 +236,53 @@ function sanitizeUser(user: StoredUser): UserAccount {
 
 /**
  * Extracts session user from cookie or Authorization header
+ * Checks in-memory fast cache first, then PostgreSQL / disk fallback
  */
-export function getSessionUser(req: Request): UserAccount | null {
+export async function getSessionUser(req: Request): Promise<UserAccount | null> {
   const token = req.cookies?.faros_session || req.headers.authorization?.replace(/^Bearer\s+/i, '');
   if (!token) return null;
 
-  const session = sessions.get(token);
-  if (!session) return null;
-
-  if (Date.now() > session.expiresAt) {
+  // 1. Check in-memory fast cache
+  let session = sessions.get(token);
+  if (session && Date.now() > session.expiresAt) {
     sessions.delete(token);
-    return null;
+    session = undefined;
   }
 
-  const user = usersById.get(session.userId);
+  // 2. Fall back to PostgreSQL / disk session store
+  if (!session) {
+    const dbSession = await getSessionDb(token);
+    if (dbSession) {
+      session = {
+        userId: dbSession.userId,
+        createdAt: Date.now(),
+        expiresAt: dbSession.expiresAt
+      };
+      sessions.set(token, session);
+    }
+  }
+
+  if (!session) return null;
+
+  // 3. Look up user in memory or database
+  let user = usersById.get(session.userId);
+  if (!user) {
+    const dbUser = await getUserFromDbById(session.userId);
+    if (dbUser) {
+      user = dbUser;
+      indexUser(dbUser);
+    }
+  }
+
   if (!user) return null;
 
   return sanitizeUser(user);
 }
 
 /**
- * Creates new session token
+ * Creates new session token and persists to PostgreSQL / disk
  */
-export function createSession(userId: string, rememberMe = true): string {
+export async function createSession(userId: string, rememberMe = true): Promise<string> {
   const token = crypto.randomBytes(32).toString('hex');
   const duration = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
   const expiresAt = Date.now() + duration;
@@ -261,7 +291,7 @@ export function createSession(userId: string, rememberMe = true): string {
     createdAt: Date.now(),
     expiresAt
   });
-  saveSessionDb(token, userId, expiresAt).catch(() => {});
+  await saveSessionDb(token, userId, expiresAt);
   return token;
 }
 
@@ -294,8 +324,8 @@ function generateCodeChallenge(verifier: string): string {
 /**
  * GET /api/auth/me
  */
-export function handleGetMe(req: Request, res: Response) {
-  const user = getSessionUser(req);
+export async function handleGetMe(req: Request, res: Response) {
+  const user = await getSessionUser(req);
   if (!user) {
     return res.status(401).json({ authenticated: false, message: 'No hay sesión activa.' });
   }
@@ -339,13 +369,13 @@ export async function handleRegister(req: Request, res: Response) {
     return res.status(400).json({ error: 'El formato del correo electrónico no es válido.' });
   }
 
-  // Check existing user by email, googleSub or microsoftOid
-  let existingUser = usersByEmail.get(normalizedEmail);
+  // Check existing user by email, googleSub or microsoftOid (memory or DB)
+  let existingUser = usersByEmail.get(normalizedEmail) || await getUserFromDbByEmail(normalizedEmail);
   if (!existingUser && googleSub) {
-    existingUser = usersByGoogleSub.get(googleSub);
+    existingUser = usersByGoogleSub.get(googleSub) || await getUserFromDbByOAuth('google', googleSub);
   }
   if (!existingUser && microsoftOid) {
-    existingUser = usersByMicrosoftOid.get(microsoftOid);
+    existingUser = usersByMicrosoftOid.get(microsoftOid) || await getUserFromDbByOAuth('microsoft', microsoftOid);
   }
 
   if (existingUser) {
@@ -363,9 +393,10 @@ export async function handleRegister(req: Request, res: Response) {
     if (picture && !existingUser.picture) existingUser.picture = picture;
     existingUser.updatedAt = new Date().toISOString();
     indexUser(existingUser);
-    persistDatabase(existingUser);
+    await saveUserDb(existingUser);
+    await persistDatabase(existingUser);
 
-    const sessionToken = createSession(existingUser.id, true);
+    const sessionToken = await createSession(existingUser.id, true);
     setSessionCookie(res, sessionToken, true);
 
     return res.status(200).json({
@@ -459,7 +490,8 @@ export async function handleRegister(req: Request, res: Response) {
   };
 
   indexUser(newUser);
-  persistDatabase(newUser);
+  await saveUserDb(newUser);
+  await persistDatabase(newUser);
 
   // Non-blocking telemetry event
   trackEventNonBlocking('signup', {
@@ -476,8 +508,8 @@ export async function handleRegister(req: Request, res: Response) {
   // Clear any draft
   userDrafts.delete(normalizedEmail);
 
-  // Create session
-  const sessionToken = createSession(newUserId, true);
+  // Create session and persist to database
+  const sessionToken = await createSession(newUserId, true);
   setSessionCookie(res, sessionToken, true);
 
   return res.status(201).json({
@@ -510,7 +542,15 @@ export async function handleLogin(req: Request, res: Response) {
     return res.status(400).json({ error: 'Ingresá tu correo electrónico y contraseña.' });
   }
 
-  const user = usersByEmail.get(normalizedEmail);
+  let user = usersByEmail.get(normalizedEmail);
+  if (!user) {
+    const dbUser = await getUserFromDbByEmail(normalizedEmail);
+    if (dbUser) {
+      user = dbUser;
+      indexUser(dbUser);
+    }
+  }
+
   if (!user || !user.passwordHash) {
     const count = (existingAttempt?.count || 0) + 1;
     const lockedUntil = count >= 5 ? Date.now() + 5 * 60 * 1000 : 0;
@@ -529,7 +569,8 @@ export async function handleLogin(req: Request, res: Response) {
   failedLoginAttempts.delete(attemptKey);
 
   user.lastActiveAt = new Date().toISOString();
-  persistDatabase();
+  await saveUserDb(user);
+  await persistDatabase(user);
 
   trackEventNonBlocking('login', {
     userId: user.id,
@@ -539,7 +580,7 @@ export async function handleLogin(req: Request, res: Response) {
     userAgent: req.get('user-agent')
   });
 
-  const sessionToken = createSession(user.id, rememberMe);
+  const sessionToken = await createSession(user.id, rememberMe);
   setSessionCookie(res, sessionToken, rememberMe);
 
   return res.json({
@@ -553,11 +594,11 @@ export async function handleLogin(req: Request, res: Response) {
 /**
  * POST /api/auth/logout
  */
-export function handleLogout(req: Request, res: Response) {
+export async function handleLogout(req: Request, res: Response) {
   const token = req.cookies?.faros_session || req.headers.authorization?.replace(/^Bearer\s+/i, '');
   if (token) {
     sessions.delete(token);
-    deleteSessionDb(token).catch(() => {});
+    await deleteSessionDb(token);
   }
   res.clearCookie('faros_session', {
     httpOnly: true,
@@ -610,15 +651,17 @@ export async function handleResetPassword(req: Request, res: Response) {
     return res.status(400).json({ error: 'El enlace de recuperación es inválido o ha expirado.' });
   }
 
-  const user = usersByEmail.get(record.email);
+  let user = usersByEmail.get(record.email) || await getUserFromDbByEmail(record.email);
   if (!user) {
     return res.status(404).json({ error: 'Usuario no encontrado.' });
   }
 
   user.passwordHash = await bcrypt.hash(newPassword, 10);
   user.updatedAt = new Date().toISOString();
+  indexUser(user);
   passwordResetTokens.delete(token);
-  persistDatabase(user);
+  await saveUserDb(user);
+  await persistDatabase(user);
 
   return res.json({
     success: true,
@@ -629,13 +672,13 @@ export async function handleResetPassword(req: Request, res: Response) {
 /**
  * PUT /api/auth/user
  */
-export function handleUpdateUser(req: Request, res: Response) {
-  const currentUser = getSessionUser(req);
+export async function handleUpdateUser(req: Request, res: Response) {
+  const currentUser = await getSessionUser(req);
   if (!currentUser) {
     return res.status(401).json({ error: 'No autorizado.' });
   }
 
-  const target = usersById.get(currentUser.id);
+  let target = usersById.get(currentUser.id) || await getUserFromDbById(currentUser.id);
   if (!target) {
     return res.status(404).json({ error: 'Usuario no encontrado.' });
   }
@@ -648,7 +691,9 @@ export function handleUpdateUser(req: Request, res: Response) {
   if (preferences) target.preferences = preferences;
   target.updatedAt = new Date().toISOString();
 
-  persistDatabase(target);
+  indexUser(target);
+  await saveUserDb(target);
+  await persistDatabase(target);
 
   return res.json({
     success: true,
@@ -660,27 +705,27 @@ export function handleUpdateUser(req: Request, res: Response) {
 /**
  * DELETE /api/auth/account
  */
-export function handleDeleteAccount(req: Request, res: Response) {
-  const currentUser = getSessionUser(req);
+export async function handleDeleteAccount(req: Request, res: Response) {
+  const currentUser = await getSessionUser(req);
   if (!currentUser) {
     return res.status(401).json({ error: 'No autorizado.' });
   }
 
-  const target = usersById.get(currentUser.id);
+  let target = usersById.get(currentUser.id) || await getUserFromDbById(currentUser.id);
   if (target) {
     usersById.delete(target.id);
     usersByEmail.delete(target.email.toLowerCase());
     if (target.googleSub) usersByGoogleSub.delete(target.googleSub);
     if (target.microsoftOid) usersByMicrosoftOid.delete(target.microsoftOid);
     userDrafts.delete(target.email.toLowerCase());
-    deleteUserDb(target.id).catch(() => {});
-    persistDatabase();
+    await deleteUserDb(target.id);
+    await persistDatabase();
   }
 
   for (const [token, session] of sessions.entries()) {
     if (session.userId === currentUser.id) {
       sessions.delete(token);
-      deleteSessionDb(token).catch(() => {});
+      await deleteSessionDb(token);
     }
   }
 
@@ -690,10 +735,9 @@ export function handleDeleteAccount(req: Request, res: Response) {
     sameSite: 'lax',
     path: '/'
   });
-
-  return res.json({
-    success: true,
-    message: 'Tu cuenta y todos tus datos personales y de cartera fueron eliminados definitivamente de FAROS.'
+  return res.json({ 
+    success: true, 
+    message: 'Tu cuenta y todos tus datos personales y de cartera fueron eliminados definitivamente de FAROS.' 
   });
 }
 
@@ -853,10 +897,10 @@ export async function handleGoogleCallback(req: Request, res: Response) {
       throw new Error('El correo electrónico de tu cuenta Google no está verificado.');
     }
 
-    // 5. Real Multi-user Lookup & Account Linking
-    let existingUser = usersByGoogleSub.get(sub);
+    // 5. Real Multi-user Lookup & Account Linking (memory or DB)
+    let existingUser = usersByGoogleSub.get(sub) || await getUserFromDbByOAuth('google', sub);
     if (!existingUser) {
-      existingUser = usersByEmail.get(email);
+      existingUser = usersByEmail.get(email) || await getUserFromDbByEmail(email);
     }
 
     if (existingUser) {
@@ -865,9 +909,10 @@ export async function handleGoogleCallback(req: Request, res: Response) {
       if (picture && !existingUser.picture) existingUser.picture = picture;
       existingUser.updatedAt = new Date().toISOString();
       indexUser(existingUser);
-      persistDatabase(existingUser);
+      await saveUserDb(existingUser);
+      await persistDatabase(existingUser);
 
-      const sessionToken = createSession(existingUser.id, true);
+      const sessionToken = await createSession(existingUser.id, true);
       setSessionCookie(res, sessionToken, true);
 
       return res.send(renderOAuthCallbackHtml({
@@ -1035,19 +1080,20 @@ export async function handleMicrosoftCallback(req: Request, res: Response) {
       throw new Error('Microsoft no proveyó el correo electrónico o el identificador del usuario.');
     }
 
-    // 5. Multi-user Lookup & Account Linking
-    let existingUser = usersByMicrosoftOid.get(oid);
+    // 5. Multi-user Lookup & Account Linking (memory or DB)
+    let existingUser = usersByMicrosoftOid.get(oid) || await getUserFromDbByOAuth('microsoft', oid);
     if (!existingUser) {
-      existingUser = usersByEmail.get(email);
+      existingUser = usersByEmail.get(email) || await getUserFromDbByEmail(email);
     }
 
     if (existingUser) {
       if (!existingUser.microsoftOid) existingUser.microsoftOid = oid;
       existingUser.updatedAt = new Date().toISOString();
       indexUser(existingUser);
-      persistDatabase(existingUser);
+      await saveUserDb(existingUser);
+      await persistDatabase(existingUser);
 
-      const sessionToken = createSession(existingUser.id, true);
+      const sessionToken = await createSession(existingUser.id, true);
       setSessionCookie(res, sessionToken, true);
 
       return res.send(renderOAuthCallbackHtml({

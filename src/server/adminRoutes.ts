@@ -14,8 +14,8 @@ import { UserPlan, FunnelStage } from '../types';
  * Server-side Admin Authorization Middleware
  * Verifies caller has an active session AND their email is in ADMIN_EMAILS
  */
-export function requireAdminMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const user = getSessionUser(req);
+export async function requireAdminMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const user = await getSessionUser(req);
   if (!user || !user.email) {
     res.status(401).json({ error: 'Sesión no iniciada o inválida' });
     return;
@@ -35,8 +35,8 @@ export function requireAdminMiddleware(req: Request, res: Response, next: NextFu
 /**
  * Check admin privileges for current session
  */
-export function handleAdminCheck(req: Request, res: Response): void {
-  const user = getSessionUser(req);
+export async function handleAdminCheck(req: Request, res: Response): Promise<void> {
+  const user = await getSessionUser(req);
   if (!user || !user.email) {
     res.json({ isAdmin: false, authenticated: false });
     return;
@@ -53,14 +53,14 @@ export function handleAdminCheck(req: Request, res: Response): void {
 /**
  * Public client-side event tracking receiver (non-blocking)
  */
-export function handleClientTrackEvent(req: Request, res: Response): void {
+export async function handleClientTrackEvent(req: Request, res: Response): Promise<void> {
   try {
     const { eventType, metadata } = req.body;
     if (!eventType) {
       res.status(400).json({ error: 'eventType is required' });
       return;
     }
-    const user = getSessionUser(req);
+    const user = await getSessionUser(req);
     trackEventNonBlocking(eventType, {
       userId: user?.id || null,
       metadata: metadata || {},

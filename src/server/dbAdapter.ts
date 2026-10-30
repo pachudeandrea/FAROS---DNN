@@ -29,10 +29,36 @@ function getWritableDataDir(): string {
 
 const DATA_DIR = getWritableDataDir();
 const USERS_DB_PATH = path.resolve(DATA_DIR, 'users_db.json');
+const SESSIONS_DB_PATH = path.resolve(DATA_DIR, 'sessions_db.json');
 const EVENTS_DB_PATH = path.resolve(DATA_DIR, 'events_db.json');
 
+// Helper to manage sessions on disk fallback
+interface DiskSession {
+  token: string;
+  userId: string;
+  expiresAt: number;
+  createdAt: number;
+}
+
+function loadDiskSessions(): DiskSession[] {
+  if (fs.existsSync(SESSIONS_DB_PATH)) {
+    try {
+      const data = fs.readFileSync(SESSIONS_DB_PATH, 'utf-8');
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+  return [];
+}
+
+function saveDiskSessions(list: DiskSession[]): void {
+  try {
+    fs.writeFileSync(SESSIONS_DB_PATH, JSON.stringify(list, null, 2), 'utf-8');
+  } catch {}
+}
+
 // --- POSTGRESQL CONNECTION POOL (IF CONFIGURED) ---
-const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL;
+const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL_NON_POOLING;
 let pgPool: Pool | null = null;
 let pgInitialized = false;
 let schemaInitPromise: Promise<void> | null = null;
@@ -44,7 +70,7 @@ if (dbUrl) {
       ssl: dbUrl.includes('localhost') ? false : { rejectUnauthorized: false },
       max: 10,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000
+      connectionTimeoutMillis: 10000
     });
     pgPool.on('error', (err) => {
       console.warn('[DB ADAPTER] Unexpected error on idle PostgreSQL client:', err?.message || err);
@@ -256,6 +282,78 @@ export async function loadAllUsersFromStorage(): Promise<StoredUser[]> {
 }
 
 /**
+ * Fetches a user directly by ID from PostgreSQL (or disk fallback)
+ */
+export async function getUserFromDbById(userId: string): Promise<StoredUser | null> {
+  if (pgPool) {
+    try {
+      await initPostgresSchema();
+      if (pgInitialized) {
+        const res = await pgPool.query('SELECT data FROM faros_users WHERE id = $1', [userId]);
+        if (res.rows && res.rows.length > 0) {
+          return res.rows[0].data as StoredUser;
+        }
+      }
+    } catch (err) {
+      console.warn('[DB ADAPTER] PostgreSQL query error for userId:', err);
+    }
+  }
+
+  const diskUsers = getAllUsers();
+  return diskUsers.find(u => u.id === userId) || null;
+}
+
+/**
+ * Fetches a user directly by email from PostgreSQL (or disk fallback)
+ */
+export async function getUserFromDbByEmail(email: string): Promise<StoredUser | null> {
+  const norm = (email || '').trim().toLowerCase();
+  if (!norm) return null;
+
+  if (pgPool) {
+    try {
+      await initPostgresSchema();
+      if (pgInitialized) {
+        const res = await pgPool.query('SELECT data FROM faros_users WHERE email = $1', [norm]);
+        if (res.rows && res.rows.length > 0) {
+          return res.rows[0].data as StoredUser;
+        }
+      }
+    } catch (err) {
+      console.warn('[DB ADAPTER] PostgreSQL query error for user email:', err);
+    }
+  }
+
+  const diskUsers = getAllUsers();
+  return diskUsers.find(u => (u.email || '').trim().toLowerCase() === norm) || null;
+}
+
+/**
+ * Fetches a user by OAuth provider ID (Google sub or Microsoft oid)
+ */
+export async function getUserFromDbByOAuth(provider: 'google' | 'microsoft', id: string): Promise<StoredUser | null> {
+  if (!id) return null;
+
+  if (pgPool) {
+    try {
+      await initPostgresSchema();
+      if (pgInitialized) {
+        const field = provider === 'google' ? 'googleSub' : 'microsoftOid';
+        const res = await pgPool.query(`SELECT data FROM faros_users WHERE data->>'${field}' = $1`, [id]);
+        if (res.rows && res.rows.length > 0) {
+          return res.rows[0].data as StoredUser;
+        }
+      }
+    } catch (err) {
+      console.warn('[DB ADAPTER] PostgreSQL query error for OAuth id:', err);
+    }
+  }
+
+  const diskUsers = getAllUsers();
+  return diskUsers.find(u => provider === 'google' ? u.googleSub === id : u.microsoftOid === id) || null;
+}
+
+/**
  * Persists a user to PostgreSQL and syncs to disk file
  */
 export async function saveUserDb(user: StoredUser): Promise<void> {
@@ -317,9 +415,10 @@ export async function deleteUserDb(userId: string): Promise<void> {
 }
 
 /**
- * Persists session to PostgreSQL
+ * Persists session to PostgreSQL and disk fallback
  */
 export async function saveSessionDb(token: string, userId: string, expiresAt: number): Promise<void> {
+  // 1. PostgreSQL (if available)
   if (pgPool) {
     try {
       await initPostgresSchema();
@@ -332,12 +431,77 @@ export async function saveSessionDb(token: string, userId: string, expiresAt: nu
           [token, userId, expiresAt, Date.now()]
         );
       }
-    } catch {}
+    } catch (err) {
+      console.warn('[DB ADAPTER] Error saving session to PostgreSQL:', err);
+    }
   }
+
+  // 2. Disk store fallback
+  try {
+    const sessions = loadDiskSessions().filter(s => s.token !== token);
+    sessions.push({
+      token,
+      userId,
+      expiresAt,
+      createdAt: Date.now()
+    });
+    // Purge expired sessions (keep max 1,000)
+    const now = Date.now();
+    const valid = sessions.filter(s => s.expiresAt > now).slice(-1000);
+    saveDiskSessions(valid);
+  } catch {}
 }
 
 /**
- * Deletes session from PostgreSQL
+ * Reads a session from PostgreSQL or disk fallback
+ */
+export async function getSessionDb(token: string): Promise<{ userId: string; expiresAt: number } | null> {
+  if (!token) return null;
+
+  // 1. PostgreSQL
+  if (pgPool) {
+    try {
+      await initPostgresSchema();
+      if (pgInitialized) {
+        const res = await pgPool.query('SELECT user_id, expires_at FROM faros_sessions WHERE token = $1', [token]);
+        if (res.rows && res.rows.length > 0) {
+          const row = res.rows[0];
+          const expiresAt = Number(row.expires_at);
+          if (Date.now() > expiresAt) {
+            await deleteSessionDb(token);
+            return null;
+          }
+          return { userId: row.user_id, expiresAt };
+        }
+      }
+    } catch (err) {
+      console.warn('[DB ADAPTER] Error fetching session from PostgreSQL:', err);
+    }
+  }
+
+  // 2. Disk fallback
+  const sessions = loadDiskSessions();
+  const session = sessions.find(s => s.token === token);
+  if (session) {
+    if (Date.now() > session.expiresAt) {
+      deleteSessionFromDisk(token);
+      return null;
+    }
+    return { userId: session.userId, expiresAt: session.expiresAt };
+  }
+
+  return null;
+}
+
+function deleteSessionFromDisk(token: string): void {
+  try {
+    const sessions = loadDiskSessions().filter(s => s.token !== token);
+    saveDiskSessions(sessions);
+  } catch {}
+}
+
+/**
+ * Deletes session from PostgreSQL and disk
  */
 export async function deleteSessionDb(token: string): Promise<void> {
   if (pgPool) {
@@ -348,6 +512,7 @@ export async function deleteSessionDb(token: string): Promise<void> {
       }
     } catch {}
   }
+  deleteSessionFromDisk(token);
 }
 
 /**
