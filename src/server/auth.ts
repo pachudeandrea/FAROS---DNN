@@ -153,9 +153,6 @@ export async function loadDatabase(): Promise<void> {
       }
     }
   }
-
-  // Initial seed accounts for testing real multi-user isolation
-  seedInitialTestAccounts();
 }
 
 /**
@@ -174,43 +171,10 @@ function indexUser(user: StoredUser): void {
   }
 }
 
-/**
- * Seeds distinct test accounts for testing multi-user isolation
- */
-function seedInitialTestAccounts(): void {
-  const hash = bcrypt.hashSync('Inversor2026!', 10);
-
-  const initialUsers: StoredUser[] = [
-    {
-      id: 'usr_mariano_demo',
-      name: 'Mariano De Andrea',
-      email: 'marudeandrea@gmail.com',
-      passwordHash: hash,
-      provider: 'email',
-      timeZone: 'America/Argentina/Buenos_Aires',
-      termsAccepted: true,
-      profile: 'moderado',
-      alyc: 'Balanz',
-      portfolio: {
-        id: 'port_mariano_1',
-        name: 'Cartera Renta Fija Soberana',
-        description: 'Títulos de deuda soberana y corporativa argentina en dólares.',
-        profile: 'moderado',
-        assetIds: ['AL30', 'GD30', 'YPFD', 'GGAL'],
-        assetPositions: { 'AL30': 'long', 'GD30': 'long', 'YPFD': 'long', 'GGAL': 'long' }
-      },
-      createdAt: '2026-10-01T10:00:00.000Z'
-    }
-  ];
-
-  for (const u of initialUsers) {
-    indexUser(u);
-  }
-  persistDatabase();
-}
-
-// Load database on boot
-loadDatabase();
+// Non-blocking database preload on startup
+loadDatabase().catch(err => {
+  console.warn('[AUTH DB] Background database preload notice:', err?.message || err);
+});
 
 /**
  * Helper to determine the canonical public App URL

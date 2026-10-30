@@ -389,7 +389,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
       }
 
       // 2. Email Already Registered (409 Conflict)
-      if (res.status === 409 || (data?.error && data.error.toLowerCase().includes('registrado'))) {
+      if (res.status === 409 || (data?.error && typeof data.error === 'string' && data.error.toLowerCase().includes('registrado'))) {
         setStepError('Este correo electrónico ya se encuentra registrado en FAROS. Podés iniciar sesión directamente con tu contraseña.');
         setIsLoading(false);
         return;
@@ -402,8 +402,26 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
         return;
       }
 
-      // 4. Other server status codes
-      if (data?.error) {
+      // 4. API Endpoint Not Found (404)
+      if (res.status === 404) {
+        setStepError('El servicio de registro no está disponible o no fue encontrado (404). Por favor recargá la página.');
+        setIsLoading(false);
+        return;
+      }
+
+      // 5. Server Errors (500, 502, 503, 504)
+      if (res.status >= 500) {
+        if (data?.error && typeof data.error === 'string' && !data.error.includes('<!DOCTYPE')) {
+          setStepError(data.error);
+        } else {
+          setStepError(`El servidor de FAROS experimentó un error temporal (${res.status}). Por favor reintentá en unos momentos.`);
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      // 6. Generic response error with server message
+      if (data?.error && typeof data.error === 'string' && !data.error.includes('<!DOCTYPE')) {
         setStepError(data.error);
         setIsLoading(false);
         return;
@@ -415,8 +433,10 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
       console.warn('[FAROS REGISTER] Network error reaching backend:', err?.message || err);
       if (err?.name === 'AbortError') {
         setStepError('La solicitud demoró más de lo esperado. Por favor verificá tu conexión e intentá nuevamente.');
+      } else if (err instanceof TypeError || String(err?.message || '').toLowerCase().includes('failed to fetch')) {
+        setStepError('No se pudo establecer conexión con el servidor. Por favor verificá tu conexión a internet e intentá nuevamente.');
       } else {
-        setStepError('No pudimos conectar con el servidor de FAROS. Por favor verificá tu conexión a internet e intentá nuevamente.');
+        setStepError(err?.message || 'Ocurrió un error inesperado al procesar el registro.');
       }
       setIsLoading(false);
     }

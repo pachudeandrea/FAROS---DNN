@@ -57,28 +57,55 @@ function saveDiskSessions(list: DiskSession[]): void {
   } catch {}
 }
 
-// --- POSTGRESQL CONNECTION POOL (IF CONFIGURED) ---
-const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL_NON_POOLING;
+// --- UNIFIED POSTGRESQL / NEON DATABASE CONNECTION ---
+// Prioritizes DATABASE_URL as the primary unified connection string for Neon / PostgreSQL across all modules:
+// - Registro de usuarios
+// - Autenticación y contraseñas
+// - Sesiones de usuario
+// - Carteras y activos (almacenados en faros_users.data)
+// - Telemetría y eventos
+const rawDbUrl = (process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL_NON_POOLING || '').trim();
+const dbUrl = rawDbUrl;
+const activeVarName = process.env.DATABASE_URL 
+  ? 'DATABASE_URL' 
+  : (process.env.POSTGRES_URL 
+    ? 'POSTGRES_URL (fallback)' 
+    : (process.env.POSTGRES_PRISMA_URL 
+      ? 'POSTGRES_PRISMA_URL (fallback)' 
+      : (process.env.POSTGRES_URL_NON_POOLING 
+        ? 'POSTGRES_URL_NON_POOLING (fallback)' 
+        : null)));
+
 let pgPool: Pool | null = null;
 let pgInitialized = false;
 let schemaInitPromise: Promise<void> | null = null;
 
 if (dbUrl) {
   try {
+    const isLocalhost = dbUrl.includes('localhost') || dbUrl.includes('127.0.0.1');
+    const isServerless = Boolean(process.env.VERCEL || process.env.NOW_REGION);
+    const isNeon = dbUrl.includes('neon.tech');
+
     pgPool = new Pool({
       connectionString: dbUrl,
-      ssl: dbUrl.includes('localhost') ? false : { rejectUnauthorized: false },
-      max: 10,
+      // Neon & modern cloud PostgreSQL require TLS. On localhost SSL is disabled.
+      ssl: isLocalhost ? false : { rejectUnauthorized: false },
+      // Tune max connections: serverless lambdas need conservative pool sizes to prevent Neon connection exhaustion
+      max: isServerless ? 4 : 10,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000
     });
+
     pgPool.on('error', (err) => {
       console.warn('[DB ADAPTER] Unexpected error on idle PostgreSQL client:', err?.message || err);
     });
-    console.log('[DB ADAPTER] PostgreSQL database pool initialized successfully.');
+
+    console.log(`[DB ADAPTER] PostgreSQL database pool successfully initialized via ${activeVarName} (${isNeon ? 'Neon Serverless' : 'PostgreSQL'}).`);
   } catch (err) {
     console.warn('[DB ADAPTER] Error initializing PostgreSQL pool, falling back to durable JSON store:', err);
   }
+} else {
+  console.log('[DB ADAPTER] No DATABASE_URL configured. Running with local persistent file store.');
 }
 
 /**
@@ -245,25 +272,29 @@ export async function loadAllUsersFromStorage(): Promise<StoredUser[]> {
           return res.rows.map(r => r.data as StoredUser);
         }
 
-        // If PostgreSQL table is empty, seed from local disk users
-        const diskUsers = getAllUsers();
-        if (diskUsers.length > 0) {
-          console.log(`[DB ADAPTER] Seeding ${diskUsers.length} initial user(s) into PostgreSQL...`);
-          for (const u of diskUsers) {
-            try {
-              await pgPool.query(
-                `INSERT INTO faros_users (id, email, data, created_at, updated_at)
-                 VALUES ($1, $2, $3, NOW(), NOW())
-                 ON CONFLICT (id) DO UPDATE
-                 SET email = EXCLUDED.email,
-                     data = EXCLUDED.data,
-                     updated_at = NOW()`,
-                [u.id, u.email.toLowerCase(), JSON.stringify(u)]
-              );
-            } catch {}
+        // If PostgreSQL table is empty in production, return empty list without auto-seeding mock accounts
+        const shouldSeed = !process.env.VERCEL && process.env.NODE_ENV !== 'production' && process.env.SEED_TEST_USERS === 'true';
+        if (shouldSeed) {
+          const diskUsers = getAllUsers();
+          if (diskUsers.length > 0) {
+            console.log(`[DB ADAPTER] Seeding ${diskUsers.length} initial user(s) into PostgreSQL...`);
+            for (const u of diskUsers) {
+              try {
+                await pgPool.query(
+                  `INSERT INTO faros_users (id, email, data, created_at, updated_at)
+                   VALUES ($1, $2, $3, NOW(), NOW())
+                   ON CONFLICT (id) DO UPDATE
+                   SET email = EXCLUDED.email,
+                       data = EXCLUDED.data,
+                       updated_at = NOW()`,
+                  [u.id, u.email.toLowerCase(), JSON.stringify(u)]
+                );
+              } catch {}
+            }
+            return diskUsers;
           }
-          return diskUsers;
         }
+        return [];
       }
     } catch (err) {
       console.warn('[DB ADAPTER] PostgreSQL query notice, falling back to disk store:', err);

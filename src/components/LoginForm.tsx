@@ -102,7 +102,15 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         throw new Error(data?.error || 'Email o contraseña incorrectos.');
       }
 
-      // If server endpoint returned 404/500 (e.g. static host), check local vault
+      if (res.status === 404) {
+        throw new Error('Servicio de inicio de sesión no encontrado (404). Por favor recargá la página.');
+      }
+
+      if (res.status >= 500) {
+        throw new Error(data?.error || `Error temporal del servidor (${res.status}). Por favor reintentá en unos momentos.`);
+      }
+
+      // If server returned another status, check local vault as offline fallback
       const vaultAuth = await verifyVaultLogin(normalizedEmail, password);
       if (vaultAuth.success && vaultAuth.user) {
         onSuccess(vaultAuth.user, vaultAuth.token);
@@ -110,7 +118,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         return;
       }
 
-      throw new Error('Email o contraseña incorrectos.');
+      throw new Error(data?.error || 'Email o contraseña incorrectos.');
     } catch (err: any) {
       // Check local vault in case of network disconnect or server unavailability
       const vaultAuth = await verifyVaultLogin(normalizedEmail, password);
