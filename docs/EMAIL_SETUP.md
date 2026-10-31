@@ -1,60 +1,63 @@
-# Confirmación de correo y recuperación de contraseña
+# Recuperación de contraseña con código
 
-FAROS admite envío transaccional por Brevo o Resend. Vercel y Neon no envían estos correos por sí mismos. Hace falta una cuenta del proveedor y un remitente que ese proveedor autorice. La confirmación prueba el control del correo; no verifica documentos ni identidad legal.
+El registro crea una cuenta activa y una sesión con correo y contraseña. No envía confirmaciones ni depende del proveedor de correo. Las cuentas que hubieran quedado pendientes también pueden acceder con su contraseña; no se las marca como verificadas ni se modifica su cartera.
 
-## Activar en producción
+El correo se utiliza únicamente para **Olvidaste tu contraseña**. FAROS puede enviarlo por Brevo o Resend. El nombre visible del remitente es FAROS y su dirección debe estar autorizada por el proveedor.
 
-Para este proyecto se recomienda empezar con Brevo:
+## Configuración en Vercel
 
-1. Crear una cuenta en https://www.brevo.com/ y completar los requisitos de activación del servicio.
-2. Agregar y validar la dirección remitente que usará FAROS. Usar el remitente/dominio que el proveedor autorice para correos transaccionales; no se puede enviar desde una dirección arbitraria.
-3. Crear una clave **API v3** para la aplicación. No usar la contraseña o clave SMTP.
-4. En **Vercel → faros-dnn → Settings → Environment Variables**, guardar para **Production**, juntos antes de redesplegar:
+1. En Brevo, validar el remitente y crear una clave **API v3**, no una clave SMTP. Completar los requisitos de activación transaccional del proveedor.
+2. Abrir el **proyecto que tiene el dominio faros-dnn.vercel.app → Settings → Environment Variables**. Las variables deben pertenecer al proyecto o estar expresamente vinculadas desde Shared; guardarlas solo en el equipo no las incorpora a la aplicación.
+3. Configurar para **Production**:
 
-   | Variable | Contenido |
+   | Variable | Valor |
    | --- | --- |
-   | `BREVO_API_KEY` | Clave API del proveedor, mediante el ingreso seguro de secretos |
-   | `EMAIL_FROM` | Dirección remitente autorizada, solo el correo (sin nombre ni `< >`) |
-   | `APP_URL` | `https://faros-dnn.vercel.app` |
+   | `BREVO_API_KEY` | Clave API del proveedor |
+   | `EMAIL_FROM` | Dirección remitente autorizada, sin nombre ni `< >` |
+   | `APP_URL` | `https://faros-dnn.vercel.app`, origen de la aplicación |
 
-5. Redesplegar el código actual. La migración adicional se ejecuta automáticamente durante el build; no hace falta usar el SQL Editor de Neon.
-6. Probar el envío primero a una cuenta propia y revisar también spam. La aceptación de la API del proveedor no garantiza la llegada a la bandeja principal.
+4. Redesplegar **Production** y esperar Ready. Las migraciones se aplican durante el build. No hace falta ejecutar SQL manualmente.
+5. Probar la recuperación con el correo exacto de una cuenta propia que pueda iniciar sesión. Revisar entrada y spam, ingresar el código junto con una nueva contraseña y comprobar el acceso.
 
-Como alternativa, configurar `RESEND_API_KEY` y `EMAIL_FROM` con un remitente/dominio autorizado por Resend. Si hay claves de ambos proveedores, seleccionar `EMAIL_PROVIDER=brevo` o `EMAIL_PROVIDER=resend`. Con solo una clave, se selecciona ese proveedor automáticamente. El tráfico utiliza los endpoints HTTPS oficiales `api.brevo.com` o `api.resend.com`, con verificación TLS normal.
+Como alternativa, usar `RESEND_API_KEY` con un remitente autorizado por Resend. Si se configuraron ambas claves, seleccionar `EMAIL_PROVIDER=brevo` o `EMAIL_PROVIDER=resend`; con una sola, se detecta el proveedor. Las claves se ingresan directamente en Vercel, no en el chat ni Git, y no llevan prefijo `VITE_`.
 
-No pegar claves en el chat ni guardarlas en Git. Estas variables son del servidor en Vercel; no llevan prefijo `VITE_`. La clave de Gemini no es una credencial de correo. No hay credenciales de envío disponibles en el entorno de desarrollo, por lo que la entrega real requiere esta configuración del propietario.
+El envío de códigos no necesita enlaces ni usa el Host enviado por un cliente. `APP_URL` conserva su función como origen de la aplicación. La configuración de correo ausente o incompleta impide solicitar códigos, pero no bloquea el registro ni el acceso con contraseña.
 
-## Comportamiento y compatibilidad
+## Flujo
 
-- Sin ninguna variable de envío, se conserva el registro y acceso por correo ya existente. La recuperación informa que no pudo enviar; no simula un envío. La confirmación de nuevas cuentas no se considera activada hasta configurar el proveedor.
-- Con configuración completa, cada alta por correo se guarda pendiente y recibe un enlace de confirmación que vence en **24 horas**. No obtiene una sesión hasta confirmar.
-- Con configuración parcial o inválida, las nuevas altas devuelven un error de configuración; no se omite silenciosamente la verificación. Configurar todas las variables juntas.
-- Las cuentas anteriores conservan su acceso, sesiones, perfil y cartera; no se marcan retroactivamente como verificadas, no se envían correos masivos y no se obliga a volver a registrarlas.
-- Se puede reenviar una confirmación desde la pantalla de registro pendiente o al intentar acceder con una cuenta sin confirmar. El nuevo enlace invalida el anterior.
-- Si falla el envío después de crear la cuenta pendiente, la pantalla lo informa y permite pedir otro enlace. Esa cuenta sigue sin poder iniciar sesión hasta confirmar o recuperar su contraseña mediante el correo.
-- La recuperación responde con el mismo mensaje para correos registrados e inexistentes. El enlace de cambio vence en **30 minutos**, es de un solo uso y solo llega al correo de la cuenta.
-- Cambiar la contraseña revoca todas las sesiones y los enlaces pendientes del usuario. Conserva su cartera, preferencias y demás datos. El propietario puede iniciar sesión con la nueva contraseña.
+- Solicitar el código desde **Iniciar sesión → Olvidaste tu contraseña**.
+- Si la cuenta existe, FAROS solicita al proveedor el envío de un **código de seis dígitos**. La respuesta pública es igual para correos registrados e inexistentes.
+- Ingresar el código, la nueva contraseña y su repetición. Se verifica el código y se cambia la contraseña en la misma operación.
+- El código vence en **10 minutos**, admite **cinco intentos** y se usa una sola vez. El reenvío reemplaza el anterior y se puede solicitar después de un minuto.
+- La opción **Ya tengo un código** permite retomar el formulario con el correo registrado, incluso desde otra pestaña.
+- Cambiar la contraseña cierra todas las sesiones anteriores y permite entrar con la nueva clave. Conserva cartera, perfil y preferencias.
 
-## Seguridad del flujo
+## Seguridad y compatibilidad
 
-Los tokens usan 256 bits de aleatoriedad y solo sus hashes SHA-256 se guardan en PostgreSQL. No se devuelven por la API de registro, recuperación ni reenvío. Los enlaces usan el fragmento de la URL (`#verify-email=...` o `#reset-password=...`), que no se envía al servidor en las solicitudes HTTP ni en el encabezado Referrer. La aplicación limpia el fragmento de la barra de direcciones al abrir el enlace.
+Los códigos se generan con `crypto.randomInt`, incluyendo los ceros iniciales, y solo se guardan sus hashes bcrypt. No aparecen en las respuestas de la API, URLs ni registros. Los intentos y límites se guardan en PostgreSQL y se comparten entre instancias: una solicitud por dirección y minuto, y hasta veinte por IP cada quince minutos.
 
-Abrir un enlace no consume un token: se requiere pulsar el botón de confirmación o enviar el formulario de contraseña. Los escáneres de correo que hacen GET no activan cuentas ni cambian contraseñas. La consumición y actualización se realizan dentro de una transacción con bloqueo de la cuenta para evitar reutilizaciones concurrentes entre instancias.
+La cuenta se bloquea en la transacción antes de bloquear la fila de recuperación. Los intentos incorrectos se confirman en la base, incluso cuando la API responde un error. El consumo del código, la actualización de contraseña y la revocación de sesiones son atómicos. Dos instancias no pueden consumir el mismo código.
 
-Los enlaces usan exclusivamente el origen de `APP_URL`, no el Host enviado por un cliente. El límite de solicitudes se guarda en PostgreSQL y se aplica también a correos inexistentes: un correo por minuto para la misma dirección y finalidad, y hasta 20 por IP cada 15 minutos. Los fallos de entrega no imprimen los enlaces, claves ni errores internos del proveedor.
+La migración `003_password_reset_codes.sql` agrega la tabla de códigos, sin modificar cuentas ni sesiones. Las migraciones históricas se conservan. Las rutas, pantallas y bloqueos de confirmación inicial se retiraron; los enlaces antiguos ya no cambian contraseñas. La recuperación tampoco vuelve a introducir flags de verificación de correo.
 
-## Migración y alcance
+## Diagnóstico de entrega
 
-`migrations/002_email_actions.sql` crea únicamente las tablas de tokens y límites de envío. No modifica filas de cuentas existentes. El ejecutor de migraciones aplica los archivos SQL numerados en orden, en la transacción ya existente, y se puede repetir.
+Una respuesta exitosa de la recuperación indica una solicitud procesada. Para una cuenta existente se exige que el proveedor devuelva un comprobante de aceptación; esa aceptación todavía no garantiza la entrega al buzón. Si el proveedor rechaza la solicitud o no devuelve un comprobante válido, FAROS informa el fallo y descarta ese código.
 
-Los cambios se limitan a los flujos de autenticación por correo, sus pantallas nuevas y las pruebas necesarias. El feed, el calendario, audio, cartera y sus pantallas no se modifican. Los botones de Google/Microsoft continúan retirados.
+En **Vercel → proyecto faros-dnn → Logs**, filtrar por `[PASSWORD RECOVERY]`:
 
-## Comprobaciones
+- `provider=brevo status=accepted`: Brevo aceptó la solicitud. Revisar el destinatario, la fecha y el estado en los registros transaccionales de esa misma cuenta de Brevo.
+- `status=account_not_found`: el correo solicitado no corresponde a una cuenta actual; no se pidió ningún envío. Usar el correo exacto con el que se inicia sesión.
+- `status=http_401` o `status=http_403`: revisar clave API, permisos y activación de la cuenta del proveedor.
+- Otros `status=http_...`: el proveedor rechazó la solicitud; revisar su estado y configuración del remitente.
+- `status=transport_error` o `status=invalid_receipt`: falló la conexión o el proveedor no devolvió un comprobante válido.
 
-Las pruebas utilizan PostgreSQL local en un esquema descartable, dos instancias del JavaScript de la API compilado en Node y un receptor HTTP local que simula la API del proveedor. Solo aceptan destinatarios terminados en `.test`. No envían mensajes a personas reales ni escriben en producción.
+Estos registros solo incluyen estados controlados y el proveedor. No incluyen destinatarios, contraseñas, códigos, claves ni cuerpos de respuesta. Ante cero registros en Brevo, comprobar el rango de fechas, la cuenta de Brevo y este registro de Vercel antes de cambiar configuraciones.
 
-Se comprueban: alta pendiente, ausencia de sesión antes de confirmar, hashes de tokens, reenvío, expiración, un solo uso, carreras entre instancias, recuperación sin exponer tokens, revocación de sesiones, conservación de cartera, fallos del proveedor, configuración parcial, límites de solicitudes y compatibilidad de cuentas anteriores. Esto valida el flujo de la aplicación; la recepción de un correo real debe verificarse al cargar las credenciales y autorizar el remitente.
+## Validación
 
-Resultado validado: **36 pruebas aprobadas, 0 fallidas, 0 omitidas**, además de TypeScript y la compilación Vite del flujo de despliegue. Se generó también el artefacto con el empaquetador oficial de Vercel y se comprobó que arranca y conserva respuestas JSON controladas sin servicio de correo. La entrega a un buzón real continúa pendiente de la configuración del proveedor.
+Las pruebas usan PostgreSQL local en esquemas descartables, dos instancias del JavaScript compilado y un receptor local que simula las APIs oficiales de Brevo y Resend. Solo aceptan destinatarios `.test` y no envían mensajes a personas reales. Comprueban registro directo, acceso de cuentas antes pendientes, envío y hashes de códigos, reenvío, vencimiento, intentos persistentes, concurrencia, revocación de sesiones, conservación de datos, fallos del proveedor y compatibilidad con el resto de la API.
 
-Si el proveedor rechaza un mensaje, Vercel registra solo el nombre del proveedor y su estado HTTP (`[AUTH EMAIL]`), sin direcciones, tokens, claves ni el cuerpo de la respuesta. Revisar allí permisos de la clave y autorización del remitente.
+La entrega real requiere las credenciales del proyecto de Vercel y debe comprobarse con el proveedor y el buzón. El feed, calendario, audio y cartera mantienen su funcionamiento. Los botones de Google y Microsoft siguen retirados.
+
+Resultado local: **39 pruebas aprobadas, 0 fallidas, 0 omitidas**, incluyendo migración y build de producción, ejecución nativa de la API y regresiones de acceso y persistencia. TypeScript y el renderizado de los formularios también pasaron. Esto no sustituye la comprobación de entrega en un buzón real.

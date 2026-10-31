@@ -8,12 +8,11 @@ import {
   Lock, 
   ArrowRight, 
   AlertCircle, 
-  CheckCircle2, 
   Loader2
 } from 'lucide-react';
 import { UserAccount } from '../types';
 import { apiRequest } from '../utils/apiClient';
-import { EmailVerificationNotice } from './EmailVerificationNotice';
+import { PasswordRecoveryForm } from './PasswordRecoveryForm';
 
 interface LoginFormProps {
   isOpen: boolean;
@@ -35,12 +34,9 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
 
   // Forgot password flow state
   const [isForgotMode, setIsForgotMode] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState('');
-  const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,28 +53,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       onSuccess(data.user, data.token);
       onClose();
     } catch (err: any) {
-      if (err?.code === 'EMAIL_NOT_VERIFIED') { setVerificationEmail(normalizedEmail); return; }
       setErrorMessage(err.message || 'No se pudo iniciar sesión.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Forgot password request
-  const handleForgotSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage(null);
-    setIsLoading(true);
-
-    try {
-      const data = await apiRequest('/api/auth/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: forgotEmail.trim().toLowerCase() })
-      });
-      setForgotSuccess(data.message);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Error al procesar la solicitud.');
     } finally {
       setIsLoading(false);
     }
@@ -111,7 +86,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           </h2>
           <p className="text-xs text-emerald-100/80 mt-1">
             {isForgotMode
-              ? 'Ingresá tu correo para recibir un enlace seguro de restablecimiento.'
+              ? 'Usá un código recibido por correo para cambiar tu contraseña.'
               : 'Accedé a tu cartera y al feed de noticias financieras calibrado.'}
           </p>
         </div>
@@ -128,7 +103,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             </div>
           )}
 
-          {verificationEmail ? <EmailVerificationNotice email={verificationEmail} onLogin={() => setVerificationEmail(null)} /> : !isForgotMode ? (
+          {!isForgotMode ? (
             <>
               {/* Email & Password Form */}
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -158,7 +133,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                       type="button"
                       onClick={() => {
                         setIsForgotMode(true);
-                        setForgotEmail(email);
                         setErrorMessage(null);
                       }}
                       className="text-xs text-emerald-800 hover:text-emerald-950 font-semibold cursor-pointer"
@@ -219,63 +193,9 @@ export const LoginForm: React.FC<LoginFormProps> = ({
               </form>
             </>
           ) : (
-            /* Forgot Password Screen */
-            <div className="space-y-4">
-              {forgotSuccess ? (
-                <div className="space-y-4">
-                  <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
-                    <span>{forgotSuccess}</span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsForgotMode(false);
-                      setForgotSuccess(null);
-                    }}
-                    className="w-full py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 cursor-pointer"
-                  >
-                    Volver a iniciar sesión
-                  </button>
-                </div>
-              ) : (
-                <form onSubmit={handleForgotSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
-                      Correo registrado
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      value={forgotEmail}
-                      onChange={(e) => setForgotEmail(e.target.value)}
-                      placeholder="inversor@ejemplo.com"
-                      className="w-full px-4 py-2.5 text-xs sm:text-sm rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-800 bg-slate-50/50"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full py-3 px-4 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
-                  >
-                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>Enviar instrucciones</span>}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsForgotMode(false);
-                      setErrorMessage(null);
-                    }}
-                    className="w-full text-center text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
-                  >
-                    Volver al inicio de sesión
-                  </button>
-                </form>
-              )}
-            </div>
+            <PasswordRecoveryForm initialEmail={email}
+              onBack={() => { setIsForgotMode(false); setErrorMessage(null); }}
+              onComplete={resetEmail => { setEmail(resetEmail); setPassword(''); setIsForgotMode(false); setErrorMessage(null); }} />
           )}
 
           {/* Switch to Sign Up */}

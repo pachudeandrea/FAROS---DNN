@@ -3,8 +3,8 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { UserAccount, RiskProfile, Portfolio } from '../types/index.js';
 import { DEFAULT_PREFERENCES } from '../data/mockData.js';
-import { emailConfirmationEnabled, requireEmailDelivery, sendAccountEmail } from './authEmail.js';
-import { newEmailToken, createPendingUser, issueEmailToken, discardEmailToken, assertEmailToken, confirmEmail, resetEmailPassword, limitAuthEmail } from './emailTokens.js';
+import { requireEmailDelivery, sendPasswordResetCode } from './authEmail.js';
+import { issuePasswordResetCode, discardPasswordResetCode, resetPasswordWithCode, limitPasswordRecovery } from './passwordRecovery.js';
 import { 
   trackEventNonBlocking, 
   isUserAdmin, 
@@ -26,9 +26,6 @@ export interface StoredUser extends UserAccount {
   googleSub?: string;
   microsoftOid?: string;
   updatedAt?: string;
-  emailVerified?: boolean;
-  emailVerifiedAt?: string;
-  emailVerificationRequired?: boolean;
 }
 
 interface FailedAttempt { count: number; lockedUntil: number }
@@ -74,7 +71,6 @@ export async function getSessionUser(req: Request): Promise<UserAccount | null> 
   const session = await getSessionDb(token);
   if (!session) return null;
   const user = await getUserFromDbById(session.userId);
-  if (user?.emailVerificationRequired && !user.emailVerified) return null;
   return user ? sanitizeUser(user) : null;
 }
 
@@ -253,19 +249,6 @@ export async function handleRegister(req: Request, res: Response) {
     createdAt: new Date().toISOString()
   };
 
-  if (provider === 'email' && emailConfirmationEnabled()) {
-    await limitAuthEmail(normalizedEmail, req.ip || 'unknown', 'verify_email');
-    const confirmationToken = newEmailToken();
-    await createPendingUser({ ...newUser, emailVerified: false, emailVerificationRequired: true }, confirmationToken);
-    try {
-      await sendAccountEmail(normalizedEmail, 'verify_email', confirmationToken);
-    } catch (error) {
-      await discardEmailToken(confirmationToken).catch(() => {});
-      throw error;
-    }
-    return res.status(201).json({ success: true, verificationRequired: true, email: normalizedEmail, message: 'Revisá tu correo y confirmá la dirección para activar tu cuenta. El enlace vence en 24 horas.' });
-  }
-
   const sessionToken = newToken();
   await createUserAndSessionDb(newUser, sessionToken, Date.now() + sessionDuration(true), provider === 'email' ? undefined : signupTicket);
 
@@ -334,10 +317,6 @@ export async function handleLogin(req: Request, res: Response) {
 
   failedLoginAttempts.delete(attemptKey);
 
-  if (user.emailVerificationRequired && !user.emailVerified) {
-    return res.status(403).json({ code: 'EMAIL_NOT_VERIFIED', error: 'Confirmá tu correo para activar la cuenta. Podés solicitar otro enlace de confirmación.' });
-  }
-
   await updateUserDb(user.id, { lastActiveAt: new Date().toISOString() });
 
   trackEventNonBlocking('login', {
@@ -378,51 +357,27 @@ export async function handleForgotPassword(req: Request, res: Response) {
   const email = normalizedAddress(req.body?.email);
   if (!validAddress(email)) return res.status(400).json({ error: 'Ingresá un correo electrónico válido.' });
   requireEmailDelivery();
-  await limitAuthEmail(email, req.ip || 'unknown', 'reset_password');
+  await limitPasswordRecovery(email, req.ip || 'unknown');
   const user = await getUserFromDbByEmail(email);
-  if (user) {
-    const token = newEmailToken();
-    if (await issueEmailToken(user.id, 'reset_password', token)) {
-      try { await sendAccountEmail(email, 'reset_password', token); }
-      catch (error) { await discardEmailToken(token).catch(() => {}); throw error; }
-    }
+  const recovery = await issuePasswordResetCode(email, user?.id);
+  if (recovery.deliver) {
+    try { await sendPasswordResetCode(email, recovery.code); }
+    catch (error) { await discardPasswordResetCode(recovery.requestId).catch(() => {}); throw error; }
+  } else {
+    console.info('[PASSWORD RECOVERY] status=account_not_found; no message sent.');
   }
-  return res.json({ success: true, message: 'Si hay una cuenta con ese correo, recibirás un enlace para cambiar tu contraseña. Revisá también la carpeta de spam.' });
+  return res.json({ success: true, message: 'Si hay una cuenta con ese correo, recibirás un código de 6 dígitos. Vence en 10 minutos. Revisá también la carpeta de spam.' });
 }
 
 export async function handleResetPassword(req: Request, res: Response) {
-  const { token, newPassword } = req.body || {};
-  if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return res.status(400).json({ code: 'EMAIL_TOKEN_INVALID', error: 'El enlace no es válido. Solicitá uno nuevo.' });
+  const email = normalizedAddress(req.body?.email);
+  const { code, newPassword } = req.body || {};
+  if (!validAddress(email)) return res.status(400).json({ error: 'Ingresá un correo electrónico válido.' });
+  if (typeof code !== 'string' || !/^[0-9]{6}$/.test(code)) return res.status(400).json({ code: 'PASSWORD_CODE_INVALID', error: 'Ingresá el código de 6 dígitos que recibiste por correo.' });
   if (typeof newPassword !== 'string' || newPassword.length < 8 || Buffer.byteLength(newPassword, 'utf8') > 72) return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres y hasta 72 bytes.' });
-  await assertEmailToken(token, 'reset_password');
-  await resetEmailPassword(token, await bcrypt.hash(newPassword, 10));
+  await resetPasswordWithCode(email, code, newPassword);
   res.clearCookie('faros_session', cookieOptions());
   return res.json({ success: true, message: 'Contraseña actualizada. Iniciá sesión con tu nueva contraseña.' });
-}
-
-export async function handleVerifyEmail(req: Request, res: Response) {
-  const token = req.body?.token;
-  if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return res.status(400).json({ code: 'EMAIL_TOKEN_INVALID', error: 'El enlace no es válido. Solicitá uno nuevo.' });
-  const session = newToken();
-  const user = await confirmEmail(token, session, Date.now() + sessionDuration(true));
-  setSessionCookie(res, session);
-  return res.json({ success: true, user: sanitizeUser(user), token: session, message: 'Correo confirmado. Tu cuenta está activa.' });
-}
-
-export async function handleResendVerification(req: Request, res: Response) {
-  const email = normalizedAddress(req.body?.email);
-  if (!validAddress(email)) return res.status(400).json({ error: 'Ingresá un correo electrónico válido.' });
-  requireEmailDelivery();
-  await limitAuthEmail(email, req.ip || 'unknown', 'verify_email');
-  const user = await getUserFromDbByEmail(email);
-  if (user?.emailVerificationRequired && !user.emailVerified) {
-    const token = newEmailToken();
-    if (await issueEmailToken(user.id, 'verify_email', token)) {
-      try { await sendAccountEmail(email, 'verify_email', token); }
-      catch (error) { await discardEmailToken(token).catch(() => {}); throw error; }
-    }
-  }
-  return res.json({ success: true, message: 'Si hay una cuenta pendiente con ese correo, recibirás un nuevo enlace de confirmación.' });
 }
 
 /**

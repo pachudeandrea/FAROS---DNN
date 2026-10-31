@@ -32,7 +32,6 @@ import { OnboardingModal } from './components/OnboardingModal';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { LoginForm } from './components/LoginForm';
 import { SignUpWizard } from './components/SignUpWizard';
-import { EmailActionView, readEmailAction } from './components/EmailActionView';
 import { InteractiveTour } from './components/InteractiveTour';
 import { LighthouseLogo } from './components/LighthouseLogo';
 import { AdminPanel } from './components/admin/AdminPanel';
@@ -65,19 +64,6 @@ export default function App() {
   const [isSessionLoading, setIsSessionLoading] = useState<boolean>(true);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
   const [showSignUpModal, setShowSignUpModal] = useState<boolean>(false);
-  const [emailAction, setEmailAction] = useState(() => typeof window === 'undefined' ? null : readEmailAction(window.location.hash));
-  useEffect(() => {
-    const readLink = () => {
-      const action = readEmailAction(window.location.hash);
-      if (action) {
-        setEmailAction(previous => previous?.kind === action.kind && previous.token === action.token ? previous : action);
-        window.history.replaceState(null, '', window.location.pathname + window.location.search);
-      }
-    };
-    readLink();
-    window.addEventListener('hashchange', readLink);
-    return () => window.removeEventListener('hashchange', readLink);
-  }, []);
 
   // Active news item for detail modal & audio drawer
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
@@ -420,7 +406,6 @@ export default function App() {
 
   // Session verification on mount
   useEffect(() => {
-    if (emailAction) { setIsSessionLoading(false); return; }
     let isMounted = true;
     async function checkSession() {
       try {
@@ -446,7 +431,7 @@ export default function App() {
     }
     checkSession();
     return () => { isMounted = false; };
-  }, [handleSessionSuccess, emailAction]);
+  }, [handleSessionSuccess]);
 
   const clearSessionView = () => {
     audioController.stopAll('logout');
@@ -689,13 +674,6 @@ export default function App() {
       section.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
-
-  if (emailAction) {
-    return <EmailActionView action={emailAction}
-      onVerified={(user, token) => { setEmailAction(null); handleSessionSuccess(user, token, true); }}
-      onReset={() => { clearSessionView(); setEmailAction(null); setShowLoginModal(true); }}
-      onClose={() => { setEmailAction(null); setShowLoginModal(true); }} />;
-  }
 
   // Session hydration loading state
   if (isSessionLoading) {
