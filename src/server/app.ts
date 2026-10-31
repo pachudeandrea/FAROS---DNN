@@ -36,7 +36,7 @@ import {
   handleRegister,
   handleLogin,
   handleLogout,
-  handleForgotPassword,
+  handleSetRecoveryKey,
   handleResetPassword,
   handleUpdateUser,
   handleDeleteAccount,
@@ -536,8 +536,8 @@ app.get('/api/auth/me', asyncRoute(handleGetMe));
 app.post('/api/auth/register', asyncRoute(handleRegister));
 app.post('/api/auth/login', asyncRoute(handleLogin));
 app.post('/api/auth/logout', asyncRoute(handleLogout));
-app.post('/api/auth/forgot-password', asyncRoute(handleForgotPassword));
 app.post('/api/auth/reset-password', asyncRoute(handleResetPassword));
+app.put('/api/auth/recovery-key', asyncRoute(handleSetRecoveryKey));
 app.put('/api/auth/user', asyncRoute(handleUpdateUser));
 app.delete('/api/auth/account', asyncRoute(handleDeleteAccount));
 app.post('/api/auth/draft', asyncRoute(handleSaveDraft));

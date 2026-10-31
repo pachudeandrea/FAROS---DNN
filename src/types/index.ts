@@ -202,6 +202,7 @@ export interface UserAccount {
   funnelStage?: FunnelStage;
   lastActiveAt?: string;
   isAdmin?: boolean;
+  hasRecoveryKey?: boolean;
 }
 
 export interface OnboardingAssetEntry {

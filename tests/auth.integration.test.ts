@@ -112,20 +112,20 @@ test('la API arranca sin credenciales y responde errores JSON sin archivos local
   const api = await start();
   assert.equal((await request(api.url, '/api/date/info')).status, 200);
   assert.equal((await request(api.url, '/api/auth/register', 'POST', {})).status, 400);
-  const missing = await request(api.url, '/api/auth/register', 'POST', { name: 'Prueba', email: 'missing@example.test', password: 'Prueba123!', termsAccepted: true });
+  const missing = await request(api.url, '/api/auth/register', 'POST', { name: 'Prueba', email: 'missing@example.test', password: 'Prueba123!', recoveryKey: 'Mi-respaldo-seguro-123!', termsAccepted: true });
   assert.equal(missing.status, 503); assert.equal(missing.data.code, 'DB_NOT_CONFIGURED');
   assert.equal((await request(api.url, '/api/health')).data.code, 'DB_NOT_CONFIGURED');
   assert.equal((await request(api.url, '/api/missing')).data.code, 'API_NOT_FOUND');
   assert.equal((await request(api.url, '/api/auth/google/url')).data.configured, false);
   assert.equal((await request(api.url, '/api/auth/microsoft/url')).data.configured, false);
   const recovery = await request(api.url, '/api/auth/forgot-password', 'POST', { email: 'any@example.test' });
-  assert.equal(recovery.status, 503); assert.equal(recovery.data.resetToken, undefined);
+  assert.equal(recovery.status, 404); assert.equal(recovery.data.resetToken, undefined);
   assert.equal((await request(api.url, '/api/auth/reset-password', 'POST', {})).status, 400);
   assert.equal((await request(api.url, '/api/audio/synthesize', 'POST', { text: '' })).status, 400);
   const calendar = await request(api.url, '/api/calendar/events', 'POST', { tickers: [], portfolioId: 'test-no-credentials' });
   assert.equal(calendar.status, 200); assert.ok(Array.isArray(calendar.data.events));
   const unavailable = await start('postgresql://postgres@127.0.0.1:1/faros_test');
-  const failed = await request(unavailable.url, '/api/auth/register', 'POST', { name: 'Sin base', email: 'unavailable@example.test', password: 'Segura123!', termsAccepted: true });
+  const failed = await request(unavailable.url, '/api/auth/register', 'POST', { name: 'Sin base', email: 'unavailable@example.test', password: 'Segura123!', recoveryKey: 'Mi-respaldo-seguro-123!', termsAccepted: true });
   assert.equal(failed.status, 503); assert.equal(failed.data.code, 'DB_UNAVAILABLE');
   assert.equal(failed.data.user, undefined); assert.equal(failed.data.token, undefined);
   // Function routing headers must not turn a register request into /api/index.
@@ -164,18 +164,21 @@ test('autenticación PostgreSQL entre instancias y reinicios', { timeout: 60000 
   const second = await start(testUrl);
   assert.equal((await request(first.url, '/api/health')).status, 200);
   assert.equal((await db.query('SELECT id FROM faros_users')).rowCount, 0, 'No seedear cuentas JSON del repositorio.');
-  const payload = { name: 'Prueba aislada', email: 'account@example.test', password: 'Segura123!', termsAccepted: true, profile: 'moderado', assets: [] };
+  const payload = { name: 'Prueba aislada', email: 'account@example.test', password: 'Segura123!', recoveryKey: 'Mi-respaldo-seguro-123!', termsAccepted: true, profile: 'moderado', assets: [] };
   let created: Awaited<ReturnType<typeof request>>;
 
   await t.test('registro, hash, transacción de sesión y cookies seguras', async () => {
     created = await request(first.url, '/api/auth/register', 'POST', payload);
     assert.equal(created.status, 201);
     assert.equal(created.data.user.passwordHash, undefined);
+    assert.equal(created.data.user.recoveryKeyHash, undefined);
+    assert.equal(created.data.user.hasRecoveryKey, true);
     assert.match(created.cookie || '', /HttpOnly/); assert.match(created.cookie || '', /Secure/);
     assert.match(created.cookie || '', /SameSite=Lax/);
     const users = await db.query('SELECT data FROM faros_users');
     assert.equal(users.rowCount, 1);
     assert.ok(await bcrypt.compare(payload.password, users.rows[0].data.passwordHash));
+    assert.ok(await bcrypt.compare(payload.recoveryKey, users.rows[0].data.recoveryKeyHash));
     const sessions = await db.query('SELECT token FROM faros_sessions');
     assert.match(sessions.rows[0].token, /^sha256:/); assert.notEqual(sessions.rows[0].token, created.data.token);
   });
@@ -228,13 +231,16 @@ test('autenticación PostgreSQL entre instancias y reinicios', { timeout: 60000 
 
   await t.test('cartera y preferencias se guardan, sin cambiar identidad ni privilegios', async () => {
     const portfolio = { ...created.data.user.portfolio, id: 'other-account', name: 'Mi cartera editada', assetIds: ['AL30'], assetPositions: { AL30: 'short' } };
-    const saved = await request(first.url, '/api/auth/user', 'PUT', { portfolio, email: 'intruso@example.test', isAdmin: true, passwordHash: 'fake' }, created.data.token);
+    const saved = await request(first.url, '/api/auth/user', 'PUT', { portfolio, email: 'intruso@example.test', isAdmin: true, passwordHash: 'fake', recoveryKeyHash: 'fake', hasRecoveryKey: false }, created.data.token);
     assert.equal(saved.status, 200); assert.equal(saved.data.user.portfolio.id, created.data.user.portfolio.id);
     const prefs = { ...created.data.user.preferences, notificationsEnabled: false };
     assert.equal((await request(second.url, '/api/auth/user', 'PUT', { preferences: prefs }, created.data.token)).status, 200);
     const me = await request(second.url, '/api/auth/me', 'GET', undefined, created.data.token);
     assert.equal(me.data.user.portfolio.name, portfolio.name); assert.equal(me.data.user.email, payload.email);
     assert.equal(me.data.user.isAdmin, false); assert.equal(me.data.user.preferences.notificationsEnabled, false);
+    assert.equal(me.data.user.recoveryKeyHash, undefined); assert.equal(me.data.user.hasRecoveryKey, true);
+    const stored = (await db.query('SELECT data FROM faros_users WHERE id = $1', [created.data.user.id])).rows[0].data;
+    assert.ok(await bcrypt.compare(payload.recoveryKey, stored.recoveryKeyHash));
     const login = await request(first.url, '/api/auth/login', 'POST', { email: payload.email, password: payload.password });
     assert.equal(login.status, 200);
     assert.equal((await request(first.url, '/api/admin/overview', 'GET', undefined, created.data.token)).status, 403);

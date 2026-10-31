@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { RiskProfile, UserAccount, OnboardingDraft } from '../types';
 import { apiRequest } from '../utils/apiClient';
+import { getRecoveryKeyError } from '../utils/recoveryKey';
+import { RecoveryKeyFields } from './RecoveryKeyFields';
 
 interface SignUpWizardProps {
   isOpen: boolean;
@@ -57,6 +59,8 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [recoveryKey, setRecoveryKey] = useState('');
+  const [confirmRecoveryKey, setConfirmRecoveryKey] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
   // Personal data
@@ -89,7 +93,8 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
         if (parsed.profile) setProfile(parsed.profile);
         if (parsed.alyc) setAlyc(parsed.alyc);
         if (parsed.termsAccepted) setTermsAccepted(parsed.termsAccepted);
-        if (parsed.step && parsed.step > 1 && parsed.step <= 3) setStep(parsed.step);
+        // Passwords and recovery keys are never saved in drafts. Start at
+        // Cuenta so both credentials can be entered before completing signup.
       }
     } catch {}
   }, []);
@@ -159,6 +164,9 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
         setStepError('Las contraseñas ingresadas no coinciden.');
         return;
       }
+      const recoveryError = getRecoveryKeyError(recoveryKey, password);
+      if (recoveryError) { setStepError(recoveryError); return; }
+      if (recoveryKey !== confirmRecoveryKey) { setStepError('Las claves de recuperación no coinciden.'); return; }
       setStep(2);
       return;
     }
@@ -202,6 +210,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
       name: cleanName,
       email: normalizedEmail,
       password,
+      recoveryKey,
       provider: 'email',
       birthDate,
       country,
@@ -223,6 +232,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
       const data = await apiRequest('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) });
       if (!data.success || !data.user) throw new Error('El servidor no confirmó la creación de la cuenta.');
       try { localStorage.removeItem('faros_onboarding_draft'); } catch {}
+      setPassword(''); setConfirmPassword(''); setRecoveryKey(''); setConfirmRecoveryKey('');
       onSuccess(data.user, data.token, true);
     } catch (err: any) {
       setStepError(err?.message || 'No se pudo completar el registro.');
@@ -404,6 +414,8 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
               </div>
             </div>
           )}
+
+          {step === 1 && <RecoveryKeyFields idPrefix="signup-recovery" value={recoveryKey} confirmation={confirmRecoveryKey} onChange={setRecoveryKey} onConfirmationChange={setConfirmRecoveryKey} />}
 
           {/* ================= STEP 2: DATOS Y TÉRMINOS ================= */}
           {step === 2 && (

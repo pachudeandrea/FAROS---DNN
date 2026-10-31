@@ -1095,6 +1095,7 @@ export default function App() {
             onSavePreferences={handleSavePreferences}
             onOpenCreateNew={() => setShowOnboarding(true)}
             currentUser={currentUser}
+            onRecoveryKeySaved={updated => setCurrentUser(previous => previous?.id === updated.id ? { ...previous, hasRecoveryKey: updated.hasRecoveryKey } : previous)}
             onLogout={handleLogout}
             onDeleteAccount={handleDeleteAccount}
             onStartTour={() => setIsTourActive(true)}

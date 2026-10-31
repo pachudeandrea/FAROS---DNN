@@ -86,7 +86,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           </h2>
           <p className="text-xs text-emerald-100/80 mt-1">
             {isForgotMode
-              ? 'Usá un código recibido por correo para cambiar tu contraseña.'
+              ? 'Usá la clave de recuperación que guardaste para cambiar tu contraseña.'
               : 'Accedé a tu cartera y al feed de noticias financieras calibrado.'}
           </p>
         </div>

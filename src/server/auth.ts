@@ -3,8 +3,8 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { UserAccount, RiskProfile, Portfolio } from '../types/index.js';
 import { DEFAULT_PREFERENCES } from '../data/mockData.js';
-import { requireEmailDelivery, sendPasswordResetCode } from './authEmail.js';
-import { issuePasswordResetCode, discardPasswordResetCode, resetPasswordWithCode, limitPasswordRecovery } from './passwordRecovery.js';
+import { resetPasswordWithRecoveryKey, setRecoveryKey, limitRecoveryAttempts } from './passwordRecovery.js';
+import { getRecoveryKeyError } from '../utils/recoveryKey.js';
 import { 
   trackEventNonBlocking, 
   isUserAdmin, 
@@ -23,6 +23,7 @@ import {
 // Accounts and sessions are always read from PostgreSQL, never process caches.
 export interface StoredUser extends UserAccount {
   passwordHash?: string;
+  recoveryKeyHash?: string;
   googleSub?: string;
   microsoftOid?: string;
   updatedAt?: string;
@@ -59,7 +60,8 @@ export function getAppUrl(req: Request): string {
  * Helper to sanitize UserAccount (strips password hash before sending to client)
  */
 function sanitizeUser(user: StoredUser): UserAccount {
-  const { passwordHash, googleSub, microsoftOid, ...safeUser } = user;
+  const { passwordHash, recoveryKeyHash, googleSub, microsoftOid, ...safeUser } = user;
+  safeUser.hasRecoveryKey = Boolean(recoveryKeyHash);
   safeUser.isAdmin = isUserAdmin(user.email);
   return safeUser;
 }
@@ -115,6 +117,7 @@ export async function handleRegister(req: Request, res: Response) {
     name,
     email,
     password,
+    recoveryKey,
     birthDate,
     country = 'Argentina',
     city = 'Buenos Aires',
@@ -153,6 +156,10 @@ export async function handleRegister(req: Request, res: Response) {
   if (provider === 'email' && (typeof password !== 'string' || password.length < 8 || Buffer.byteLength(password, 'utf8') > 72)) {
     return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres y hasta 72 bytes.' });
   }
+  if (provider === 'email') {
+    const recoveryError = getRecoveryKeyError(recoveryKey, password);
+    if (recoveryError) return res.status(400).json({ error: recoveryError });
+  }
   if (provider === 'email' && (googleSub || microsoftOid)) {
     return res.status(400).json({ error: 'Los identificadores externos requieren autenticación con el proveedor.' });
   }
@@ -186,7 +193,9 @@ export async function handleRegister(req: Request, res: Response) {
     }
   }
 
-  const passwordHash = provider === 'email' ? await bcrypt.hash(password, 10) : undefined;
+  const [passwordHash, recoveryKeyHash] = provider === 'email'
+    ? await Promise.all([bcrypt.hash(password, 10), bcrypt.hash(recoveryKey, 10)])
+    : [undefined, undefined];
 
   if (!Array.isArray(assets) || assets.length > 500 || assets.some((a: any) => !a || typeof a.symbol !== 'string' || a.symbol.length > 64) || typeof portfolioName !== 'string') {
     return res.status(400).json({ error: 'Los datos de la cartera no son válidos.' });
@@ -225,6 +234,7 @@ export async function handleRegister(req: Request, res: Response) {
     name: name.trim(),
     email: normalizedEmail,
     passwordHash,
+    recoveryKeyHash,
     provider: provider as 'email' | 'google' | 'microsoft',
     googleSub: verifiedIdentity?.googleSub,
     microsoftOid: verifiedIdentity?.microsoftOid,
@@ -353,31 +363,29 @@ export async function handleLogout(req: Request, res: Response) {
 const normalizedAddress = (value: unknown) => typeof value === 'string' ? value.trim().toLowerCase() : '';
 const validAddress = (value: string) => value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
-export async function handleForgotPassword(req: Request, res: Response) {
-  const email = normalizedAddress(req.body?.email);
-  if (!validAddress(email)) return res.status(400).json({ error: 'Ingresá un correo electrónico válido.' });
-  requireEmailDelivery();
-  await limitPasswordRecovery(email, req.ip || 'unknown');
-  const user = await getUserFromDbByEmail(email);
-  const recovery = await issuePasswordResetCode(email, user?.id);
-  if (recovery.deliver) {
-    try { await sendPasswordResetCode(email, recovery.code); }
-    catch (error) { await discardPasswordResetCode(recovery.requestId).catch(() => {}); throw error; }
-  } else {
-    console.info('[PASSWORD RECOVERY] status=account_not_found; no message sent.');
-  }
-  return res.json({ success: true, message: 'Si hay una cuenta con ese correo, recibirás un código de 6 dígitos. Vence en 10 minutos. Revisá también la carpeta de spam.' });
-}
-
 export async function handleResetPassword(req: Request, res: Response) {
   const email = normalizedAddress(req.body?.email);
-  const { code, newPassword } = req.body || {};
+  const { recoveryKey, newPassword } = req.body || {};
   if (!validAddress(email)) return res.status(400).json({ error: 'Ingresá un correo electrónico válido.' });
-  if (typeof code !== 'string' || !/^[0-9]{6}$/.test(code)) return res.status(400).json({ code: 'PASSWORD_CODE_INVALID', error: 'Ingresá el código de 6 dígitos que recibiste por correo.' });
+  const recoveryError = getRecoveryKeyError(recoveryKey, newPassword);
+  if (recoveryError) return res.status(400).json({ error: recoveryError });
   if (typeof newPassword !== 'string' || newPassword.length < 8 || Buffer.byteLength(newPassword, 'utf8') > 72) return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres y hasta 72 bytes.' });
-  await resetPasswordWithCode(email, code, newPassword);
+  await limitRecoveryAttempts(email, req.ip || 'unknown');
+  await resetPasswordWithRecoveryKey(email, recoveryKey, newPassword);
   res.clearCookie('faros_session', cookieOptions());
   return res.json({ success: true, message: 'Contraseña actualizada. Iniciá sesión con tu nueva contraseña.' });
+}
+
+export async function handleSetRecoveryKey(req: Request, res: Response) {
+  const user = await getSessionUser(req);
+  if (!user) return res.status(401).json({ error: 'Iniciá sesión para configurar tu clave de recuperación.' });
+  const { currentPassword, recoveryKey } = req.body || {};
+  if (typeof currentPassword !== 'string' || !currentPassword || Buffer.byteLength(currentPassword, 'utf8') > 72) return res.status(400).json({ error: 'Ingresá tu contraseña actual.' });
+  const recoveryError = getRecoveryKeyError(recoveryKey, currentPassword);
+  if (recoveryError) return res.status(400).json({ error: recoveryError });
+  await limitRecoveryAttempts(`setup:${user.id}`, req.ip || 'unknown');
+  const updated = await setRecoveryKey(user.id, currentPassword, recoveryKey);
+  return res.json({ success: true, user: sanitizeUser(updated), message: 'Clave de recuperación guardada. Conservala para recuperar tu cuenta si olvidás la contraseña.' });
 }
 
 /**

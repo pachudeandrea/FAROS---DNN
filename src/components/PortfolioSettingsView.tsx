@@ -10,6 +10,7 @@ import {
 } from '../types';
 import { MOCK_ASSETS } from '../data/mockData';
 import { ProfileSelector } from './ProfileCard';
+import { RecoveryKeySettings } from './RecoveryKeySettings';
 import { 
   Check, 
   X, 
@@ -44,6 +45,7 @@ interface PortfolioSettingsViewProps {
   onDeleteAccount?: () => void;
   onStartTour?: () => void;
   onOpenAdmin?: () => void;
+  onRecoveryKeySaved?: (user: UserAccount) => void;
 }
 
 export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
@@ -59,6 +61,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
   onDeleteAccount,
   onStartTour,
   onOpenAdmin,
+  onRecoveryKeySaved,
 }) => {
   // Asset search state for adding assets
   const [assetSearch, setAssetSearch] = useState<string>('');
@@ -749,6 +752,8 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                 <span className="block text-slate-400">Zona: {currentUser.timeZone}</span>
               </div>
             </div>
+
+            {typeof currentUser.hasRecoveryKey === 'boolean' && (!currentUser.provider || currentUser.provider === 'email') && onRecoveryKeySaved && <RecoveryKeySettings key={currentUser.id} user={currentUser} onSaved={onRecoveryKeySaved} />}
 
             {/* Admin Access Card (founders & admins) */}
             {onOpenAdmin && (
