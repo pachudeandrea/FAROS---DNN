@@ -129,9 +129,11 @@ export function sanitizeGroundingSources(sources: MediaCoverage[]): MediaCoverag
       continue;
     }
 
-    // Deduplicate identical URLs or identical titles
+    // Deduplicate identical URLs or repeat headlines within one publisher.
     const normalizedUrl = src.sourceUrl.trim();
-    const normalizedTitle = (src.originalHeadline || '').trim().toLowerCase();
+    // The same agency headline can be published by independent outlets. Keep
+    // those publications so the comparison does not silently lose a medium.
+    const normalizedTitle = `${getPublisherKey(src)}:${(src.originalHeadline || '').trim().toLowerCase()}`;
 
     if (seenUrls.has(normalizedUrl) || (normalizedTitle && seenTitles.has(normalizedTitle))) {
       continue;
@@ -145,11 +147,31 @@ export function sanitizeGroundingSources(sources: MediaCoverage[]): MediaCoverag
       originalHeadline: src.originalHeadline,
       sourceUrl: normalizedUrl,
       publishedTime: src.publishedTime && src.publishedTime !== 'Hoy' ? src.publishedTime : undefined,
-      domain: src.domain
+      domain: src.domain,
+      canonicalUrl: src.canonicalUrl,
+      publishedDateIso: src.publishedDateIso,
+      publishedTimestamp: src.publishedTimestamp
     });
   }
 
   return validSources;
+}
+
+/** Count publications from the same publisher only once, including subdomains. */
+export function getPublisherKey(source: MediaCoverage): string {
+  try {
+    const host = new URL(source.sourceUrl).hostname.toLowerCase().replace(/^www\./, '');
+    return Object.keys(DOMAIN_MEDIA_MAP).find(domain => host === domain || host.endsWith(`.${domain}`)) || host;
+  } catch { return source.mediaName.trim().toLowerCase(); }
+}
+
+export function distinctMediaSources(sources: MediaCoverage[]): MediaCoverage[] {
+  const publishers = new Set<string>();
+  return sanitizeGroundingSources(sources).filter(source => {
+    const key = getPublisherKey(source);
+    if (publishers.has(key)) return false;
+    publishers.add(key); return true;
+  });
 }
 
 /**

@@ -10,6 +10,7 @@ import {
   Layers
 } from 'lucide-react';
 import { calculateEstimatedDuration } from '../utils/audioController';
+import { distinctMediaSources } from '../utils/sourceGrounding';
 
 interface NewsCardProps {
   news: NewsItem;
@@ -174,7 +175,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({
 
         {/* Sources Chips: Rocket Money verified badge style */}
         {(() => {
-          const validSources = (news.sources || []).filter(s => s && s.sourceUrl);
+          const validSources = distinctMediaSources(news.sources || []);
           const count = validSources.length;
           if (count === 0) return null;
 
@@ -182,7 +183,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({
             <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs">
               <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 mr-1">
                 <Layers className="w-4 h-4 text-emerald-800" />
-                Resumen unificado de {count} medios:
+                {count > 1 ? `Compará ${count} medios:` : 'Fuente verificada:'}
               </span>
               {validSources.slice(0, 3).map((src, i) => (
                 <span 

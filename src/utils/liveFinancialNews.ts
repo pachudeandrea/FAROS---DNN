@@ -1,7 +1,8 @@
 import * as cheerio from 'cheerio';
 import { NewsItem, MediaCoverage } from '../types/index.js';
 import { verifySourceUrl, filterByFreshness, getArgentinaDateInfo, DISALLOWED_PATH_PATTERNS } from './urlResolver.js';
-import { areSourcesReportingSameEvent } from './sourceGrounding.js';
+import { getPublisherKey } from './sourceGrounding.js';
+import { sourcesCoverSameEvent } from './newsCoverage.js';
 
 interface RawFeedItem {
   title: string;
@@ -196,12 +197,12 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = []): 
 
   for (const src of verifiedSources) {
     // Only group with an existing cluster if the two articles speak of the EXACT SAME EVENT
-    let matchedCluster = clusters.find(cl => areSourcesReportingSameEvent(cl.headline, src.originalHeadline));
+    const matchedCluster = clusters.find(cl => sourcesCoverSameEvent(cl.sources[0], src));
 
     if (matchedCluster) {
       // Deduplicate within cluster by media name or URL
-      const hasMedia = matchedCluster.sources.some(s => s.mediaName === src.mediaName || s.sourceUrl === src.sourceUrl);
-      if (!hasMedia && matchedCluster.sources.length < 3) {
+      const hasMedia = matchedCluster.sources.some(s => getPublisherKey(s) === getPublisherKey(src) || s.sourceUrl === src.sourceUrl);
+      if (!hasMedia && matchedCluster.sources.length < 5) {
         matchedCluster.sources.push(src);
         console.log(`[EVENT MATCH] Grouped source "${src.originalHeadline}" (${src.mediaName}) with "${matchedCluster.headline}"`);
       }
@@ -255,6 +256,8 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = []): 
         originalHeadline: s.originalHeadline,
         sourceUrl: s.sourceUrl, // Real verified canonical URL
         publishedTime: s.publishedTime,
+        publishedDateIso: s.publishedDateIso,
+        publishedTimestamp: s.publishedTimestamp,
         domain: s.domain
       })),
       affectedAssetIds: cluster.tickers,

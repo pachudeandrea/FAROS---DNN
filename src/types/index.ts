@@ -93,6 +93,9 @@ export interface MediaCoverage {
   publishedTime?: string;
   editorialAngle?: string;
   domain?: string;
+  canonicalUrl?: string;
+  publishedDateIso?: string;
+  publishedTimestamp?: number;
 }
 
 export interface FactCheck {

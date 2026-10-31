@@ -1,5 +1,9 @@
 // Run the emitted API in plain Node, without a TypeScript loader. This is the
 // module resolution used by the Vercel function, not by local `tsx server.ts`.
+if (process.env.FAROS_TEST_NEWS === '1') {
+  const { installNewsTransport } = await import('./news-transport.mjs');
+  installNewsTransport();
+}
 // Test-only transport replacement: still build the real encrypted Web Push
 // request, but never contact a device or a push provider from tests.
 if (process.env.FAROS_TEST_PUSH === '1') {

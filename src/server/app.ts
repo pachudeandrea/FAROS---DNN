@@ -20,6 +20,7 @@ import {
   getArgentinaDateInfo
 } from '../utils/urlResolver.js';
 import { getLiveVerifiedArgentineNews } from '../utils/liveFinancialNews.js';
+import { enrichNewsCoverage } from '../utils/newsCoverage.js';
 import {
   getNowAR,
   setSimulatedDayOffset,
@@ -186,6 +187,7 @@ Incluí tanto catalizadores favorables como factores de RIESGO e impacto adverso
 - Shocks internacionales (tasas de la Fed, tensión geopolítica, bajas de calificación crediticia).
 
 Fuentes prioritarias autorizadas: Ámbito Financiero (ambito.com), El Cronista (cronista.com), Infobae Economía (infobae.com), Bloomberg Línea (bloomberglinea.com), La Nación Economía (lanacion.com.ar), Clarín Economía (clarin.com), Reuters (reuters.com), EconoJournal (econojournal.com.ar), BAE Negocios (baenegocios.com), iProfesional (iprofesional.com), Comunicados Oficiales BCRA (bcra.gob.ar), CNV (cnv.gov.ar) e INDEC (indec.gob.ar).
+Para cada acontecimiento, buscá publicaciones del MISMO HECHO en dos o más medios distintos, con sus titulares y enlaces originales. Buscá también cuando usen palabras diferentes para describirlo. No confundas noticias del mismo sector con un mismo acontecimiento y no inventes una segunda fuente si no la encontrás.
 Detallá los hechos concretos, cifras y mecanismos de transmisión respaldados por las notas encontradas.`;
 
     const searchResponse = await ai.models.generateContent({
@@ -209,6 +211,7 @@ Detallá los hechos concretos, cifras y mecanismos de transmisión respaldados p
       domain?: string;
       publishedTime?: string;
       publishedDateIso?: string;
+      publishedTimestamp?: number;
     }
 
     const validSourcesMap = new Map<number, GroundingSource>();
@@ -234,7 +237,8 @@ Detallá los hechos concretos, cifras y mecanismos de transmisión respaldados p
         sourceUrl: vResult.source.sourceUrl,
         domain: vResult.source.domain,
         publishedTime: vResult.source.publishedTime,
-        publishedDateIso: vResult.source.publishedDateIso
+        publishedDateIso: vResult.source.publishedDateIso,
+        publishedTimestamp: vResult.source.publishedTimestamp
       });
       rawChunkToSourceId.set(i, sourceIdCounter);
       sourceIdCounter++;
@@ -338,6 +342,8 @@ Respondé ÚNICAMENTE con un JSON con el siguiente esquema:
           originalHeadline: assignedSource.originalHeadline,
           sourceUrl: assignedSource.sourceUrl,
           publishedTime: assignedSource.publishedTime,
+          publishedDateIso: assignedSource.publishedDateIso,
+          publishedTimestamp: assignedSource.publishedTimestamp,
           domain: mediaDomain
         }],
         affectedAssetIds: Array.isArray(item.affectedHoldings) && item.affectedHoldings.length > 0 ? item.affectedHoldings : tickers.slice(0, 3),
@@ -363,7 +369,7 @@ Respondé ÚNICAMENTE con un JSON con el siguiente esquema:
       });
     }
 
-    return finalNewsItems.length > 0 ? finalNewsItems : null;
+    return finalNewsItems.length > 0 ? enrichNewsCoverage(finalNewsItems, Array.from(validSourcesMap.values())) : null;
   } catch (error: any) {
     console.error('Error in fetchGroundedNewsFromGemini:', error?.message || error);
     if (error?.status === 429 || error?.message?.includes('RESOURCE_EXHAUSTED')) {

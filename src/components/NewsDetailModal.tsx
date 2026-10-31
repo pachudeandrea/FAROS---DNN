@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   NewsItem, 
   Asset, 
@@ -44,7 +44,7 @@ interface NewsDetailModalProps {
   activeTrackId?: string;
 }
 
-import { sanitizeGroundingSources } from '../utils/sourceGrounding';
+import { distinctMediaSources } from '../utils/sourceGrounding';
 
 /**
  * Financial transmission mechanism and monitoring factors by asset category / ticker.
@@ -168,6 +168,7 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
   if (!news) return null;
 
   const [copied, setCopied] = useState(false);
+  const coverageRef = useRef<HTMLElement>(null);
   const [audioState, setAudioState] = useState<AudioControllerState>(audioController.getState());
 
   useEffect(() => {
@@ -227,7 +228,7 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
 
   // Valid sources with legitimate, real grounded links (strictly real URLs and headlines)
   const verifiedSources = useMemo(() => {
-    return sanitizeGroundingSources(news.sources || []);
+    return distinctMediaSources(news.sources || []);
   }, [news.sources]);
 
   // Count matches verified real sources count
@@ -290,11 +291,14 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
       onClick={handleCloseModal}
     >
       <div 
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="news-detail-title"
         className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90dvh] animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* BLOQUE 1: Encabezado (impacto en precio, tiempo, cantidad de medios, compartir y cerrar) */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
+        <div className="flex shrink-0 items-center justify-between gap-2 px-4 sm:px-6 py-4 border-b border-slate-200 bg-slate-50">
           <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap">
             <span className="font-bold text-emerald-950">
               {getRelevanceLabel(news.relevanceType)}
@@ -303,7 +307,7 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
             <span>{news.publishedAgo}</span>
             <span>·</span>
             <span className="font-medium text-slate-600">
-              Resumen de {validSourcesCount} medios
+              {validSourcesCount === 1 ? '1 medio verificado' : `${validSourcesCount} medios verificados`}
             </span>
           </div>
 
@@ -327,16 +331,19 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className={`p-6 overflow-y-auto space-y-6 text-slate-800 transition-all ${isAudioActive ? 'pb-48 sm:pb-52' : 'pb-6'}`}>
+        <div className={`min-h-0 p-4 sm:p-6 overflow-y-auto space-y-6 text-slate-800 transition-all ${isAudioActive ? 'pb-48 sm:pb-52' : 'pb-6'}`}>
           
           {/* BLOQUE 2: Etiqueta de efecto (Favorable / Desfavorable / Neutral) y título de la noticia */}
           <div>
             <div className="mb-2.5">
               {getImpactBadge()}
             </div>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 leading-snug">
+            <h2 id="news-detail-title" className="text-xl sm:text-2xl font-extrabold text-slate-900 leading-snug">
               {news.headline}
             </h2>
+            {validSourcesCount > 1 && <button type="button" onClick={() => coverageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="mt-3 min-h-11 inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-950 font-bold text-xs cursor-pointer">
+              <Layers className="w-4 h-4 shrink-0" /> Comparar titulares de {validSourcesCount} medios
+            </button>}
           </div>
 
           {/* BLOQUE 3: Referencia oficial */}
@@ -628,24 +635,25 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
           </section>
 
           {/* BLOQUE 7: "Medios consultados" */}
-          <section className="space-y-3">
+          <section ref={coverageRef} aria-label="Comparación de medios" className="space-y-3 scroll-mt-3">
             <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div className="flex items-center gap-2">
                 <Layers className="w-4 h-4 text-emerald-900" />
                 <h3 className="text-sm font-bold text-slate-900">
-                  Medios consultados ({validSourcesCount})
+                  {validSourcesCount > 1 ? `El mismo hecho en ${validSourcesCount} medios` : 'Medio consultado'}
                 </h3>
               </div>
             </div>
 
-            <div className="space-y-2">
+            <p className="text-xs text-slate-600 leading-relaxed">{validSourcesCount > 1 ? 'Compará los titulares originales y abrí cada publicación para conocer cómo presenta la noticia cada medio.' : 'Por ahora encontramos una publicación verificada sobre este hecho.'}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {verifiedSources.map((src, i) => (
                 <div 
                   key={i}
-                  className="p-3.5 rounded-2xl border border-slate-200 bg-white hover:border-emerald-300 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-2xs"
+                  className="min-w-0 p-3.5 rounded-2xl border border-slate-200 bg-white hover:border-emerald-300 transition-colors flex flex-col justify-between gap-3 text-xs shadow-2xs"
                 >
-                  <div className="space-y-1 flex-1 pr-2">
-                    <div className="flex items-center gap-2">
+                  <div className="min-w-0 space-y-1 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="font-bold text-slate-900 text-xs">
                         {src.mediaName}
                       </span>

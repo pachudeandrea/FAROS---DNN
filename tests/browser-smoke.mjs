@@ -46,6 +46,8 @@ const fixture = {
   portfolio: structuredClone(MOCK_PORTFOLIOS[0]), preferences: { ...DEFAULT_PREFERENCES, notificationsEnabled: false }
 };
 const news = structuredClone(REAL_GROUNDED_NEWS.slice(0, 3));
+// Two outlets can publish the same agency headline; both must remain visible.
+news[0].sources[1].originalHeadline = news[0].sources[0].originalHeadline;
 const browser = await chromium.launch({ executablePath, headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
 const pageErrors = [];
 let checks = 0;
@@ -134,6 +136,29 @@ try {
       }
     }
     assert.equal(await page.evaluate(() => window.__permissionRequests), 0, 'No debe pedir permiso al abrir o navegar');
+    await context.close();
+  });
+  await check('Compara titulares de medios distintos con enlaces reales en celular y tablet', async () => {
+    const { context, page } = await setup();
+    await page.getByRole('heading', { name: news[0].headline, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: news[0].headline });
+    await dialog.waitFor();
+    await page.getByRole('button', { name: 'Comparar titulares de 4 medios', exact: true }).click();
+    const comparison = page.getByRole('region', { name: 'Comparación de medios' });
+    await comparison.getByRole('heading', { name: 'El mismo hecho en 4 medios' }).waitFor();
+    const links = comparison.getByRole('link', { name: 'Ver noticia', exact: true });
+    assert.equal(await links.count(), 4);
+    assert.deepEqual((await links.evaluateAll(items => items.map(item => item.href))).sort(), news[0].sources.map(source => source.sourceUrl).sort());
+    assert.equal(await comparison.getByText(news[0].sources[0].originalHeadline, { exact: false }).count(), 2, 'Ambos medios conservan el titular de agencia');
+    for (const width of [320, 390, 768, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await dialogFits(page); await fits(page, `Comparación ${width}`);
+      await comparison.scrollIntoViewIfNeeded();
+      if (width === 390 || width === 768) await page.screenshot({ path: path.join(artifacts, `comparison-${width}.png`) });
+    }
+    await page.getByRole('button', { name: 'Cerrar detalle y detener audio', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+    await clickVisible(page, 'Calendario'); await clickVisible(page, 'Noticias');
     await context.close();
   });
   await check('Nombres largos, búsqueda y formularios del calendario en pantalla corta', async () => {
