@@ -10,6 +10,7 @@ export function PasswordRecoveryForm({ initialEmail, onBack, onComplete }: {
 }) {
   const [email, setEmail] = useState(initialEmail);
   const [recoveryKey, setRecoveryKey] = useState('');
+  const [useLegacyKey, setUseLegacyKey] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +23,7 @@ export function PasswordRecoveryForm({ initialEmail, onBack, onComplete }: {
   const resetPassword = async (event: React.FormEvent) => {
     event.preventDefault();
     if (busy) return;
-    const invalid = getRecoveryKeyError(recoveryKey, password);
+    const invalid = getRecoveryKeyError(recoveryKey, password, useLegacyKey);
     if (invalid) return setError(invalid);
     if (password !== confirmation) return setError('Las contraseñas no coinciden.');
     setBusy(true); setError(null);
@@ -41,13 +42,13 @@ export function PasswordRecoveryForm({ initialEmail, onBack, onComplete }: {
       <p role="status" className="flex gap-2 text-emerald-800"><CheckCircle2 className="w-5 h-5 shrink-0" />Tu contraseña se actualizó. Las sesiones anteriores se cerraron.</p>
       <button type="button" onClick={() => onComplete(normalizedEmail)} className={buttonClass}>Iniciar sesión</button>
     </> : <>
-      <p className="text-xs">Ingresá la clave de recuperación que elegiste al registrarte o desde Cuenta y Privacidad.</p>
+      <p className="text-xs">{useLegacyKey ? 'Ingresá la clave de recuperación anterior que guardaste.' : 'Ingresá el código de 4 dígitos que elegiste al registrarte o desde Cuenta y Privacidad.'}</p>
       <form onSubmit={resetPassword} className="space-y-4">
         <label className="block font-semibold">Correo registrado
           <input type="email" autoComplete="email" required value={email} onChange={event => setEmail(event.target.value)} className={inputClass} placeholder="inversor@ejemplo.com" />
         </label>
-        <label className="block font-semibold">Clave de recuperación
-          <input type="password" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} minLength={12} required value={recoveryKey} onChange={event => setRecoveryKey(event.target.value)} className={inputClass} placeholder="La clave que guardaste" />
+        <label className="block font-semibold">{useLegacyKey ? 'Clave de recuperación anterior' : 'Código de recuperación de 4 dígitos'}
+          <input type="password" inputMode={useLegacyKey ? undefined : 'numeric'} pattern={useLegacyKey ? undefined : '[0-9]{4}'} autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} minLength={useLegacyKey ? 12 : 4} maxLength={useLegacyKey ? undefined : 4} required value={recoveryKey} onChange={event => setRecoveryKey(useLegacyKey ? event.target.value : event.target.value.replace(/\D/g, '').slice(0, 4))} className={inputClass} placeholder={useLegacyKey ? 'La clave anterior que guardaste' : '4 dígitos'} />
         </label>
         <label className="block font-semibold">Nueva contraseña
           <input type="password" autoComplete="new-password" minLength={8} required value={password} onChange={event => setPassword(event.target.value)} className={inputClass} />
@@ -57,7 +58,8 @@ export function PasswordRecoveryForm({ initialEmail, onBack, onComplete }: {
         </label>
         <button type="submit" disabled={busy} className={buttonClass}>{busy && <Loader2 className="w-4 h-4 animate-spin" />}Cambiar contraseña</button>
       </form>
-      <p className="text-xs text-slate-500">Si todavía no configuraste una clave de recuperación, podés crearla desde Cuenta y Privacidad con tu sesión y contraseña actuales.</p>
+      <p className="text-xs text-slate-500">Si todavía no configuraste un código de recuperación, podés crearlo desde Cuenta y Privacidad con tu sesión y contraseña actuales.</p>
+      <button type="button" onClick={() => { setUseLegacyKey(!useLegacyKey); setRecoveryKey(''); setError(null); }} className="w-full text-xs font-semibold text-emerald-800 cursor-pointer">{useLegacyKey ? 'Usar un código de 4 dígitos' : 'Usar una clave de recuperación anterior'}</button>
       <button type="button" onClick={onBack} className="w-full font-semibold text-slate-500 cursor-pointer">Volver al inicio de sesión</button>
     </>}
   </div>;

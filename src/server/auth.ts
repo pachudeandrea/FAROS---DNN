@@ -367,7 +367,7 @@ export async function handleResetPassword(req: Request, res: Response) {
   const email = normalizedAddress(req.body?.email);
   const { recoveryKey, newPassword } = req.body || {};
   if (!validAddress(email)) return res.status(400).json({ error: 'Ingresá un correo electrónico válido.' });
-  const recoveryError = getRecoveryKeyError(recoveryKey, newPassword);
+  const recoveryError = getRecoveryKeyError(recoveryKey, newPassword, true);
   if (recoveryError) return res.status(400).json({ error: recoveryError });
   if (typeof newPassword !== 'string' || newPassword.length < 8 || Buffer.byteLength(newPassword, 'utf8') > 72) return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres y hasta 72 bytes.' });
   await limitRecoveryAttempts(email, req.ip || 'unknown');
@@ -378,14 +378,14 @@ export async function handleResetPassword(req: Request, res: Response) {
 
 export async function handleSetRecoveryKey(req: Request, res: Response) {
   const user = await getSessionUser(req);
-  if (!user) return res.status(401).json({ error: 'Iniciá sesión para configurar tu clave de recuperación.' });
+  if (!user) return res.status(401).json({ error: 'Iniciá sesión para configurar tu código de recuperación.' });
   const { currentPassword, recoveryKey } = req.body || {};
   if (typeof currentPassword !== 'string' || !currentPassword || Buffer.byteLength(currentPassword, 'utf8') > 72) return res.status(400).json({ error: 'Ingresá tu contraseña actual.' });
   const recoveryError = getRecoveryKeyError(recoveryKey, currentPassword);
   if (recoveryError) return res.status(400).json({ error: recoveryError });
   await limitRecoveryAttempts(`setup:${user.id}`, req.ip || 'unknown');
   const updated = await setRecoveryKey(user.id, currentPassword, recoveryKey);
-  return res.json({ success: true, user: sanitizeUser(updated), message: 'Clave de recuperación guardada. Conservala para recuperar tu cuenta si olvidás la contraseña.' });
+  return res.json({ success: true, user: sanitizeUser(updated), message: 'Código de recuperación guardado. Conservalo para recuperar tu cuenta si olvidás la contraseña.' });
 }
 
 /**

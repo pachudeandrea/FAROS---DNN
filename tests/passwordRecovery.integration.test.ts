@@ -59,7 +59,7 @@ async function request(base: string, route: string, method = 'GET', body?: unkno
   return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie') };
 }
 
-test('recuperación con clave elegida al registrarse, sin correo, en API nativa y PostgreSQL', { timeout: 90000 }, async t => {
+test('recuperación con código de cuatro dígitos, sin correo, en API nativa y PostgreSQL', { timeout: 90000 }, async t => {
   assert.ok(process.env.TEST_DATABASE_URL, 'Se requiere PostgreSQL LOCAL de pruebas.');
   const url = new URL(process.env.TEST_DATABASE_URL);
   assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)); assert.match(url.pathname, /test/i);
@@ -77,7 +77,7 @@ test('recuperación con clave elegida al registrarse, sin correo, en API nativa 
   migration.stdout.resume(); migration.stderr.resume(); assert.equal((await once(migration, 'exit'))[0], 0);
   const one = await start(testUrl);
   let two = await start(testUrl);
-  const account = { name: 'Prueba recupero', email: 'new@example.test', password: 'InicialSegura123!', recoveryKey: 'Mi-respaldo-personal-123!', termsAccepted: true, profile: 'moderado', assets: [] };
+  const account = { name: 'Prueba recupero', email: 'new@example.test', password: 'InicialSegura123!', recoveryKey: '0042', termsAccepted: true, profile: 'moderado', assets: [] };
   let currentPassword = account.password;
   let currentKey = account.recoveryKey;
   let session: string; let userId: string; let originalPortfolio: unknown;
@@ -88,11 +88,13 @@ test('recuperación con clave elegida al registrarse, sin correo, en API nativa 
   const privateResponse = (data: unknown, values = [currentKey, currentPassword]) => {
     const text = JSON.stringify(data);
     assert.doesNotMatch(text, /recoveryKeyHash|passwordHash/);
-    for (const value of values) assert.ok(!text.includes(value));
+    const strings = (value: unknown): string[] => typeof value === 'string' ? [value] : value && typeof value === 'object' ? Object.values(value).flatMap(strings) : [];
+    for (const value of values) assert.ok(!strings(data).includes(value));
+    assert.doesNotMatch(text, /"recoveryKey"\s*:/);
   };
 
-  await t.test('el registro requiere una clave larga y diferente, sin crear cuentas incompletas', async () => {
-    for (const recoveryKey of [undefined, '', '123456', account.password, '🔑'.repeat(30)]) {
+  await t.test('el registro exige exactamente cuatro dígitos y rechaza letras, números JSON y otras longitudes', async () => {
+    for (const recoveryKey of [undefined, '', '123', '12345', '12a4', 1234, '１２３４', account.password]) {
       const result = await request(one.url, '/api/auth/register', 'POST', { ...account, recoveryKey, recoveryKeyHash: 'forged' });
       assert.equal(result.status, 400); assert.equal(result.data.token, undefined);
     }
@@ -107,6 +109,7 @@ test('recuperación con clave elegida al registrarse, sin correo, en API nativa 
     const stored = await userData();
     assert.ok(await bcrypt.compare(account.password, stored.passwordHash));
     assert.ok(await bcrypt.compare(account.recoveryKey, stored.recoveryKeyHash));
+    assert.equal(await bcrypt.compare('42', stored.recoveryKeyHash), false, 'El código conserva sus ceros iniciales.');
     assert.equal(stored.recoveryKey, undefined); assert.equal(stored.password, undefined);
     assert.equal((await db.query('SELECT * FROM faros_password_reset_codes')).rowCount, 0);
     const me = await request(two.url, '/api/auth/me', 'GET', undefined, session);
@@ -142,7 +145,7 @@ test('recuperación con clave elegida al registrarse, sin correo, en API nativa 
     const legacy = await request(one.url, '/api/auth/register', 'POST', { ...account, email: 'legacy@example.test' });
     await db.query("UPDATE faros_users SET data = data - 'recoveryKeyHash' WHERE id = $1", [legacy.data.user.id]);
     const before = await userData();
-    const wrong = await recover(one, 'Clave-equivocada-456!');
+    const wrong = await recover(one, '7741');
     const missing = await recover(two, currentKey, 'NoDebeCambiar123!', 'missing@example.test');
     const unset = await recover(one, currentKey, 'NoDebeCambiar123!', 'legacy@example.test');
     assert.equal(wrong.status, 401); assert.deepEqual(wrong.data, missing.data); assert.deepEqual(wrong.data, unset.data);
@@ -150,7 +153,7 @@ test('recuperación con clave elegida al registrarse, sin correo, en API nativa 
   });
 
   await t.test('cinco intentos por cuenta persisten entre instancias y no bloquean el acceso normal', async () => {
-    for (let i = 0; i < 5; i++) assert.equal((await recover(i % 2 ? one : two, 'Clave-equivocada-456!')).status, 401);
+    for (let i = 0; i < 5; i++) assert.equal((await recover(i % 2 ? one : two, '7741')).status, 401);
     await stop(two.child); two = await start(testUrl);
     assert.equal((await recover(two)).status, 429);
     assert.equal((await request(one.url, '/api/auth/login', 'POST', { email: account.email, password: currentPassword })).status, 200);
@@ -160,7 +163,7 @@ test('recuperación con clave elegida al registrarse, sin correo, en API nativa 
   });
 
   await t.test('los intentos concurrentes no eluden el límite compartido de recuperación', async () => {
-    const results = await Promise.all(Array.from({ length: 8 }, (_, i) => recover(i % 2 ? one : two, 'Clave-equivocada-456!')));
+    const results = await Promise.all(Array.from({ length: 8 }, (_, i) => recover(i % 2 ? one : two, '7741')));
     assert.equal(results.filter(result => result.status === 401).length, 5);
     assert.equal(results.filter(result => result.status === 429).length, 3);
     assert.equal((await recover(one)).status, 429);
@@ -176,7 +179,10 @@ test('recuperación con clave elegida al registrarse, sin correo, en API nativa 
     for (const body of [
       { email: account.email, recoveryKey: currentKey, newPassword: 'corta' },
       { email: account.email, recoveryKey: currentKey, newPassword: currentKey },
-      { email: account.email, recoveryKey: 'corta', newPassword: 'NuevaValida123!' },
+      { email: account.email, recoveryKey: '123', newPassword: 'NuevaValida123!' },
+      { email: account.email, recoveryKey: '12345', newPassword: 'NuevaValida123!' },
+      { email: account.email, recoveryKey: '12a4', newPassword: 'NuevaValida123!' },
+      { email: account.email, recoveryKey: '42', newPassword: 'NuevaValida123!' },
       { email: account.email, code: '123456', newPassword: 'NuevaValida123!' },
       { token: 'a'.repeat(64), newPassword: 'NuevaValida123!' }
     ]) assert.equal((await request(one.url, '/api/auth/reset-password', 'POST', body)).status, 400);
@@ -187,7 +193,7 @@ test('recuperación con clave elegida al registrarse, sin correo, en API nativa 
     const email = 'legacy@example.test';
     const login = await request(one.url, '/api/auth/login', 'POST', { email, password: account.password });
     assert.equal(login.status, 200); assert.equal(login.data.user.hasRecoveryKey, false);
-    const body = { currentPassword: account.password, recoveryKey: 'Respaldo-para-cuenta-anterior-789!' };
+    const body = { currentPassword: account.password, recoveryKey: '0017' };
     const before = await userData(login.data.user.id);
     assert.equal((await request(one.url, '/api/auth/recovery-key', 'PUT', body)).status, 401);
     assert.equal((await request(two.url, '/api/auth/recovery-key', 'PUT', { ...body, currentPassword: 'NoEsLaClave123!' }, login.data.token)).status, 401);
@@ -201,7 +207,7 @@ test('recuperación con clave elegida al registrarse, sin correo, en API nativa 
   });
 
   await t.test('solo la sesión dueña puede cambiar su clave y la anterior deja de funcionar', async () => {
-    const replacement = 'Otro-respaldo-personal-987!';
+    const replacement = '0086';
     const saved = await request(one.url, '/api/auth/recovery-key', 'PUT', { currentPassword, recoveryKey: replacement, userId: 'someone-else', email: 'legacy@example.test' }, session);
     assert.equal(saved.status, 200); privateResponse(saved.data, [replacement, currentPassword]);
     assert.equal((await recover(two, currentKey)).status, 401);
@@ -210,12 +216,12 @@ test('recuperación con clave elegida al registrarse, sin correo, en API nativa 
     session = (await request(one.url, '/api/auth/login', 'POST', { email: account.email, password: currentPassword })).data.token;
   });
 
-  await t.test('cambiar la clave de recuperación requiere contraseña actual y valida su fortaleza', async () => {
+  await t.test('cambiar el código requiere contraseña actual y valida sus cuatro dígitos', async () => {
     const before = await userData();
-    for (const recoveryKey of ['123456', currentPassword, '🔑'.repeat(30)]) {
+    for (const recoveryKey of ['123', '12345', '12a4', 1234, currentPassword]) {
       assert.equal((await request(one.url, '/api/auth/recovery-key', 'PUT', { currentPassword, recoveryKey }, session)).status, 400);
     }
-    assert.equal((await request(one.url, '/api/auth/recovery-key', 'PUT', { currentPassword: 'Incorrecta123!', recoveryKey: 'NoDebeGuardarse-123!' }, session)).status, 401);
+    assert.equal((await request(one.url, '/api/auth/recovery-key', 'PUT', { currentPassword: 'Incorrecta123!', recoveryKey: '9351' }, session)).status, 401);
     assert.deepEqual(await userData(), before);
   });
 
@@ -228,8 +234,25 @@ test('recuperación con clave elegida al registrarse, sin correo, en API nativa 
     assert.equal(after.recoveryKey, undefined);
   });
 
+  await t.test('las claves largas anteriores permiten recuperar acceso y reemplazarlas por cuatro dígitos', async () => {
+    const email = 'old-key@example.test';
+    const oldKey = 'Frase-anterior-guardada-123!';
+    const created = await request(one.url, '/api/auth/register', 'POST', { ...account, email });
+    await db.query('UPDATE faros_users SET data = data || $2::jsonb WHERE id = $1', [created.data.user.id, JSON.stringify({ recoveryKeyHash: await bcrypt.hash(oldKey, 10) })]);
+    assert.equal((await recover(two, oldKey, 'RecuperadaAnterior123!', email)).status, 200);
+    const login = await request(one.url, '/api/auth/login', 'POST', { email, password: 'RecuperadaAnterior123!' });
+    assert.equal(login.status, 200);
+    const saved = await request(two.url, '/api/auth/recovery-key', 'PUT', { currentPassword: 'RecuperadaAnterior123!', recoveryKey: '0007' }, login.data.token);
+    assert.equal(saved.status, 200);
+    assert.equal((await recover(one, oldKey, 'NoDebeCambiar123!', email)).status, 401);
+    assert.equal((await recover(one, '0007', 'RecuperadaConPIN123!', email)).status, 200);
+  });
+
   await t.test('las claves no se escriben en registros y se conserva el perfil de la cuenta', async () => {
-    for (const secret of [account.recoveryKey, account.password, currentKey, currentPassword]) assert.ok(!(one.output + two.output).includes(secret));
+    const output = one.output + two.output;
+    for (const secret of [account.password, currentPassword]) assert.ok(!output.includes(secret));
+    assert.doesNotMatch(output, /["']recoveryKey["']\s*:/);
+    for (const secret of [account.recoveryKey, currentKey]) assert.ok(!output.split(/\s+/).includes(secret));
     const stored = await userData();
     assert.deepEqual(stored.portfolio, originalPortfolio); assert.equal(stored.profile, account.profile);
     assert.equal((await db.query('SELECT * FROM faros_password_reset_codes')).rowCount, 0);

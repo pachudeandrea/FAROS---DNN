@@ -112,7 +112,7 @@ test('la API arranca sin credenciales y responde errores JSON sin archivos local
   const api = await start();
   assert.equal((await request(api.url, '/api/date/info')).status, 200);
   assert.equal((await request(api.url, '/api/auth/register', 'POST', {})).status, 400);
-  const missing = await request(api.url, '/api/auth/register', 'POST', { name: 'Prueba', email: 'missing@example.test', password: 'Prueba123!', recoveryKey: 'Mi-respaldo-seguro-123!', termsAccepted: true });
+  const missing = await request(api.url, '/api/auth/register', 'POST', { name: 'Prueba', email: 'missing@example.test', password: 'Prueba123!', recoveryKey: '0042', termsAccepted: true });
   assert.equal(missing.status, 503); assert.equal(missing.data.code, 'DB_NOT_CONFIGURED');
   assert.equal((await request(api.url, '/api/health')).data.code, 'DB_NOT_CONFIGURED');
   assert.equal((await request(api.url, '/api/missing')).data.code, 'API_NOT_FOUND');
@@ -125,7 +125,7 @@ test('la API arranca sin credenciales y responde errores JSON sin archivos local
   const calendar = await request(api.url, '/api/calendar/events', 'POST', { tickers: [], portfolioId: 'test-no-credentials' });
   assert.equal(calendar.status, 200); assert.ok(Array.isArray(calendar.data.events));
   const unavailable = await start('postgresql://postgres@127.0.0.1:1/faros_test');
-  const failed = await request(unavailable.url, '/api/auth/register', 'POST', { name: 'Sin base', email: 'unavailable@example.test', password: 'Segura123!', recoveryKey: 'Mi-respaldo-seguro-123!', termsAccepted: true });
+  const failed = await request(unavailable.url, '/api/auth/register', 'POST', { name: 'Sin base', email: 'unavailable@example.test', password: 'Segura123!', recoveryKey: '0042', termsAccepted: true });
   assert.equal(failed.status, 503); assert.equal(failed.data.code, 'DB_UNAVAILABLE');
   assert.equal(failed.data.user, undefined); assert.equal(failed.data.token, undefined);
   // Function routing headers must not turn a register request into /api/index.
@@ -164,7 +164,7 @@ test('autenticación PostgreSQL entre instancias y reinicios', { timeout: 60000 
   const second = await start(testUrl);
   assert.equal((await request(first.url, '/api/health')).status, 200);
   assert.equal((await db.query('SELECT id FROM faros_users')).rowCount, 0, 'No seedear cuentas JSON del repositorio.');
-  const payload = { name: 'Prueba aislada', email: 'account@example.test', password: 'Segura123!', recoveryKey: 'Mi-respaldo-seguro-123!', termsAccepted: true, profile: 'moderado', assets: [] };
+  const payload = { name: 'Prueba aislada', email: 'account@example.test', password: 'Segura123!', recoveryKey: '0042', termsAccepted: true, profile: 'moderado', assets: [] };
   let created: Awaited<ReturnType<typeof request>>;
 
   await t.test('registro, hash, transacción de sesión y cookies seguras', async () => {

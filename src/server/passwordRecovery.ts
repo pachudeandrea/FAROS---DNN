@@ -5,7 +5,7 @@ import { query, transaction } from './database.js';
 import { RequestError } from './requestError.js';
 
 const digest = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
-const invalidRecovery = () => new RequestError('RECOVERY_CREDENTIALS_INVALID', 'No se pudo recuperar la cuenta con esos datos. Revisá tu correo y tu clave de recuperación.', 401);
+const invalidRecovery = () => new RequestError('RECOVERY_CREDENTIALS_INVALID', 'No se pudo recuperar la cuenta con esos datos. Revisá tu correo y tus datos de recuperación.', 401);
 
 export async function resetPasswordWithRecoveryKey(email: string, recoveryKey: string, newPassword: string): Promise<void> {
   await transaction(async client => {

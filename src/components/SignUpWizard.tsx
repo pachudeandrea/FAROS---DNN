@@ -166,7 +166,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
       }
       const recoveryError = getRecoveryKeyError(recoveryKey, password);
       if (recoveryError) { setStepError(recoveryError); return; }
-      if (recoveryKey !== confirmRecoveryKey) { setStepError('Las claves de recuperación no coinciden.'); return; }
+      if (recoveryKey !== confirmRecoveryKey) { setStepError('Los códigos de recuperación no coinciden.'); return; }
       setStep(2);
       return;
     }

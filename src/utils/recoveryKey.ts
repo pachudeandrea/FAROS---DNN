@@ -1,6 +1,8 @@
-export function getRecoveryKeyError(value: unknown, password?: string): string | null {
-  if (typeof value !== 'string' || value.length < 12) return 'La clave de recuperación debe tener al menos 12 caracteres.';
-  if (new TextEncoder().encode(value).length > 72) return 'La clave de recuperación es demasiado larga. Usá una frase más corta.';
-  if (value === password) return 'La clave de recuperación debe ser distinta de tu contraseña.';
+export function getRecoveryKeyError(value: unknown, password?: string, allowLegacy = false): string | null {
+  // Existing long keys remain usable only when proving recovery ownership.
+  // Registration and settings always require a new four-digit code.
+  const legacy = allowLegacy && typeof value === 'string' && value.length >= 12 && new TextEncoder().encode(value).length <= 72;
+  if (typeof value !== 'string' || (!/^[0-9]{4}$/.test(value) && !legacy)) return 'El código de recuperación debe tener exactamente 4 dígitos.';
+  if (value === password) return 'El dato de recuperación debe ser distinto de tu contraseña.';
   return null;
 }
