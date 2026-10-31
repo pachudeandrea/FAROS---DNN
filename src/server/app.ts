@@ -21,6 +21,7 @@ import {
 } from '../utils/urlResolver.js';
 import { getLiveVerifiedArgentineNews } from '../utils/liveFinancialNews.js';
 import { enrichNewsCoverage } from '../utils/newsCoverage.js';
+import { NEWS_CACHE_VERSION } from '../utils/newsCache.js';
 import {
   getNowAR,
   setSimulatedDayOffset,
@@ -78,6 +79,11 @@ const asyncRoute = (handler: RequestHandler): RequestHandler => (req, res, next)
   Promise.resolve().then(() => handler(req, res, next)).catch(next);
 };
 app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
+// Public deployment diagnostics; contains no credentials or account data.
+app.get('/api/version', (_req, res) => {
+  const revision = process.env.VERCEL_GIT_COMMIT_SHA || '';
+  res.json({ revision: /^[a-f0-9]{40}$/i.test(revision) ? revision : null, newsVersion: NEWS_CACHE_VERSION });
+});
 app.get('/api/health', asyncRoute(async (_req, res) => {
   await query('SELECT id FROM faros_users LIMIT 0');
   await query('SELECT token FROM faros_sessions LIMIT 0');
@@ -416,7 +422,7 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
   const user = await getSessionUser(req);
   const respondWithNews = (body: any) => {
     if (user && Array.isArray(body.news)) backgroundNotification(publishNews(user, body.news));
-    return res.json(body);
+    return res.json({ ...body, newsVersion: NEWS_CACHE_VERSION });
   };
 
   if (!checkIpRateLimit(req.ip || 'ip', 45)) {

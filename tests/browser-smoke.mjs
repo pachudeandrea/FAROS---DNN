@@ -52,8 +52,15 @@ const browser = await chromium.launch({ executablePath, headless: true, args: ['
 const pageErrors = [];
 let checks = 0;
 async function check(name, run) { await run(); checks++; console.log(`ok ${checks} - ${name}`); }
-async function setup({ anonymous = false, permission = 'granted', longName = false, ...options } = {}) {
+async function setup({ anonymous = false, permission = 'granted', longName = false, legacyNews = false, ...options } = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, ...options });
+  if (legacyNews) await context.addInitScript(({ item, portfolioId }) => {
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const hour = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', hour12: false }).format(new Date());
+    localStorage.setItem(`faros_news_v3_coherent_${portfolioId}_${date}_${hour}`, JSON.stringify([{ ...item, sources: item.sources.slice(0, 1), coverageCount: 1 }]));
+    localStorage.setItem('faros_session_token', 'browser-test-existing-session');
+    localStorage.setItem('faros_custom_events:usr_browser_test', '[]');
+  }, { item: news[0], portfolioId: fixture.portfolio.id });
   // Permission state and subscriptions are simulated, so no push service is
   // contacted. Permission requests still have to originate from a button.
   await context.addInitScript(({ permission, subscription }) => {
@@ -123,6 +130,23 @@ async function dialogFits(page) {
 }
 
 try {
+  await check('Renueva noticias de la versión anterior sin tocar la sesión ni el calendario', async () => {
+    const { context, page, state } = await setup({ legacyNews: true });
+    assert.ok(state.calls.some(call => call.path === '/api/news/pulse'), 'El caché anterior oculta la comparación e impide consultar la versión nueva');
+    await page.getByText('Compará 4 medios:', { exact: true }).first().waitFor();
+    const saved = await page.evaluate(() => ({ oldNews: Object.keys(localStorage).filter(key => key.startsWith('faros_news_v3_coherent_')), session: localStorage.getItem('faros_session_token'), calendar: localStorage.getItem('faros_custom_events:usr_browser_test') }));
+    assert.deepEqual(saved.oldNews, []);
+    assert.equal(saved.session, 'browser-test-existing-session'); assert.equal(saved.calendar, '[]');
+    const before = state.calls.filter(call => call.path === '/api/news/pulse').length;
+    await Promise.all([page.waitForResponse(response => new URL(response.url()).pathname === '/api/news/pulse'), clickVisible(page, 'Actualizar pulso')]);
+    assert.ok(state.calls.filter(call => call.path === '/api/news/pulse').length > before);
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse').at(-1).body.forceRefresh, true);
+    const refreshed = state.calls.filter(call => call.path === '/api/news/pulse').length;
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByText('Compará 4 medios:', { exact: true }).first().waitFor();
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse').length, refreshed, 'El caché de la versión actual sigue evitando búsquedas repetidas');
+    await context.close();
+  });
   await check('Noticias, Calendario y Mi cartera sin desborde en ocho anchos', async () => {
     const { context, page } = await setup();
     for (const width of [320, 360, 390, 430, 768, 820, 1024, 1440]) {

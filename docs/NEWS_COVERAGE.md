@@ -6,7 +6,9 @@ La comparación usa los titulares originales y las fechas verificadas de las pub
 
 La alternativa RSS utiliza la misma comprobación y conserva las fechas ISO y los timestamps extraídos antes de aplicar su filtro de actualidad existente. La interfaz cuenta una sola publicación por medio; dos medios que reproducen el mismo titular siguen disponibles para comparar. El detalle incorpora **Comparar titulares de N medios**, con tarjetas en dos columnas en pantallas amplias y una columna en celulares. Los titulares permiten ver cómo presenta el hecho cada medio sin inventar interpretaciones sobre su postura editorial.
 
-Se mantienen las claves del caché por cartera/hora y el botón **Actualizar pulso** fuerza la búsqueda igual que antes. Para probar el cambio después del despliegue, usar ese botón y abrir una noticia con dos o más medios; el contenido ya guardado en el navegador se renueva con la actualización habitual.
+El caché sigue funcionando por cartera/hora y el botón **Actualizar pulso** fuerza la búsqueda. La versión de cobertura usa ahora el espacio `v4_coverage`, compartido entre cliente y servidor. Al abrir la versión nueva se descartan únicamente las noticias guardadas con el formato anterior y se vuelve a consultar el feed; sesiones y calendarios se conservan. Esto corrige un caso reproducido en Chromium en el que entrar después del despliegue reutilizaba noticias de una sola fuente y ni siquiera consultaba el servidor. Las siguientes entradas reutilizan el caché nuevo normalmente.
+
+`GET /api/version` identifica el pipeline servido (`newsVersion`) y el commit de Vercel (`revision`, cuando está disponible). Es público, responde sin depender de la base y lleva `Cache-Control: no-store`. No contiene credenciales ni datos de cuentas. Permite distinguir código publicado en Git de la versión efectivamente desplegada; una respuesta 404 puede indicar una versión anterior o una ruta API pendiente.
 
 ## Pruebas
 
@@ -14,6 +16,10 @@ Se mantienen las claves del caché por cartera/hora y el botón **Actualizar pul
 
 `npm run test:browser` comprueba la apertura de la comparación, los enlaces de los medios, la conservación del titular de agencia en dos publicaciones y el diseño a 320, 390, 768 y 1440 px, además de las comprobaciones anteriores de pantallas, cuentas y notificaciones. Las capturas quedan en `/tmp/faros-browser-checks/comparison-390.png` y `comparison-768.png`.
 
+La regresión del caché siembra noticias anteriores de una sola fuente, comprueba la renovación automática al entrar, la conservación de la sesión y el calendario, la actualización manual y la reutilización del caché nuevo al recargar. Esa prueba falló con el código anterior antes de corregirlo.
+
 La red de este entorno no permite consultar en vivo los sitios periodísticos ni el despliegue de FAROS. Las pruebas locales verifican la implementación con publicaciones controladas; la cantidad efectiva de medios en producción depende de la cobertura encontrada, su acceso y la verificación de cada enlace.
 
 Validación: **62 pruebas funcionales y de regresión**, **9 comprobaciones de navegador**, TypeScript y compilación aprobados. Los casos nuevos cubren Gemini y RSS, además de la comparación visual.
+
+Corrección del caché: **6 pruebas de noticias/API** y **10 comprobaciones de navegador** aprobadas, incluida la reproducción con noticias anteriores. TypeScript y compilación también aprobaron.

@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { MediaCoverage, NewsItem } from '../src/types';
 import { enrichNewsCoverage, sourcesCoverSameEvent } from '../src/utils/newsCoverage';
 import { distinctMediaSources, sanitizeGroundingSources } from '../src/utils/sourceGrounding';
+import { NEWS_CACHE_VERSION } from '../src/utils/newsCache';
 import { articles } from './fixtures/news-transport.mjs';
 
 const now = new Date('2030-06-15T16:00:00Z');
@@ -75,7 +76,7 @@ after(async () => { for (const child of children) await stop(child); if (artifac
 async function api(gemini = true) {
   const child = fork(new URL('fixtures/native-api-server.mjs', import.meta.url), [pathToFileURL(path.join(artifact, 'api/index.js')).href], {
     cwd: root, execArgv: [], silent: true,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: '', POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', FAROS_TEST_NEWS: '1' }
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: '', POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1' }
   });
   children.add(child);
   let output = ''; child.stdout?.on('data', chunk => { output += chunk; }); child.stderr?.on('data', chunk => { output += chunk; });
@@ -85,14 +86,18 @@ async function api(gemini = true) {
     assert.equal(res.status, 200, output); return res.json();
   };
   const stats = () => new Promise<any>(resolve => { child.once('message', resolve); child.send({ type: 'news-test-stats' }); });
-  return { pulse, stats, get output() { return output; } };
+  const version = () => fetch(`http://127.0.0.1:${port}/api/version`);
+  return { pulse, stats, version, get output() { return output; } };
 }
 
 test('la API Gemini agrupa fuentes verificadas y conserva caché, actualización y cartera', { timeout: 30000 }, async () => {
   const server = await api();
+  const version = await server.version(); assert.equal(version.status, 200); assert.equal(version.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(await version.json(), { revision: 'a'.repeat(40), newsVersion: NEWS_CACHE_VERSION });
   const args = { portfolioId: 'coverage-fixture', tickers: ['AL30'], profile: 'moderado' };
   const fresh = await server.pulse(args);
   assert.equal(fresh.cached, false);
+  assert.equal(fresh.newsVersion, NEWS_CACHE_VERSION);
   const item = fresh.news[0]; assert.ok(item, server.output);
   assert.deepEqual(item.sources.map((s: MediaCoverage) => s.mediaName).sort(), ['El Cronista', 'Infobae', 'Ámbito'].sort(), server.output);
   assert.equal(item.coverageCount, 3); assert.equal(item.sources[0].sourceUrl, articles[0].url);

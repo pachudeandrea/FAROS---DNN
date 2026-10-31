@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 import { MediaCoverage, NewsItem } from '../types/index.js';
 import { DOMAIN_MEDIA_MAP, getMediaNameFromDomain } from './sourceGrounding.js';
+import { newsCacheKey } from './newsCache.js';
 
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
@@ -155,7 +156,7 @@ export function buildCacheKey(portfolioId: string, date = new Date()): { cacheKe
   const argInfo = getArgentinaDateInfo(date);
   const dateKey = argInfo.isoDate;
   const hourKey = `${dateKey}_${String(argInfo.hour).padStart(2, '0')}`;
-  const cacheKey = `v3_coherent_${portfolioId || 'default'}_${hourKey}`;
+  const cacheKey = newsCacheKey(portfolioId, hourKey);
   return { cacheKey, dateKey, hourKey };
 }
 

@@ -17,6 +17,7 @@ import {
   DEFAULT_PREFERENCES 
 } from './data/mockData';
 import { useAlerts } from './hooks/useAlerts';
+import { NEWS_CLIENT_CACHE_PREFIX, newsClientCacheKey } from './utils/newsCache';
 import { REAL_GROUNDED_NEWS } from './data/groundedRealNews';
 import { NotificationControls } from './components/NotificationControls';
 
@@ -179,7 +180,7 @@ export default function App() {
         const k = localStorage.key(i);
         if (k && k.startsWith('faros_news_')) {
           // Invalidate legacy unversioned caches and older days immediately
-          if (!k.startsWith('faros_news_v3_coherent_') || !k.includes(todayKey)) {
+          if (!k.startsWith(NEWS_CLIENT_CACHE_PREFIX) || !k.includes(todayKey)) {
             keysToRemove.push(k);
           }
         }
@@ -206,7 +207,7 @@ export default function App() {
       }).format(new Date());
 
       const hourKey = `${todayKey}_${hourStr}`;
-      const cached = localStorage.getItem(`faros_news_v3_coherent_${MOCK_PORTFOLIOS[0].id}_${hourKey}`);
+      const cached = localStorage.getItem(newsClientCacheKey(MOCK_PORTFOLIOS[0].id, hourKey));
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) return parsed;
@@ -304,7 +305,7 @@ export default function App() {
       hourKey = `${todayKey}_${hourStr}`;
     } catch {}
 
-    const cacheKey = `faros_news_v3_coherent_${activePortfolio.id}_${hourKey}`;
+    const cacheKey = newsClientCacheKey(activePortfolio.id, hourKey);
 
     // Use cached news if available and not forced refresh
     if (!isManualRefresh) {
@@ -340,7 +341,7 @@ export default function App() {
           if (data.news.length > 0) {
             try {
               const hKey = data.hourKey || hourKey;
-              localStorage.setItem(`faros_news_v3_coherent_${activePortfolio.id}_${hKey}`, JSON.stringify(data.news));
+              localStorage.setItem(newsClientCacheKey(activePortfolio.id, hKey), JSON.stringify(data.news));
             } catch {}
           }
         }
