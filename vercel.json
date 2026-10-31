@@ -4,6 +4,22 @@
   "installCommand": "npm ci --include=dev --no-audit --no-fund",
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "dist",
+  "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" },
+        { "key": "Service-Worker-Allowed", "value": "/" }
+      ]
+    },
+    {
+      "source": "/manifest.webmanifest",
+      "headers": [
+        { "key": "Content-Type", "value": "application/manifest+json" },
+        { "key": "Cache-Control", "value": "no-cache" }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
@@ -12,6 +28,21 @@
     {
       "source": "/((?!api(?:/|$)).*)",
       "destination": "/index.html"
+    }
+  ],
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/notifications/dispatch",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/notifications/dispatch",
+      "schedule": "0 20 * * *"
     }
   ]
 }
