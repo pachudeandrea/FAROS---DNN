@@ -251,6 +251,7 @@ export async function handleRegister(req: Request, res: Response) {
     portfolio: initialPortfolio,
     preferences: {
       ...DEFAULT_PREFERENCES,
+      notificationsEnabled: false,
       investorProfile: profile as RiskProfile
     },
     plan: 'prueba',

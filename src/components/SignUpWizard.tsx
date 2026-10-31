@@ -69,7 +69,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
   const [city, setCity] = useState('Buenos Aires');
   const [timeZone] = useState('America/Argentina/Buenos_Aires');
   const [termsAccepted, setTermsAccepted] = useState(false);
-  const [notificationsOptIn, setNotificationsOptIn] = useState(true);
+  const [notificationsOptIn, setNotificationsOptIn] = useState(false);
 
   // Investor Profile & ALyC
   const [profile, setProfile] = useState<RiskProfile>('moderado');
@@ -246,11 +246,14 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
       <div 
-        className="bg-white rounded-3xl max-w-xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="signup-title"
+        className="bg-white rounded-3xl max-w-xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-1.5rem)] transition-none animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header with Lighthouse Brand & Stepper */}
-        <div className="px-6 sm:px-8 pt-6 pb-4 border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white">
+        <div className="shrink-0 px-4 sm:px-8 pt-6 pb-4 border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <LighthouseLogo size="md" />
@@ -258,7 +261,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
                 <span className="font-extrabold text-xs uppercase tracking-wider text-emerald-950 font-sans block">
                   FAROS · Registro Simple
                 </span>
-                <h3 className="font-black text-slate-900 text-lg leading-tight">
+                <h3 id="signup-title" className="font-black text-slate-900 text-lg leading-tight">
                   Crear cuenta personal
                 </h3>
               </div>
@@ -294,7 +297,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="p-6 sm:p-8 overflow-y-auto space-y-6 flex-1">
+        <div className="min-h-0 p-4 sm:p-8 overflow-y-auto space-y-6 flex-1">
           {stepError && (
             <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex items-start gap-2.5 animate-in fade-in duration-150">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -494,7 +497,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
                     className="mt-0.5 w-4 h-4 rounded text-emerald-800 focus:ring-emerald-700 cursor-pointer"
                   />
                   <span className="text-xs text-slate-600 leading-snug">
-                    Deseo recibir alertas de mercado relevantes y el pulso diario de noticias en mi correo.
+                    Me interesa recibir alertas sobre mi cartera. Podré activarlas al ingresar y elegir si permito las notificaciones.
                   </span>
                 </label>
               </div>
@@ -552,7 +555,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
         </div>
 
         {/* Modal Footer Controls */}
-        <div className="px-6 sm:px-8 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-3">
+        <div className="shrink-0 px-4 sm:px-8 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-3">
           {step > 1 ? (
             <button
               type="button"

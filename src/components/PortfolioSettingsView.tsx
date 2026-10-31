@@ -46,6 +46,7 @@ interface PortfolioSettingsViewProps {
   onStartTour?: () => void;
   onOpenAdmin?: () => void;
   onRecoveryKeySaved?: (user: UserAccount) => void;
+  notificationsControl?: React.ReactNode;
 }
 
 export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
@@ -62,6 +63,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
   onStartTour,
   onOpenAdmin,
   onRecoveryKeySaved,
+  notificationsControl,
 }) => {
   // Asset search state for adding assets
   const [assetSearch, setAssetSearch] = useState<string>('');
@@ -141,13 +143,6 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
     onSavePreferences({
       ...preferences,
       enabledRelevanceTypes: next
-    });
-  };
-
-  const toggleNotificationGeneral = () => {
-    onSavePreferences({
-      ...preferences,
-      notificationsEnabled: !preferences.notificationsEnabled
     });
   };
 
@@ -635,31 +630,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
           </p>
         </div>
 
-        {/* General Notifications Toggle */}
-        <div 
-          onClick={toggleNotificationGeneral}
-          className="flex items-center justify-between p-4 rounded-2xl border border-emerald-200 bg-emerald-50/60 cursor-pointer"
-        >
-          <div className="flex items-center gap-3">
-            <Bell className="w-5 h-5 text-emerald-800 shrink-0" />
-            <div>
-              <span className="text-xs sm:text-sm font-bold text-slate-900 block">
-                Notificaciones de noticias relevantes en mi cartera
-              </span>
-              <span className="text-[11px] text-slate-600 block">
-                Aviso inmediato cuando un evento confirmado impacta en tus activos monitoreados.
-              </span>
-            </div>
-          </div>
-
-          <div className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors shrink-0 ${
-            preferences.notificationsEnabled ? 'bg-emerald-950' : 'bg-slate-300'
-          }`}>
-            <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
-              preferences.notificationsEnabled ? 'translate-x-5' : 'translate-x-0'
-            }`} />
-          </div>
-        </div>
+        {notificationsControl}
 
         {/* Revelado Progresivo ("Más opciones avanzadas") */}
         <div className="pt-2 border-t border-slate-100">

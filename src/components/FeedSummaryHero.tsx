@@ -128,14 +128,14 @@ export const FeedSummaryHero: React.FC<FeedSummaryHeroProps> = ({
     .slice(0, 5);
 
   return (
-    <section data-tour="feed-hero-pulso" className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_2px_16px_rgba(0,0,0,0.04)] p-6 sm:p-8 space-y-6">
+    <section data-tour="feed-hero-pulso" className="min-w-0 bg-white rounded-3xl border border-slate-200/90 shadow-[0_2px_16px_rgba(0,0,0,0.04)] p-4 sm:p-8 space-y-6">
       {/* Top Header: Title, Active Portfolio Tag, Audio button */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
-        <div className="flex items-center gap-3.5">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+        <div className="flex min-w-0 items-center gap-3.5">
           <div className="w-11 h-11 rounded-2xl bg-emerald-950 text-emerald-300 flex items-center justify-center shadow-xs shrink-0">
             <Sparkles className="w-5 h-5" />
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] font-black uppercase tracking-wider text-emerald-900 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-md">
                 Pulso Diario de Mercado
@@ -153,13 +153,13 @@ export const FeedSummaryHero: React.FC<FeedSummaryHeroProps> = ({
                 Google Search Grounding
               </span>
             </div>
-            <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-1">
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-1 break-words">
               {portfolio.name}
             </h2>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="flex min-w-0 items-center gap-2.5 flex-wrap">
           {onRefreshNews && (
             <button
               data-tour="feed-refresh-btn"
@@ -178,7 +178,7 @@ export const FeedSummaryHero: React.FC<FeedSummaryHeroProps> = ({
             data-tour="feed-audio-brief"
             type="button"
             onClick={onPlayAudioBrief}
-            className={`inline-flex items-center justify-center gap-2.5 px-5 py-3 text-white text-xs font-extrabold rounded-2xl active:scale-95 transition-all shadow-sm shrink-0 cursor-pointer group ${
+            className={`inline-flex w-full sm:w-auto min-w-0 items-center justify-center gap-2 sm:gap-2.5 px-3 sm:px-5 py-3 text-white text-xs font-extrabold rounded-2xl active:scale-95 transition-all shadow-sm cursor-pointer group ${
               isPlayingDailySummary
                 ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-950/30'
                 : 'bg-emerald-950 hover:bg-emerald-900'
@@ -188,7 +188,7 @@ export const FeedSummaryHero: React.FC<FeedSummaryHeroProps> = ({
             <div className={`w-2 h-2 rounded-full ${isPlayingDailySummary ? 'bg-white animate-ping' : 'bg-emerald-400 animate-pulse'}`} />
             <Volume2 className="w-4 h-4 text-emerald-300 group-hover:scale-110 transition-transform" />
             <span>{isPlayingDailySummary ? 'Reproduciendo resumen del día' : 'Escuchar resumen del día'}</span>
-            <span className="text-[11px] text-emerald-300 font-mono bg-emerald-900/80 px-2 py-0.5 rounded-full font-bold">
+            <span className="shrink-0 text-[11px] text-emerald-300 font-mono bg-emerald-900/80 px-2 py-0.5 rounded-full font-bold">
               {dailySummaryDurationText || '2:40 min'}
             </span>
           </button>

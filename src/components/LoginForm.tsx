@@ -63,12 +63,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col relative text-slate-800">
+      <div role="dialog" aria-modal="true" aria-labelledby="login-title" className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden max-h-[calc(100dvh-1.5rem)] flex flex-col relative text-slate-800">
         
         {/* Top Header Card */}
-        <div className="bg-emerald-950 p-6 text-white relative">
+        <div className="bg-emerald-950 p-5 sm:p-6 text-white relative shrink-0">
           <button
             onClick={onClose}
+            aria-label="Cerrar inicio de sesión"
             className="absolute top-5 right-5 text-emerald-300 hover:text-white p-1 rounded-full hover:bg-emerald-900 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -81,7 +82,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             </span>
           </div>
 
-          <h2 className="text-xl sm:text-2xl font-black text-white">
+          <h2 id="login-title" className="text-xl sm:text-2xl font-black text-white">
             {isForgotMode ? 'Recuperar contraseña' : 'Iniciar sesión'}
           </h2>
           <p className="text-xs text-emerald-100/80 mt-1">
@@ -92,7 +93,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="p-6 space-y-5 overflow-y-auto max-h-[75vh]">
+        <div className="min-h-0 p-5 sm:p-6 space-y-5 overflow-y-auto">
           {/* Error Message */}
           {errorMessage && (
             <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-2">

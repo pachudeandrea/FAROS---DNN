@@ -27,21 +27,21 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 min-w-0 flex items-center justify-between gap-2 lg:gap-4">
         {/* Zone 1: Brand Wordmark with sleek Lighthouse Logo */}
         <div 
           onClick={() => onSelectTab('feed')}
-          className="flex items-center gap-3 cursor-pointer select-none shrink-0 group"
+          className="flex items-center gap-2 sm:gap-3 cursor-pointer select-none shrink-0 group"
         >
           <div className="transition-transform group-hover:scale-105">
             <LighthouseLogo size="md" />
           </div>
           <div className="flex flex-col">
             <div className="flex items-center gap-1.5">
-              <span className="text-xl font-black tracking-tight text-emerald-950 font-sans">
+              <span className="text-lg sm:text-xl font-black tracking-tight text-emerald-950 font-sans">
                 FAROS
               </span>
-              <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-900 tracking-wider">
+              <span className="hidden sm:inline text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-900 tracking-wider">
                 PRO
               </span>
             </div>
@@ -52,7 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Zone 2: Rocket Money Segmented Pill Navigation on Desktop */}
-        <nav className="hidden md:flex items-center p-1 bg-slate-100/90 rounded-full border border-slate-200/80">
+        <nav aria-label="Navegación principal" className="hidden lg:flex shrink-0 items-center p-1 bg-slate-100/90 rounded-full border border-slate-200/80">
           <button
             onClick={() => onSelectTab('feed')}
             className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
@@ -93,16 +93,17 @@ export const Header: React.FC<HeaderProps> = ({
         </nav>
 
         {/* Zone 3: Rocket Money-style Account/Portfolio Pill + Notifications */}
-        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+        <div className="flex min-w-0 items-center gap-1 sm:gap-2 shrink-0">
           {/* Admin panel launcher if admin */}
           {isAdmin && onOpenAdmin && (
             <button
               onClick={onOpenAdmin}
               title="Ir al Panel Administrador de FAROS"
+              aria-label="Abrir panel administrador"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-black text-amber-950 bg-amber-100/90 hover:bg-amber-200/90 rounded-full border border-amber-300 transition-all cursor-pointer shadow-2xs"
             >
               <Shield className="w-3.5 h-3.5 text-amber-700" />
-              <span>Admin</span>
+              <span className="hidden xl:inline">Admin</span>
             </button>
           )}
 
@@ -111,10 +112,10 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onStartTour}
               title="Iniciar tutorial interactivo de FAROS"
-              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold text-emerald-950 bg-emerald-50 hover:bg-emerald-100 rounded-full border border-emerald-200/90 transition-all cursor-pointer shadow-2xs"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-950 bg-emerald-50 hover:bg-emerald-100 rounded-full border border-emerald-200/90 transition-all cursor-pointer shadow-2xs"
             >
               <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
-              <span className="hidden xs:inline sm:inline">Tutorial</span>
+              <span className="hidden xl:inline">Tutorial</span>
             </button>
           )}
 
@@ -139,9 +140,10 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => onSelectTab('settings')}
             className="flex items-center gap-2 pl-3 pr-2.5 py-1.5 text-xs font-bold rounded-full bg-slate-100 hover:bg-emerald-50 text-slate-800 hover:text-emerald-950 border border-slate-200/90 hover:border-emerald-300 transition-all cursor-pointer group shadow-2xs"
             title="Cambiar o configurar cartera activa"
+            aria-label={`Configurar cartera: ${portfolioName}`}
           >
-            <div className="w-2 h-2 rounded-full bg-emerald-600 ring-4 ring-emerald-100 group-hover:bg-emerald-700" />
-            <span className="max-w-[130px] sm:max-w-[170px] truncate font-medium">
+            <div className="hidden sm:block w-2 h-2 rounded-full bg-emerald-600 ring-4 ring-emerald-100 group-hover:bg-emerald-700" />
+            <span className="hidden sm:block sm:max-w-[150px] lg:max-w-[110px] xl:max-w-[170px] truncate font-medium">
               {portfolioName}
             </span>
             <div className="w-5 h-5 rounded-full bg-emerald-950 text-emerald-200 flex items-center justify-center ml-0.5 group-hover:translate-x-0.5 transition-transform">

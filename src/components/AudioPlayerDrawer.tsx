@@ -65,7 +65,7 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
 
   const bottomPositionClass = isModalOpen
     ? 'bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))]'
-    : 'bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] md:bottom-4';
+    : 'bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] lg:bottom-4';
 
   return createPortal(
     <aside

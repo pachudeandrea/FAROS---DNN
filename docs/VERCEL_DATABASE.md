@@ -31,6 +31,7 @@ Las pruebas de autenticación ahora compilan ese backend a JavaScript y lo arran
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Opcionales; ambos necesarios para OAuth Google. URI: `APP_URL/api/auth/google/callback`. |
 | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | Opcionales; ambos necesarios para OAuth Microsoft. URI: `APP_URL/api/auth/microsoft/callback`. |
 | `PGSSLROOTCERT` | Solo para CA privada: ruta a un certificado disponible en el runtime. Neon no debería necesitarlo. |
+| `CRON_SECRET` | Opcional para autenticar las revisiones automáticas de alertas; Vercel envía el Bearer configurado. Ver [ALERTAS_Y_RESPONSIVE.md](ALERTAS_Y_RESPONSIVE.md). |
 
 No usar prefijos `VITE_` para secretos. `SESSION_SECRET` no es necesario: se usan tokens aleatorios de 256 bits, PostgreSQL y cookie HttpOnly/Secure/SameSite=Lax en producción. TLS remoto verifica el certificado incluso si la URL contiene `sslmode=require`; no se desactiva su verificación. Solo las conexiones de pruebas a loopback pueden usar PostgreSQL sin TLS.
 
@@ -42,7 +43,7 @@ Con dependencias instaladas (`npm ci`) y la conexión de la base elegida configu
 npm run db:migrate
 ```
 
-Ejecuta `migrations/001_auth_persistence.sql` en una transacción con bloqueo de migración. Es repetible: crea tablas/índices que falten y preserva filas/tablas existentes. Añade almacenamiento de estados/tickets OAuth. No borra ni reinicializa la base ni crea usuarios. Los requests no ejecutan DDL. La compilación local (`npm run build`) tampoco; el comando de despliegue de Vercel sí ejecuta esta migración antes de verificar tipos y compilar.
+Ejecuta los archivos SQL de `migrations/` en orden, dentro de una transacción con bloqueo de migración. Es repetible: crea tablas/índices que falten y preserva filas/tablas existentes. No borra ni reinicializa la base ni crea usuarios. Los requests no ejecutan DDL. La compilación local (`npm run build`) tampoco; el comando de despliegue de Vercel sí ejecuta estas migraciones antes de verificar tipos y compilar.
 
 El rol de migración necesita permisos de creación de tablas/índices. Si existen emails que difieren solo en mayúsculas o identidades OAuth duplicadas, falla el índice único y se revierte la migración completa: revisar los registros antes de reintentar. No hay deduplicación destructiva automática. Aplicar primero sobre una rama/base de pruebas al preparar cambios de producción.
 
@@ -94,6 +95,8 @@ Resultado en este entorno: **18 pruebas aprobadas, 0 fallidas y 0 omitidas**, so
 Gemini se instancia al usarlo y su clave no bloquea el registro. Noticias mantiene su búsqueda y alternativa RSS; no se añadieron noticias ficticias. El calendario mantiene cronogramas ya existentes, incluidas fechas corporativas/macro estáticas: no se verificó en vivo cada anuncio ni se modificaron esas fechas. El caché de audio se crea al usarlo, no al importar autenticación; el fallo de voz permite continuar con texto.
 
 El registro activa la cuenta directamente y pide un código de recuperación de cuatro dígitos elegido por el usuario. La recuperación usa ese código guardado con hash en PostgreSQL y no depende de correos. Las cuentas anteriores conservan su acceso y pueden configurar el código desde Cuenta y Privacidad, con su contraseña actual. Los detalles y pruebas se explican en [ACCOUNT_RECOVERY.md](ACCOUNT_RECOVERY.md).
+
+Las alertas con la plataforma cerrada usan Web Push, con claves VAPID generadas en PostgreSQL, consentimiento por dispositivo y revisiones programadas en Vercel. La migración `005_push_notifications.sql`, los pasos para iPhone y las pruebas de pantallas y alertas se documentan en [ALERTAS_Y_RESPONSIVE.md](ALERTAS_Y_RESPONSIVE.md).
 
 La publicación Git y la finalización del despliegue son operaciones distintas. El script automático usa las credenciales de Vercel, que no se copian a este entorno. Este entorno no tiene conexión directa a Neon de producción ni credenciales de Vercel; su política de red bloquea la consulta a `faros-dnn.vercel.app` y a la API de GitHub. La validación con PostgreSQL aislado no demuestra que la conexión de producción esté correctamente configurada. Los registros del despliegue y `/api/health` deben confirmar la migración en la base real. No se crean cuentas de prueba en producción. Gemini, RSS, voz y OAuth no se validaron contra servicios externos.
 

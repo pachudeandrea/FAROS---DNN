@@ -1,6 +1,8 @@
 import express, { type RequestHandler } from 'express';
 import { DatabaseError, query } from './database.js';
 import { RequestError } from './requestError.js';
+import { registerNotificationRoutes } from './notificationRoutes.js';
+import { backgroundNotification, publishNews } from './notifications.js';
 import fs from 'fs';
 import path from 'path';
 import cookieParser from 'cookie-parser';
@@ -406,6 +408,10 @@ async function fetchCalendarEvents(
 app.post('/api/news/pulse', asyncRoute(async (req, res) => {
   const pulseStartTime = Date.now();
   const user = await getSessionUser(req);
+  const respondWithNews = (body: any) => {
+    if (user && Array.isArray(body.news)) backgroundNotification(publishNews(user, body.news));
+    return res.json(body);
+  };
 
   if (!checkIpRateLimit(req.ip || 'ip', 45)) {
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor reintentá en un momento.' });
@@ -431,7 +437,7 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
       userAgent: req.get('user-agent')
     });
 
-    return res.json({
+    return respondWithNews({
       news: newsCache[cacheKey].news,
       cached: true,
       fallback: false,
@@ -453,7 +459,7 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
       userAgent: req.get('user-agent')
     });
 
-    return res.json({
+    return respondWithNews({
       news: liveNews,
       cached: false,
       fallback: false,
@@ -475,7 +481,7 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
       userAgent: req.get('user-agent')
     });
 
-    return res.json({
+    return respondWithNews({
       news: liveVerifiedNews,
       cached: false,
       fallback: false,
@@ -484,7 +490,7 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
     });
   }
 
-  return res.json({
+  return respondWithNews({
     news: [],
     cached: false,
     fallback: false,
@@ -532,6 +538,8 @@ app.post('/api/date/simulate-offset', asyncRoute(async (req, res) => {
 }));
 
 // --- AUTHENTICATION & ACCOUNT ROUTES ---
+registerNotificationRoutes(app);
+
 app.get('/api/auth/me', asyncRoute(handleGetMe));
 app.post('/api/auth/register', asyncRoute(handleRegister));
 app.post('/api/auth/login', asyncRoute(handleLogin));

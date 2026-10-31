@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { apiRequest } from '../utils/apiClient';
 import { CalendarEvent, CustomCalendarEvent, ReminderTiming } from '../types';
 import { getNowAR, setSimulatedDayOffset, getSimulatedDayOffset, NowAR } from '../utils/dateAR';
 import { buildCalendarCacheKey, getVerifiedCalendarEvents } from '../utils/calendarGrounding';
@@ -30,6 +31,8 @@ interface FinancialCalendarProps {
   portfolioName?: string;
   userAssetSymbols: string[];
   onPendingRemindersChange?: (count: number) => void;
+  accountId?: string;
+  notificationsControl?: React.ReactNode;
 }
 
 const MONTH_NAMES = [
@@ -41,7 +44,9 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
   portfolioId = 'default',
   portfolioName = 'Mi Cartera',
   userAssetSymbols,
-  onPendingRemindersChange
+  onPendingRemindersChange,
+  accountId,
+  notificationsControl
 }) => {
   // Current time in Argentina (Single source of truth)
   const [nowAR, setNowAR] = useState<NowAR>(() => getNowAR());
@@ -60,10 +65,19 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
   // Automatic calendar events from verified pipeline
   const [serverEvents, setServerEvents] = useState<CalendarEvent[]>([]);
 
-  // User Custom Events (Stored in localStorage and persistent across sessions)
+  const storageKey = accountId ? `faros_custom_events:${accountId}` : 'faros_custom_events';
+  const [calendarReady, setCalendarReady] = useState(!accountId);
+  const [savingEvents, setSavingEvents] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [legacyEvents, setLegacyEvents] = useState<CustomCalendarEvent[]>(() => {
+    if (!accountId) return [];
+    try { const value = JSON.parse(localStorage.getItem('faros_custom_events') || '[]'); return Array.isArray(value) ? value : []; } catch { return []; }
+  });
+
+  // Each real account has its own cache and server calendar.
   const [customEvents, setCustomEvents] = useState<CustomCalendarEvent[]>(() => {
     try {
-      const stored = localStorage.getItem('faros_custom_events');
+      const stored = localStorage.getItem(storageKey);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) return parsed;
@@ -76,18 +90,10 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
   const [activeAlerts, setActiveAlerts] = useState<ReminderAlert[]>([]);
   const [dismissedReminderIds, setDismissedReminderIds] = useState<string[]>(() => {
     try {
-      const stored = localStorage.getItem('faros_dismissed_reminders');
+      const stored = localStorage.getItem(`faros_dismissed_reminders:${accountId || 'demo'}`);
       if (stored) return JSON.parse(stored);
     } catch {}
     return [];
-  });
-
-  // Browser notification permission state
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      return Notification.permission;
-    }
-    return 'default';
   });
 
   // Modal states
@@ -112,12 +118,31 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
   // Simulated day offset state (for testing daily rollover)
   const [simulatedOffset, setSimulatedOffset] = useState<number>(() => getSimulatedDayOffset());
 
-  // Save custom events to localStorage
-  const saveCustomEvents = (events: CustomCalendarEvent[]) => {
-    setCustomEvents(events);
+  useEffect(() => {
+    if (!accountId) return;
+    let active = true;
+    setCalendarReady(false);
+    apiRequest(`/api/notifications/reminders?expectedUserId=${encodeURIComponent(accountId)}`).then(data => {
+      if (!active || !Array.isArray(data.events)) return;
+      setCustomEvents(data.events);
+      try { localStorage.setItem(storageKey, JSON.stringify(data.events)); } catch {}
+      setSyncError(null);
+    }).catch(error => { if (active) setSyncError(error.message || 'No se pudieron sincronizar los recordatorios.'); })
+      .finally(() => { if (active) setCalendarReady(true); });
+    return () => { active = false; };
+  }, [accountId, storageKey]);
+
+  const saveCustomEvents = async (events: CustomCalendarEvent[]): Promise<boolean> => {
+    if (!calendarReady || savingEvents) return false;
+    setSavingEvents(true); setSyncError(null);
     try {
-      localStorage.setItem('faros_custom_events', JSON.stringify(events));
-    } catch {}
+      const saved = accountId ? (await apiRequest('/api/notifications/reminders', { method: 'PUT', body: JSON.stringify({ expectedUserId: accountId, events }) })).events : events;
+      if (!Array.isArray(saved)) throw new Error('No se confirmó el guardado de los recordatorios.');
+      setCustomEvents(saved);
+      try { localStorage.setItem(storageKey, JSON.stringify(saved)); } catch {}
+      return true;
+    } catch (error) { setSyncError(error instanceof Error ? error.message : 'No se pudieron guardar los recordatorios.'); return false; }
+    finally { setSavingEvents(false); }
   };
 
   // Revalidate date with getNowAR()
@@ -298,17 +323,6 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
       onPendingRemindersChange(alerts.length);
     }
 
-    // Trigger browser notification if permission granted
-    if (alerts.length > 0 && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-      alerts.forEach(a => {
-        try {
-          new Notification(a.title, {
-            body: a.message,
-            icon: '/favicon.ico'
-          });
-        } catch {}
-      });
-    }
   }, [customEvents, nowAR, dismissedReminderIds, onPendingRemindersChange]);
 
   // Run reminder check on mount and every minute
@@ -318,23 +332,12 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
     return () => clearInterval(interval);
   }, [runReminderCheck]);
 
-  // Request browser notification permission
-  const handleRequestNotificationPermission = async () => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      const perm = await Notification.requestPermission();
-      setNotificationPermission(perm);
-      if (perm === 'granted') {
-        runReminderCheck();
-      }
-    }
-  };
-
   // Dismiss a reminder alert
   const handleDismissAlert = (alertId: string) => {
     const next = [...dismissedReminderIds, alertId];
     setDismissedReminderIds(next);
     try {
-      localStorage.setItem('faros_dismissed_reminders', JSON.stringify(next));
+      localStorage.setItem(`faros_dismissed_reminders:${accountId || 'demo'}`, JSON.stringify(next));
     } catch {}
     setActiveAlerts(prev => prev.filter(a => a.id !== alertId));
     if (onPendingRemindersChange) {
@@ -459,7 +462,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
   };
 
   // Handle save custom event
-  const handleSaveCustomEvent = (e: React.FormEvent) => {
+  const handleSaveCustomEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     const finalAsset = formAsset === 'otro' 
       ? (customAssetInput.trim().toUpperCase() || 'OTRO') 
@@ -480,7 +483,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
         }
         return item;
       });
-      saveCustomEvents(updated);
+      if (!await saveCustomEvents(updated)) return;
     } else {
       // Create new
       const newEvent: CustomCalendarEvent = {
@@ -492,7 +495,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
         reminders: formReminders,
         createdAt: Date.now()
       };
-      saveCustomEvents([...customEvents, newEvent]);
+      if (!await saveCustomEvents([...customEvents, newEvent])) return;
     }
 
     setShowEventModal(false);
@@ -501,9 +504,9 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
   };
 
   // Handle delete custom event
-  const handleDeleteCustomEvent = (eventId: string) => {
+  const handleDeleteCustomEvent = async (eventId: string) => {
     const next = customEvents.filter(e => e.id !== eventId);
-    saveCustomEvents(next);
+    if (!await saveCustomEvents(next)) return;
     setDeletingEventId(null);
     if (selectedDayEvents) {
       setSelectedDayEvents(prev => prev ? {
@@ -597,7 +600,14 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
   };
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto">
+    <div className="space-y-8 min-w-0 max-w-5xl mx-auto">
+      {syncError && <p role="alert" className="p-3 rounded-xl bg-rose-50 text-rose-800 text-xs">{syncError}</p>}
+      {accountId && calendarReady && legacyEvents.length > 0 && customEvents.length === 0 && <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 space-y-2 text-xs">
+        <p>Tenés recordatorios guardados en este dispositivo. Podés importarlos a esta cuenta para recibirlos también con FAROS cerrado.</p>
+        <button type="button" disabled={savingEvents} onClick={async () => {
+          if (await saveCustomEvents(legacyEvents)) { setLegacyEvents([]); try { localStorage.removeItem('faros_custom_events'); } catch {} }
+        }} className="font-bold text-emerald-900 underline cursor-pointer disabled:opacity-50">Importar recordatorios a esta cuenta</button>
+      </div>}
       {/* Active Reminder Toast / Banner */}
       {activeAlerts.length > 0 && (
         <div className="space-y-2">
@@ -755,21 +765,9 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
           ))}
         </div>
 
-        {/* Browser Notifications Request Button */}
-        <button
-          data-tour="calendar-browser-notifications"
-          onClick={handleRequestNotificationPermission}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer shadow-2xs ${
-            notificationPermission === 'granted'
-              ? 'border-emerald-300 bg-emerald-50 text-emerald-950'
-              : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-700'
-          }`}
-          title="Activar avisos de recordatorios en el navegador"
-        >
-          <Bell className="w-3.5 h-3.5 text-emerald-800" />
-          <span>{notificationPermission === 'granted' ? 'Notificaciones activas' : 'Activar notificaciones'}</span>
-        </button>
       </div>
+
+      {notificationsControl && <section data-tour="calendar-browser-notifications" className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200">{notificationsControl}</section>}
 
       {/* Monthly Calendar Grid Card */}
       <div data-tour="calendar-grid" className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_2px_16px_rgba(0,0,0,0.04)] p-6 sm:p-7 space-y-5">
@@ -1087,7 +1085,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
           onClick={() => setSelectedDayEvents(null)}
         >
           <div 
-            className="bg-white w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl border border-slate-200 shadow-2xl overflow-hidden max-h-[85vh] flex flex-col animate-in slide-in-from-bottom duration-200"
+            className="bg-white w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl border border-slate-200 shadow-2xl overflow-hidden max-h-[85dvh] flex flex-col animate-in slide-in-from-bottom duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Sheet Header */}
@@ -1242,22 +1240,27 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
           onClick={() => setShowEventModal(false)}
         >
           <div 
-            className="bg-white w-full max-w-lg rounded-3xl border border-slate-200 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="calendar-event-title"
+            className="bg-white w-full max-w-lg max-h-[calc(100dvh-2rem)] flex flex-col rounded-3xl border border-slate-200 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
-              <h3 className="text-base font-extrabold text-slate-900">
+            <div className="flex shrink-0 items-center justify-between gap-2 px-4 sm:px-6 py-4 border-b border-slate-200 bg-slate-50">
+              <h3 id="calendar-event-title" className="text-base font-extrabold text-slate-900">
                 {editingEventId ? 'Editar Evento de Cartera' : 'Nuevo Evento de Cartera'}
               </h3>
               <button
                 onClick={() => setShowEventModal(false)}
+                aria-label="Cerrar evento"
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveCustomEvent} className="p-6 space-y-4 text-xs">
+            <form onSubmit={handleSaveCustomEvent} className="min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4 text-xs">
+              {syncError && <p role="alert" className="p-3 rounded-xl bg-rose-50 text-rose-800">{syncError}</p>}
               {/* Fecha */}
               <div className="space-y-1">
                 <label className="font-bold text-slate-700">Fecha del evento</label>
@@ -1336,7 +1339,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                 <label className="font-bold text-slate-700 block">Recordatorios programados</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { id: 'same_day' as ReminderTiming, label: 'El mismo día (09:00)' },
+                    { id: 'same_day' as ReminderTiming, label: 'El mismo día' },
                     { id: '1_day_before' as ReminderTiming, label: '1 día antes' },
                     { id: '3_days_before' as ReminderTiming, label: '3 días antes' },
                     { id: '1_week_before' as ReminderTiming, label: '1 semana antes' }
@@ -1381,7 +1384,8 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-emerald-950 text-white font-extrabold text-xs rounded-xl hover:bg-emerald-900 cursor-pointer shadow-xs"
+                  disabled={savingEvents || !calendarReady}
+                  className="px-5 py-2 disabled:opacity-50 bg-emerald-950 text-white font-extrabold text-xs rounded-xl hover:bg-emerald-900 cursor-pointer shadow-xs"
                 >
                   {editingEventId ? 'Guardar Cambios' : 'Crear Evento'}
                 </button>
@@ -1414,6 +1418,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
               </p>
             </div>
 
+            {syncError && <p role="alert" className="p-3 rounded-xl bg-rose-50 text-rose-800 text-xs">{syncError}</p>}
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 onClick={() => setDeletingEventId(null)}
@@ -1422,7 +1427,8 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                 Cancelar
               </button>
               <button
-                onClick={() => handleDeleteCustomEvent(deletingEventId)}
+                disabled={savingEvents}
+                onClick={() => void handleDeleteCustomEvent(deletingEventId)}
                 className="px-4 py-2 bg-rose-600 text-white font-bold text-xs rounded-xl hover:bg-rose-700 cursor-pointer shadow-xs"
               >
                 Eliminar

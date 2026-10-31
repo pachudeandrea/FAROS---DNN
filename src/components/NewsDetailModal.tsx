@@ -290,7 +290,7 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
       onClick={handleCloseModal}
     >
       <div 
-        className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150"
+        className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90dvh] animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* BLOQUE 1: Encabezado (impacto en precio, tiempo, cantidad de medios, compartir y cerrar) */}

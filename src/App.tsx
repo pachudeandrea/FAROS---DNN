@@ -16,7 +16,9 @@ import {
   MOCK_PORTFOLIOS, 
   DEFAULT_PREFERENCES 
 } from './data/mockData';
+import { useAlerts } from './hooks/useAlerts';
 import { REAL_GROUNDED_NEWS } from './data/groundedRealNews';
+import { NotificationControls } from './components/NotificationControls';
 
 // Components
 import { Header } from './components/Header';
@@ -51,7 +53,7 @@ import { Search, X, Bookmark, ArrowRight, ShieldCheck, Sparkles, FilterX, Compas
 
 export default function App() {
   // Navigation: Exactly 3 clean screens
-  const [currentTab, setCurrentTab] = useState<'feed' | 'calendar' | 'settings'>('feed');
+  const [currentTab, setCurrentTab] = useState<'feed' | 'calendar' | 'settings'>(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tab') === 'calendar' ? 'calendar' : 'feed');
 
   // Portfolios & Preferences
   const [portfolios, setPortfolios] = useState<Portfolio[]>(MOCK_PORTFOLIOS);
@@ -64,6 +66,10 @@ export default function App() {
   const [isSessionLoading, setIsSessionLoading] = useState<boolean>(true);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
   const [showSignUpModal, setShowSignUpModal] = useState<boolean>(false);
+  const alerts = useAlerts(currentUser, updated => {
+    setPreferences(updated);
+    setCurrentUser(previous => previous ? { ...previous, preferences: updated } : previous);
+  });
 
   // Active news item for detail modal & audio drawer
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
@@ -71,7 +77,7 @@ export default function App() {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
 
   // Modals
-  const [showNotifications, setShowNotifications] = useState<boolean>(false);
+  const [showNotifications, setShowNotifications] = useState<boolean>(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('alerts') === '1');
   const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
   const [isTourActive, setIsTourActive] = useState<boolean>(false);
   const [showWelcomeOnboardingModal, setShowWelcomeOnboardingModal] = useState<boolean>(false);
@@ -212,36 +218,7 @@ export default function App() {
   const [isLoadingNews, setIsLoadingNews] = useState<boolean>(false);
   const [pendingRemindersCount, setPendingRemindersCount] = useState<number>(0);
 
-  // Notifications (Neutral descriptive alerts)
-  const [notifications, setNotifications] = useState([
-    {
-      id: 'notif-1',
-      newsId: 'n-01',
-      title: 'Compras de reservas del BCRA y compresión de riesgo país hacia 780 bps',
-      timeAgo: 'Hace 25 min',
-      impact: 'favorable' as NewsImpact,
-      read: false,
-      affectedHoldings: 'AL30 · GD30'
-    },
-    {
-      id: 'notif-2',
-      newsId: 'n-02',
-      title: 'YPF amplía ductos troncales de exportación en Vaca Muerta',
-      timeAgo: 'Hace 50 min',
-      impact: 'favorable' as NewsImpact,
-      read: false,
-      affectedHoldings: 'YPFD · PAMP'
-    },
-    {
-      id: 'notif-3',
-      newsId: 'n-04',
-      title: 'CNV desmintió modificaciones normativas en parking de MEP y CCL',
-      timeAgo: 'Hace 2h',
-      impact: 'neutral' as NewsImpact,
-      read: true,
-      affectedHoldings: 'MEP · CCL'
-    }
-  ]);
+  const notifications = alerts.notifications;
 
   // Assets Map lookup
   const assetsMap = useMemo(() => {
@@ -451,7 +428,10 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      if (currentUser?.id !== 'usr_demo') await apiRequest('/api/auth/logout', { method: 'POST' });
+      if (currentUser?.id !== 'usr_demo') {
+        await alerts.disconnect().catch(() => {});
+        await apiRequest('/api/auth/logout', { method: 'POST' });
+      }
       clearSessionView();
     } catch (error) {
       setAccountError(error instanceof Error ? error.message : 'No se pudo cerrar la sesión en el servidor.');
@@ -460,7 +440,10 @@ export default function App() {
 
   const handleDeleteAccount = async () => {
     try {
-      if (currentUser?.id !== 'usr_demo') await apiRequest('/api/auth/account', { method: 'DELETE' });
+      if (currentUser?.id !== 'usr_demo') {
+        await alerts.disconnect().catch(() => {});
+        await apiRequest('/api/auth/account', { method: 'DELETE' });
+      }
       clearSessionView();
     } catch (error) {
       setAccountError(error instanceof Error ? error.message : 'No se pudo eliminar la cuenta.');
@@ -739,7 +722,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased">
+    <div className="min-h-dvh min-w-0 bg-slate-50 text-slate-900 flex flex-col font-sans antialiased">
       {/* Top Header adhering to 3-zone contract with 3 tabs */}
       <Header
         currentTab={currentTab}
@@ -754,8 +737,11 @@ export default function App() {
       />
 
       {/* Main View Area */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 pb-28 md:pb-16">
+      <main className="flex-1 min-w-0 max-w-5xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 pb-[calc(7rem+env(safe-area-inset-bottom))] lg:pb-16">
         {accountError && <p role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{accountError}</p>}
+        {alerts.message && !alerts.showPrompt && <p role="status" className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{alerts.message}</p>}
+        {alerts.error && !alerts.showPrompt && <p role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{alerts.error}</p>}
+        {alerts.showPrompt && <section className="mb-5 p-4 sm:p-5 rounded-2xl bg-white border border-emerald-200 shadow-sm"><NotificationControls alerts={alerts} question /></section>}
         {/* PANTALLA 1: INICIO (FEED) */}
         {currentTab === 'feed' && (
           <div className="space-y-8">
@@ -788,11 +774,11 @@ export default function App() {
                 </div>
 
                 {/* Search Icon & Saved Toggle in natural flow */}
-                <div className="flex items-center gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
                   {/* Expandable Search Input */}
                   <div className="flex items-center">
                     {isSearchExpanded ? (
-                      <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-xl px-3 py-1.5 shadow-xs animate-in fade-in duration-150">
+                      <div className="flex min-w-0 max-w-full items-center gap-1.5 bg-white border border-slate-300 rounded-xl px-3 py-1.5 shadow-xs animate-in fade-in duration-150">
                         <Search className="w-4 h-4 text-slate-400 shrink-0" />
                         <input
                           type="text"
@@ -800,7 +786,7 @@ export default function App() {
                           onChange={(e) => setSearchQuery(e.target.value)}
                           placeholder="Buscar activo o palabra clave..."
                           autoFocus
-                          className="text-xs sm:text-sm text-slate-800 focus:outline-none w-44 sm:w-56 bg-transparent"
+                          className="text-xs sm:text-sm text-slate-800 focus:outline-none min-w-0 w-36 sm:w-56 bg-transparent"
                         />
                         <button
                           onClick={() => {
@@ -843,7 +829,7 @@ export default function App() {
               {/* SLIM STICKY FILTER BAR: Minimal height (~46px) so it never obstructs reading */}
               <div data-tour="feed-filters" className="sticky top-16 z-20 bg-white/95 backdrop-blur-md py-2 px-3 sm:px-4 rounded-2xl border border-slate-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-2.5">
                 {/* Category Pills (horizontal scroll on mobile) */}
-                <div className="flex items-center gap-1 overflow-x-auto max-w-full text-xs py-0.5 scrollbar-none">
+                <div className="flex min-w-0 items-center gap-1 overflow-x-auto max-w-full text-xs py-0.5 scrollbar-none">
                   {[
                     { id: 'todas', label: 'Todas' },
                     { id: 'impacto_precio', label: 'Impacto en precio' },
@@ -866,7 +852,7 @@ export default function App() {
                 </div>
 
                 {/* Sub-filters: Asset dropdown & Effect pills */}
-                <div className="flex items-center justify-between md:justify-end gap-2 text-xs">
+                <div className="flex min-w-0 flex-wrap items-center justify-between md:justify-end gap-2 text-xs">
                   {/* Asset selector */}
                   <select
                     value={assetFilter}
@@ -880,7 +866,7 @@ export default function App() {
                   </select>
 
                   {/* Qualitative Impact Pills: Verde=Favorable, Rojo=Alerta, Gris=Neutral */}
-                  <div className="flex items-center gap-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-1">
                     {[
                       { 
                         id: 'todos', 
@@ -1077,6 +1063,9 @@ export default function App() {
         {/* PANTALLA 2: CALENDARIO */}
         {currentTab === 'calendar' && (
           <FinancialCalendar 
+            key={currentUser.id}
+            accountId={currentUser.id === 'usr_demo' ? undefined : currentUser.id}
+            notificationsControl={currentUser.id === 'usr_demo' ? <p className="text-xs text-slate-600">Iniciá sesión con una cuenta personal para recibir alertas en tus dispositivos.</p> : <NotificationControls alerts={alerts} />}
             portfolioId={activePortfolio.id}
             portfolioName={activePortfolio.name}
             userAssetSymbols={activePortfolio.assetIds}
@@ -1095,6 +1084,7 @@ export default function App() {
             onSavePreferences={handleSavePreferences}
             onOpenCreateNew={() => setShowOnboarding(true)}
             currentUser={currentUser}
+            notificationsControl={currentUser.id === 'usr_demo' ? <p className="text-xs text-slate-600">Iniciá sesión con una cuenta personal para recibir alertas en tus dispositivos.</p> : <NotificationControls alerts={alerts} />}
             onRecoveryKeySaved={updated => setCurrentUser(previous => previous?.id === updated.id ? { ...previous, hasRecoveryKey: updated.hasRecoveryKey } : previous)}
             onLogout={handleLogout}
             onDeleteAccount={handleDeleteAccount}
@@ -1105,7 +1095,7 @@ export default function App() {
       </main>
 
       {/* Rocket Money-Style Contrast Bottom Foundation (Deep Emerald) */}
-      <footer className="mt-auto bg-emerald-950 text-white pt-10 pb-24 md:pb-12 border-t border-emerald-900">
+      <footer className="mt-auto bg-emerald-950 text-white pt-10 pb-[calc(7rem+env(safe-area-inset-bottom))] lg:pb-12 border-t border-emerald-900">
         <div className="max-w-5xl mx-auto px-4 sm:px-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6 pb-8 border-b border-emerald-900/80">
             {/* Brand in footer */}
@@ -1185,10 +1175,12 @@ export default function App() {
         isOpen={showNotifications}
         onClose={() => setShowNotifications(false)}
         notifications={notifications}
-        onMarkAllAsRead={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
-        onSelectNotification={(newsId) => {
-          const target = newsList.find(n => n.id === newsId) || REAL_GROUNDED_NEWS.find(n => n.id === newsId);
+        onMarkAllAsRead={() => void alerts.markRead()}
+        onSelectNotification={notification => {
+          if (notification.calendarEventId) { handleSelectTab('calendar'); return; }
+          const target = newsList.find(item => notification.sourceUrl ? item.sources.some(source => source.sourceUrl === notification.sourceUrl) : item.id === notification.newsId && item.headline === notification.title);
           if (target) setSelectedNews(target);
+          else if (notification.sourceUrl) window.open(notification.sourceUrl, '_blank', 'noopener,noreferrer');
         }}
       />
 
