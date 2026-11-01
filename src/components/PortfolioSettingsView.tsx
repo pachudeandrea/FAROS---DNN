@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import { usePendingChanges } from '../hooks/usePendingChanges';
+import React, { useState, useEffect } from 'react';
 import { 
   Portfolio, 
   RiskProfile, 
@@ -10,6 +11,7 @@ import {
 } from '../types';
 import { MOCK_ASSETS } from '../data/mockData';
 import { ProfileSelector } from './ProfileCard';
+import { AccountDetails } from './AccountDetails';
 import { RecoveryKeySettings } from './RecoveryKeySettings';
 import { 
   Check, 
@@ -36,15 +38,17 @@ interface PortfolioSettingsViewProps {
   portfolio: Portfolio;
   portfolios: Portfolio[];
   onSelectPortfolio: (portfolio: Portfolio) => void;
-  onSavePortfolio: (updated: Portfolio) => void;
+  onSavePortfolio: (updated: Portfolio) => Promise<boolean>;
   preferences: UserPreferences;
   onSavePreferences: (updated: UserPreferences) => void;
   onOpenCreateNew: () => void;
+  onViewNews?: () => void;
   currentUser?: UserAccount | null;
   onLogout?: () => void;
   onDeleteAccount?: () => void;
   onStartTour?: () => void;
   onOpenAdmin?: () => void;
+  onAccountSaved?: (user: UserAccount) => void;
   onRecoveryKeySaved?: (user: UserAccount) => void;
   notificationsControl?: React.ReactNode;
 }
@@ -57,11 +61,13 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
   preferences,
   onSavePreferences,
   onOpenCreateNew,
+  onViewNews,
   currentUser,
   onLogout,
   onDeleteAccount,
   onStartTour,
   onOpenAdmin,
+  onAccountSaved,
   onRecoveryKeySaved,
   notificationsControl,
 }) => {
@@ -71,6 +77,20 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
   const [pendingPosition, setPendingPosition] = useState<AssetPosition>('long');
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
 
+  const [section, setSection] = useState<'assets' | 'preferences' | 'alerts' | 'account'>('assets');
+  usePendingChanges(!!selectedCandidate || !!assetSearch.trim());
+
+  useEffect(() => {
+    const reveal = (event: Event) => {
+      const target = (event as CustomEvent<string>).detail;
+      if (target === 'portfolio-profile' || target === 'portfolio-relevance') setSection('preferences');
+      else if (target === 'portfolio-notifications') setSection('alerts');
+      else if (target === 'portfolio-account') setSection('account');
+      else if (target?.startsWith('portfolio-')) setSection('assets');
+    };
+    window.addEventListener('faros-tour-target', reveal);
+    return () => window.removeEventListener('faros-tour-target', reveal);
+  }, []);
   // Available assets to add
   const unownedAssets = MOCK_ASSETS.filter(a => 
     !portfolio.assetIds.includes(a.id) &&
@@ -79,7 +99,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
      a.name.toLowerCase().includes(assetSearch.toLowerCase()))
   );
 
-  const handleConfirmAddAsset = (assetId: string, position: AssetPosition = 'long') => {
+  const handleConfirmAddAsset = async (assetId: string, position: AssetPosition = 'long') => {
     if (!portfolio.assetIds.includes(assetId)) {
       const updated: Portfolio = {
         ...portfolio,
@@ -89,7 +109,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
           [assetId]: position
         }
       };
-      onSavePortfolio(updated);
+      if (!await onSavePortfolio(updated)) return;
       setSelectedCandidate(null);
       setPendingPosition('long');
       setAssetSearch('');
@@ -201,6 +221,12 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
         )}
       </div>
 
+      <nav aria-label="Secciones de Mi cartera" className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {([{ id: 'assets', label: 'Activos y carteras', icon: Wallet }, { id: 'preferences', label: 'Preferencias', icon: SlidersHorizontal }, { id: 'alerts', label: 'Alertas', icon: Bell }, { id: 'account', label: 'Cuenta y privacidad', icon: Lock }] as const).map(item => <button key={item.id} aria-current={section === item.id ? 'page' : undefined} onClick={() => setSection(item.id)} className={`flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-semibold text-left ${section === item.id ? 'bg-emerald-950 text-white' : 'bg-white text-slate-700 border border-slate-200'}`}><item.icon className="w-4 h-4 shrink-0" />{item.label}</button>)}
+      </nav>
+      <div hidden={section !== 'assets'} className="space-y-4">
+      <p className="text-base text-slate-700">{portfolio.assetIds.length ? 'Tu cartera está lista para personalizar las noticias.' : 'Buscá tu primer activo, elegí LONG o SHORT y agregalo a tu cartera.'}</p>
+      {portfolio.assetIds.length > 0 && onViewNews && <button onClick={onViewNews} className="px-4 py-3 bg-emerald-950 text-white rounded-xl font-semibold">Ver noticias de mi cartera</button>}
       {/* BLOQUE 1: CARTERAS Y ACTIVOS */}
       <section className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_2px_16px_rgba(0,0,0,0.04)] p-6 sm:p-8 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
@@ -474,7 +500,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                 return (
                   <span
                     key={assetId}
-                    className={`inline-flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+                    className={`inline-flex max-w-full min-w-0 items-center gap-2 pl-3 pr-2 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
                       isLong
                         ? 'bg-blue-50/80 border-blue-300 text-blue-950 shadow-2xs'
                         : 'bg-amber-50/90 border-amber-300 text-amber-950 shadow-2xs'
@@ -483,7 +509,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                     <span className="font-mono font-bold">
                       {asset?.symbol || assetId}
                     </span>
-                    <span className={`text-[11px] truncate max-w-[110px] ${isLong ? 'text-blue-800/80' : 'text-amber-900/80'}`}>
+                    <span className={`text-sm min-w-0 truncate max-w-[110px] ${isLong ? 'text-blue-800/80' : 'text-amber-900/80'}`}>
                       {asset?.name || ''}
                     </span>
 
@@ -491,7 +517,8 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleTogglePosition(assetId)}
-                      className={`font-mono text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider cursor-pointer transition-opacity hover:opacity-85 ${
+                      aria-label={`${assetId}: posición ${position.toUpperCase()}, cambiar a ${isLong ? 'SHORT' : 'LONG'}`}
+                      className={`shrink-0 font-mono text-xs font-bold px-1.5 py-0.5 rounded uppercase tracking-wider cursor-pointer transition-opacity hover:opacity-85 ${
                         isLong
                           ? 'bg-blue-600 text-white shadow-2xs'
                           : 'bg-amber-400 text-amber-950 border border-amber-500/60 shadow-2xs'
@@ -504,7 +531,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleRemoveAsset(assetId)}
-                      className={`p-0.5 rounded transition-colors ml-0.5 cursor-pointer ${
+                      className={`shrink-0 flex items-center justify-center p-0.5 rounded transition-colors ml-0.5 cursor-pointer ${
                         isLong ? 'hover:bg-blue-200 text-blue-400 hover:text-blue-800' : 'hover:bg-amber-200 text-amber-600 hover:text-amber-950'
                       }`}
                       title={`Quitar ${assetId} de la cartera`}
@@ -520,6 +547,8 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
         </div>
       </section>
 
+      </div>
+      <div hidden={section !== 'preferences'} className="space-y-4">
       {/* BLOQUE 2: MI PERFIL (Step 6 in tour) */}
       <section 
         data-tour="portfolio-profile"
@@ -588,6 +617,10 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
             return (
               <div 
                 key={item.id}
+                role="switch"
+                aria-checked={isChecked}
+                tabIndex={0}
+                onKeyDown={event => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); toggleRelevanceType(item.id); } }}
                 onClick={() => toggleRelevanceType(item.id)}
                 className="flex items-center justify-between p-3.5 rounded-2xl border border-slate-200 hover:border-slate-300 bg-slate-50/40 cursor-pointer transition-colors"
               >
@@ -613,6 +646,8 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
         </div>
       </section>
 
+      </div>
+      <div hidden={section !== 'alerts'}>
       {/* BLOQUE 4: NOTIFICACIONES Y OPCIONES AVANZADAS (Step 8 in tour) */}
       <section 
         data-tour="portfolio-notifications"
@@ -678,6 +713,8 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
         </div>
       </section>
 
+      </div>
+      <div hidden={section !== 'account'}>
       {/* BLOQUE 5: CUENTA Y PRIVACIDAD (Step 9 in tour) */}
       <section 
         data-tour="portfolio-account"
@@ -695,6 +732,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
           </p>
         </div>
 
+        {currentUser && currentUser.id !== 'usr_demo' && <AccountDetails user={currentUser} onSaved={onAccountSaved} />}
         {currentUser ? (
           <div className="space-y-4">
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -804,6 +842,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
           </div>
         )}
       </section>
+      </div>
     </div>
   );
 };

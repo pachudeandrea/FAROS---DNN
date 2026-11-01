@@ -1,6 +1,6 @@
 import React from 'react';
 import { LighthouseLogo } from './LighthouseLogo';
-import { Bell, ArrowRight, Sparkles, Shield } from 'lucide-react';
+import { Bell, ArrowRight, Sparkles, Shield, Wallet } from 'lucide-react';
 
 interface HeaderProps {
   currentTab: 'feed' | 'calendar' | 'settings';
@@ -31,6 +31,8 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Zone 1: Brand Wordmark with sleek Lighthouse Logo */}
         <div 
           onClick={() => onSelectTab('feed')}
+          role="button" tabIndex={0} aria-label="FAROS, ir a noticias"
+          onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectTab('feed'); } }}
           className="flex items-center gap-2 sm:gap-3 cursor-pointer select-none shrink-0 group"
         >
           <div className="transition-transform group-hover:scale-105">
@@ -93,7 +95,7 @@ export const Header: React.FC<HeaderProps> = ({
         </nav>
 
         {/* Zone 3: Rocket Money-style Account/Portfolio Pill + Notifications */}
-        <div className="flex min-w-0 items-center gap-1 sm:gap-2 shrink-0">
+        <div className="flex min-w-0 items-center gap-1 sm:gap-2">
           {/* Admin panel launcher if admin */}
           {isAdmin && onOpenAdmin && (
             <button
@@ -143,11 +145,11 @@ export const Header: React.FC<HeaderProps> = ({
             aria-label={`Configurar cartera: ${portfolioName}`}
           >
             <div className="hidden sm:block w-2 h-2 rounded-full bg-emerald-600 ring-4 ring-emerald-100 group-hover:bg-emerald-700" />
-            <span className="hidden sm:block sm:max-w-[150px] lg:max-w-[110px] xl:max-w-[170px] truncate font-medium">
+            <span className="block max-w-[100px] sm:max-w-[150px] lg:max-w-[110px] xl:max-w-[170px] truncate font-medium">
               {portfolioName}
             </span>
             <div className="w-5 h-5 rounded-full bg-emerald-950 text-emerald-200 flex items-center justify-center ml-0.5 group-hover:translate-x-0.5 transition-transform">
-              <ArrowRight className="w-3 h-3" />
+              <Wallet className="w-3 h-3" />
             </div>
           </button>
         </div>

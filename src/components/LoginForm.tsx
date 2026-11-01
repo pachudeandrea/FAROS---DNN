@@ -1,3 +1,5 @@
+import { useModalFocus } from '../hooks/useModalFocus';
+import { usePendingChanges } from '../hooks/usePendingChanges';
 import React, { useState } from 'react';
 import { LighthouseLogo } from './LighthouseLogo';
 import { 
@@ -27,6 +29,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   onSuccess,
   onSwitchToSignUp
 }) => {
+  const modalRef = useModalFocus(onClose, isOpen);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -37,6 +40,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
   // Forgot password flow state
   const [isForgotMode, setIsForgotMode] = useState(false);
+  usePendingChanges(isOpen && (!!email || !!password || isLoading));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,7 +67,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
-      <div role="dialog" aria-modal="true" aria-labelledby="login-title" className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden max-h-[calc(100dvh-1.5rem)] flex flex-col relative text-slate-800">
+      <div ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="login-title" className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden max-h-[calc(100dvh-1.5rem)] flex flex-col relative text-slate-800">
         
         {/* Top Header Card */}
         <div className="bg-emerald-950 p-5 sm:p-6 text-white relative shrink-0">

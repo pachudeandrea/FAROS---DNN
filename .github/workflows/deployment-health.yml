@@ -1,0 +1,18 @@
+name: Verify production deployment
+on:
+  deployment_status:
+permissions:
+  contents: read
+jobs:
+  health:
+    if: github.event.deployment_status.state == 'success' && (github.event.deployment.environment == 'Production' || github.event.deployment.environment == 'production')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify production version, database and compiled application
+        env:
+          EXPECTED_REVISION: ${{ github.event.deployment.sha }}
+        run: node scripts/check-deployment.mjs https://faros-dnn.vercel.app "$EXPECTED_REVISION"

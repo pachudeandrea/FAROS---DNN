@@ -1,3 +1,4 @@
+import { usePendingChanges } from '../hooks/usePendingChanges';
 import React, { useState } from 'react';
 import { CheckCircle2, Loader2 } from 'lucide-react';
 import { apiRequest } from '../utils/apiClient';
@@ -16,6 +17,7 @@ export function PasswordRecoveryForm({ initialEmail, onBack, onComplete }: {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  usePendingChanges(!done && (!!recoveryKey || !!password || !!confirmation || busy));
   const normalizedEmail = email.trim().toLowerCase();
   const inputClass = 'mt-1.5 w-full px-4 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-800 bg-slate-50/50';
   const buttonClass = 'w-full py-3 px-4 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50';

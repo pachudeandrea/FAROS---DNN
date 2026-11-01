@@ -558,7 +558,7 @@ export async function verifySourceUrl(
       verified: false,
       discardReason: 'Fallo de conexión o timeout al resolver la URL'
     };
-    console.log(`[SOURCE DISCARDED] reason="${fail.discardReason}" rawUri="${rawUri}"`);
+    console.info('[SOURCE DISCARDED] Article verification failed.');
     urlVerificationCache.set(rawUri, { result: fail, timestamp: Date.now() });
     return fail;
   }
@@ -572,7 +572,7 @@ export async function verifySourceUrl(
       verified: false,
       discardReason: validation.reason
     };
-    console.log(`[SOURCE DISCARDED] reason="${validation.reason}" rawUri="${rawUri}" finalUrl="${finalUrl}"`);
+    console.info('[SOURCE DISCARDED] Article verification failed.');
     urlVerificationCache.set(rawUri, { result: fail, timestamp: Date.now() });
     return fail;
   }
@@ -584,7 +584,7 @@ export async function verifySourceUrl(
       verified: false,
       discardReason: 'No se pudo extraer titular válido del HTML de la nota'
     };
-    console.log(`[SOURCE DISCARDED] reason="${fail.discardReason}" rawUri="${rawUri}" finalUrl="${finalUrl}"`);
+    console.info('[SOURCE DISCARDED] Article verification failed.');
     urlVerificationCache.set(rawUri, { result: fail, timestamp: Date.now() });
     return fail;
   }
@@ -595,7 +595,7 @@ export async function verifySourceUrl(
       verified: false,
       discardReason: 'No se pudo extraer la fecha de publicación del HTML de la nota'
     };
-    console.log(`[SOURCE DISCARDED] reason="${fail.discardReason}" rawUri="${rawUri}" finalUrl="${finalUrl}"`);
+    console.info('[SOURCE DISCARDED] Article verification failed.');
     urlVerificationCache.set(rawUri, { result: fail, timestamp: Date.now() });
     return fail;
   }
@@ -614,7 +614,7 @@ export async function verifySourceUrl(
     }
   };
 
-  console.log(`[SOURCE ACCEPTED] media="${meta.mediaName}" title="${meta.headline}" date="${meta.publishedTime}" url="${finalUrl}"`);
+  console.info('[SOURCE ACCEPTED] Verified article metadata.');
   urlVerificationCache.set(rawUri, { result: success, timestamp: Date.now() });
   urlVerificationCache.set(finalUrl, { result: success, timestamp: Date.now() });
   urlVerificationCache.set(meta.canonicalUrl, { result: success, timestamp: Date.now() });

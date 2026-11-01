@@ -64,10 +64,12 @@ function isFinancialCandidate(title: string, link: string): boolean {
 /**
  * Fetches real candidate articles directly from Argentine financial RSS feeds.
  */
-async function fetchRssCandidates(maxPerFeed = 15): Promise<RawFeedItem[]> {
+async function fetchRssCandidates(maxPerFeed = 15, diagnostics = createCollectionDiagnostics()): Promise<RawFeedItem[]> {
   const candidates: RawFeedItem[] = [];
 
   for (const feed of RSS_FEEDS) {
+    const result = { name: feed.name, status: 'unavailable', found: 0 };
+    diagnostics.feeds.push(result);
     try {
       const res = await fetch(feed.url, {
         headers: {
@@ -75,14 +77,17 @@ async function fetchRssCandidates(maxPerFeed = 15): Promise<RawFeedItem[]> {
         },
         signal: AbortSignal.timeout(5000)
       });
-      if (!res.ok) continue;
+      if (!res.ok) { result.status = 'http_error'; continue; }
 
       const xml = await res.text();
       const $ = cheerio.load(xml, { xmlMode: true });
 
+      if (!$('rss, feed').length) { result.status = 'invalid_feed'; continue; }
+      result.status = 'ok';
       let count = 0;
       $('item').each((_, el) => {
         if (count >= maxPerFeed) return false;
+        result.found++;
         const title = $(el).find('title').first().text().trim();
         const link = $(el).find('link').first().text().trim() || $(el).find('guid').first().text().trim();
         const pubDate = $(el).find('pubDate').first().text().trim();
@@ -96,14 +101,19 @@ async function fetchRssCandidates(maxPerFeed = 15): Promise<RawFeedItem[]> {
               sourceFeed: feed.name
             });
             count++;
-          }
-        }
+          } else diagnostics.discarded.notFinancial++;
+        } else diagnostics.discarded.invalidFeedItem++;
       });
     } catch {
       // Continue with other feeds if one times out
     }
   }
 
+  diagnostics.candidates = candidates.length;
+  if (!diagnostics.feeds.some(feed => feed.status === 'ok')) {
+    console.info('[NEWS COLLECTION]', JSON.stringify(diagnostics));
+    throw new Error('NEWS_SOURCES_UNAVAILABLE');
+  }
   return candidates;
 }
 
@@ -165,8 +175,12 @@ function analyzeArticleContext(headline: string): {
  * Two articles can ONLY be grouped if they report on the EXACT SAME CONCRETE EVENT.
  * If articles report on different events, they remain separate news items with their own authentic source.
  */
-export async function getLiveVerifiedArgentineNews(userTickers: string[] = []): Promise<NewsItem[]> {
-  const candidates = await fetchRssCandidates(15);
+export function createCollectionDiagnostics() {
+  return { feeds: [] as { name: string; status: string; found: number }[], candidates: 0, verified: 0,
+    discarded: { notFinancial: 0, invalidFeedItem: 0, connection: 0, missingMetadata: 0, invalidArticle: 0, duplicate: 0, stale: 0 }, news: 0, multiMedia: 0 };
+}
+export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], diagnostics = createCollectionDiagnostics()): Promise<NewsItem[]> {
+  const candidates = await fetchRssCandidates(15, diagnostics);
   const argInfo = getArgentinaDateInfo();
 
   console.log(`[LIVE VERIFIER] ${candidates.length} filtered financial RSS articles found. Validating URLs and extracting metadata...`);
@@ -182,13 +196,21 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = []): 
       if (!seenCanonical.has(canon)) {
         seenCanonical.add(canon);
         verifiedSources.push(vResult.source);
-      }
+      } else diagnostics.discarded.duplicate++;
+    } else {
+      const reason = vResult.discardReason || '';
+      if (/conexión|timeout/i.test(reason)) diagnostics.discarded.connection++;
+      else if (/extraer|titular|fecha/i.test(reason)) diagnostics.discarded.missingMetadata++;
+      else diagnostics.discarded.invalidArticle++;
     }
   }
 
   console.log(`[LIVE VERIFIER] Total successfully verified authentic sources: ${verifiedSources.length}`);
 
+  diagnostics.verified = verifiedSources.length;
   if (verifiedSources.length === 0) {
+    console.info('[NEWS COLLECTION]', JSON.stringify(diagnostics));
+    if (candidates.length && diagnostics.discarded.connection === candidates.length) throw new Error('NEWS_SOURCES_UNAVAILABLE');
     return [];
   }
 
@@ -204,7 +226,7 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = []): 
       const hasMedia = matchedCluster.sources.some(s => getPublisherKey(s) === getPublisherKey(src) || s.sourceUrl === src.sourceUrl);
       if (!hasMedia && matchedCluster.sources.length < 5) {
         matchedCluster.sources.push(src);
-        console.log(`[EVENT MATCH] Grouped source "${src.originalHeadline}" (${src.mediaName}) with "${matchedCluster.headline}"`);
+
       }
     } else {
       // Independent concrete event!
@@ -285,5 +307,9 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = []): 
 
   // Apply freshness filter (primary window: today; expansion window: 48h; discard notes with 0 sources)
   const freshNews = filterByFreshness(newsItems);
+  diagnostics.discarded.stale = newsItems.length - freshNews.length;
+  diagnostics.news = freshNews.length;
+  diagnostics.multiMedia = freshNews.filter(item => new Set(item.sources.map(getPublisherKey)).size > 1).length;
+  console.info('[NEWS COLLECTION]', JSON.stringify(diagnostics));
   return freshNews;
 }

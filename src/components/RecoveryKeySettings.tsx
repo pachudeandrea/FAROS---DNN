@@ -1,3 +1,4 @@
+import { usePendingChanges } from '../hooks/usePendingChanges';
 import React, { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import type { UserAccount } from '../types';
@@ -13,6 +14,7 @@ export function RecoveryKeySettings({ user, onSaved }: { user: UserAccount; onSa
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  usePendingChanges(editing && (!!currentPassword || !!recoveryKey || !!confirmation || busy));
   const clearSecrets = () => { setCurrentPassword(''); setRecoveryKey(''); setConfirmation(''); };
 
   const save = async (event: React.FormEvent) => {

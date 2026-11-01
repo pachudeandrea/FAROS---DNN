@@ -347,6 +347,8 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
 
   const placement = computePlacement();
 
+  useEffect(() => { if (isActive) window.dispatchEvent(new CustomEvent('faros-tour-target', { detail: currentStep.targetId })); }, [isActive, currentStep.targetId, currentTab]);
+
   // Smart offset scroll: keeps target element fully visible without jarring jumps
   useEffect(() => {
     if (!isActive) return;

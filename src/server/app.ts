@@ -19,7 +19,7 @@ import {
   purgeUrlVerificationCache,
   getArgentinaDateInfo
 } from '../utils/urlResolver.js';
-import { getLiveVerifiedArgentineNews } from '../utils/liveFinancialNews.js';
+import { getLiveVerifiedArgentineNews, createCollectionDiagnostics } from '../utils/liveFinancialNews.js';
 import { enrichNewsCoverage } from '../utils/newsCoverage.js';
 import { NEWS_CACHE_VERSION } from '../utils/newsCache.js';
 import {
@@ -421,8 +421,13 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
   const pulseStartTime = Date.now();
   const user = await getSessionUser(req);
   const respondWithNews = (body: any) => {
-    if (user && Array.isArray(body.news)) backgroundNotification(publishNews(user, body.news));
-    return res.json({ ...body, newsVersion: NEWS_CACHE_VERSION });
+    if (Array.isArray(body.news)) {
+      console.info('[NEWS PULSE]', JSON.stringify({ cached: !!body.cached, news: body.news.length,
+        publications: body.news.reduce((count: number, item: NewsItem) => count + item.sources.length, 0),
+        multiMedia: body.news.filter((item: NewsItem) => new Set(item.sources.map(source => source.mediaName)).size > 1).length }));
+      if (user) backgroundNotification(publishNews(user, body.news));
+    }
+    return res.json({ checkedAt: new Date().toISOString(), ...body, newsVersion: NEWS_CACHE_VERSION });
   };
 
   if (!checkIpRateLimit(req.ip || 'ip', 45)) {
@@ -451,6 +456,7 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
 
     return respondWithNews({
       news: newsCache[cacheKey].news,
+      checkedAt: new Date(newsCache[cacheKey].timestamp).toISOString(),
       cached: true,
       fallback: false,
       dateKey,
@@ -473,6 +479,7 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
 
     return respondWithNews({
       news: liveNews,
+      checkedAt: new Date(newsCache[cacheKey].timestamp).toISOString(),
       cached: false,
       fallback: false,
       dateKey,
@@ -480,7 +487,12 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
     });
   }
 
-  const liveVerifiedNews = await getLiveVerifiedArgentineNews(tickers);
+  const diagnostics = createCollectionDiagnostics();
+  let liveVerifiedNews: NewsItem[];
+  try { liveVerifiedNews = await getLiveVerifiedArgentineNews(tickers, diagnostics); }
+  catch {
+    return res.status(503).json({ code: 'NEWS_SOURCES_UNAVAILABLE', error: 'No se pudieron consultar las fuentes. Intentá actualizar nuevamente.' });
+  }
   if (liveVerifiedNews && liveVerifiedNews.length > 0) {
     newsCache[cacheKey] = {
       timestamp: Date.now(),
@@ -495,6 +507,8 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
 
     return respondWithNews({
       news: liveVerifiedNews,
+      checkedAt: new Date(newsCache[cacheKey].timestamp).toISOString(),
+      diagnostics,
       cached: false,
       fallback: false,
       dateKey,
@@ -504,6 +518,7 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
 
   return respondWithNews({
     news: [],
+    diagnostics,
     cached: false,
     fallback: false,
     dateKey,

@@ -1,3 +1,5 @@
+import { useModalFocus } from '../hooks/useModalFocus';
+import { usePendingChanges } from '../hooks/usePendingChanges';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { apiRequest } from '../utils/apiClient';
 import { CalendarEvent, CustomCalendarEvent, ReminderTiming } from '../types';
@@ -48,6 +50,9 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
   accountId,
   notificationsControl
 }) => {
+  const [view, setView] = useState<'agenda' | 'month'>(() => window.matchMedia('(max-width: 767px)').matches ? 'agenda' : 'month');
+  const [savedMessage, setSavedMessage] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
   // Current time in Argentina (Single source of truth)
   const [nowAR, setNowAR] = useState<NowAR>(() => getNowAR());
 
@@ -57,7 +62,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
 
   // Loading & refresh state
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [lastUpdatedText, setLastUpdatedText] = useState<string>(() => getNowAR().headerUpdatedText);
+  const [lastUpdatedText, setLastUpdatedText] = useState<string>('Todavía sin actualizar');
 
   // Filter by category
   const [selectedCategory, setSelectedCategory] = useState<'todos' | CalendarEvent['category']>('todos');
@@ -112,8 +117,14 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
   const [formNote, setFormNote] = useState<string>('');
   const [formReminders, setFormReminders] = useState<ReminderTiming[]>(['same_day', '1_day_before']);
 
+  usePendingChanges(showEventModal || savingEvents);
+
   // Delete confirmation modal
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
+
+  const formRef = useModalFocus(() => setShowEventModal(false), showEventModal);
+  const dayRef = useModalFocus(() => setSelectedDayEvents(null), !!selectedDayEvents);
+  const deleteRef = useModalFocus(() => setDeletingEventId(null), !!deletingEventId);
 
   // Simulated day offset state (for testing daily rollover)
   const [simulatedOffset, setSimulatedOffset] = useState<number>(() => getSimulatedDayOffset());
@@ -134,12 +145,13 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
 
   const saveCustomEvents = async (events: CustomCalendarEvent[]): Promise<boolean> => {
     if (!calendarReady || savingEvents) return false;
-    setSavingEvents(true); setSyncError(null);
+    setSavingEvents(true); setSyncError(null); setSavedMessage('');
     try {
       const saved = accountId ? (await apiRequest('/api/notifications/reminders', { method: 'PUT', body: JSON.stringify({ expectedUserId: accountId, events }) })).events : events;
       if (!Array.isArray(saved)) throw new Error('No se confirmó el guardado de los recordatorios.');
       setCustomEvents(saved);
       try { localStorage.setItem(storageKey, JSON.stringify(saved)); } catch {}
+      setSavedMessage(accountId ? 'Recordatorios guardados en tu cuenta.' : 'Recordatorios guardados en este dispositivo.');
       return true;
     } catch (error) { setSyncError(error instanceof Error ? error.message : 'No se pudieron guardar los recordatorios.'); return false; }
     finally { setSavingEvents(false); }
@@ -149,13 +161,13 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
   const refreshDateState = useCallback(() => {
     const fresh = getNowAR();
     setNowAR(fresh);
-    setLastUpdatedText(fresh.headerUpdatedText);
+
     return fresh;
   }, []);
 
   // Fetch calendar events from server pipeline
   const loadCalendarEvents = useCallback(async (forceRefresh = false) => {
-    setIsLoading(true);
+    setIsLoading(true); setLoadError(null);
     const currentDate = refreshDateState();
     const mmStr = String(currentMonth + 1).padStart(2, '0');
     const isoMonth = `${currentYear}-${mmStr}`;
@@ -169,6 +181,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
           const parsed = JSON.parse(cached);
           if (Array.isArray(parsed) && parsed.length > 0) {
             setServerEvents(parsed);
+            setLastUpdatedText('Información de una consulta anterior');
             setIsLoading(false);
             return;
           }
@@ -189,6 +202,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
 
       if (res.ok) {
         const data = await res.json();
+        setLastUpdatedText(getNowAR().headerUpdatedText);
         if (Array.isArray(data.events)) {
           setServerEvents(data.events);
           if (data.headerUpdatedText) {
@@ -199,11 +213,13 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
           } catch {}
         }
       } else {
+        setLoadError('No pudimos actualizar. Mostramos los cronogramas locales disponibles; verificá cada fuente.');
         // Fallback to local verified generator
         const local = await getVerifiedCalendarEvents(userAssetSymbols);
         setServerEvents(local);
       }
     } catch {
+      setLoadError('No pudimos actualizar. Mostramos los cronogramas locales disponibles; verificá cada fuente.');
       const local = await getVerifiedCalendarEvents(userAssetSymbols);
       setServerEvents(local);
     } finally {
@@ -601,6 +617,8 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
 
   return (
     <div className="space-y-8 min-w-0 max-w-5xl mx-auto">
+      <p role="status" className="text-sm text-slate-600">{savingEvents ? 'Guardando recordatorios…' : !calendarReady ? 'Sincronizando recordatorios…' : savedMessage}</p>
+      {loadError && <p role="alert" className="p-3 rounded-xl bg-amber-50 text-amber-900 text-sm">{loadError}</p>}
       {syncError && <p role="alert" className="p-3 rounded-xl bg-rose-50 text-rose-800 text-xs">{syncError}</p>}
       {accountId && calendarReady && legacyEvents.length > 0 && customEvents.length === 0 && <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 space-y-2 text-xs">
         <p>Tenés recordatorios guardados en este dispositivo. Podés importarlos a esta cuenta para recibirlos también con FAROS cerrado.</p>
@@ -678,7 +696,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
               onClick={() => loadCalendarEvents(true)}
               disabled={isLoading}
               className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-900/60 hover:bg-emerald-900 text-emerald-100 border border-emerald-700/60 text-xs font-bold transition-all cursor-pointer disabled:opacity-50 shadow-2xs"
-              title="Forzar actualización de eventos con Google Search y cronogramas oficiales"
+              title="Consultar eventos y cronogramas oficiales"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-emerald-300' : 'text-emerald-300'}`} />
               <span>{isLoading ? 'Actualizando...' : 'Actualizar'}</span>
@@ -696,7 +714,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
         </div>
 
         {/* 3 Quick Highlight Cards inside Calendar Hero (Recalculated by visible month) */}
-        <div data-tour="calendar-summary-metrics" className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-5">
+        <div data-tour="calendar-summary-metrics" className="relative z-10 hidden sm:grid grid-cols-3 gap-3.5 pt-5">
           <div className="bg-emerald-900/40 border border-emerald-700/50 rounded-2xl p-4 flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center shrink-0">
               <DollarSign className="w-5 h-5" />
@@ -741,8 +759,22 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
         </div>
       </div>
 
+      <div aria-label="Vista del calendario" className="flex gap-2">
+        <button aria-pressed={view === 'agenda'} onClick={() => setView('agenda')} className={`px-4 py-2 rounded-xl font-semibold text-sm ${view === 'agenda' ? 'bg-emerald-950 text-white' : 'bg-white text-emerald-900'}`}>Agenda próxima</button>
+        <button aria-pressed={view === 'month'} onClick={() => setView('month')} className={`px-4 py-2 rounded-xl font-semibold text-sm ${view === 'month' ? 'bg-emerald-950 text-white' : 'bg-white text-emerald-900'}`}>Vista mensual</button>
+      </div>
+      {view === 'agenda' && <section aria-label="Agenda próxima" className="space-y-3">
+        <h3 className="text-lg font-bold text-slate-900">Próximos eventos y recordatorios</h3>
+        <p className="text-sm text-slate-600">Eventos financieros y tus recordatorios personales, ordenados por fecha.</p>
+        {combinedEvents.filter(event => event.date >= nowAR.isoDate).sort((a,b) => a.date.localeCompare(b.date)).slice(0,30).map(event => <button key={event.id} className={`w-full text-left rounded-xl p-4 space-y-2 border ${event.isCustom ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-200'}`} onClick={() => setSelectedDayEvents({ dateStr: event.date, events: [event] })}>
+          <span className="flex flex-wrap gap-2 text-sm text-slate-600"><span>{event.isCustom ? 'Recordatorio personal' : 'Evento financiero'}</span><span>{event.date} · {event.time}</span></span>
+          <span className="block text-base font-semibold text-slate-900">{event.title}</span><span className="block text-sm text-slate-600">{event.description}</span>
+        </button>)}
+        {!combinedEvents.some(event => event.date >= nowAR.isoDate) && <p className="text-slate-600">No hay próximos eventos disponibles. Podés agregar un recordatorio personal.</p>}
+      </section>}
+      <label className="block sm:hidden text-sm font-semibold text-slate-700">Tipo de evento<select value={selectedCategory} onChange={event => setSelectedCategory(event.target.value as typeof selectedCategory)} className="block w-full mt-2 border border-slate-300 rounded-xl bg-white p-3"><option value="todos">Todos los tipos</option><option value="pago_cupon">Pagos de bonos y renta</option><option value="balance">Balances corporativos</option><option value="macro_bcra">Datos macro y BCRA</option><option value="elecciones_politica">Política monetaria</option></select></label>
       {/* Category Filter Pills */}
-      <div data-tour="calendar-filters" className="flex flex-wrap items-center justify-between gap-3">
+      <div data-tour="calendar-filters" className="hidden sm:flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-slate-100 rounded-full overflow-x-auto text-xs border border-slate-200/80">
           {[
             { id: 'todos', label: 'Todos los tipos' },
@@ -767,10 +799,10 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
 
       </div>
 
-      {notificationsControl && <section data-tour="calendar-browser-notifications" className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200">{notificationsControl}</section>}
+      {notificationsControl && <details className="rounded-xl border border-slate-200 bg-white p-3"><summary className="font-semibold text-sm text-emerald-900 cursor-pointer py-2">Alertas del calendario</summary><section data-tour="calendar-browser-notifications" className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200">{notificationsControl}</section></details>}
 
       {/* Monthly Calendar Grid Card */}
-      <div data-tour="calendar-grid" className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_2px_16px_rgba(0,0,0,0.04)] p-6 sm:p-7 space-y-5">
+      <div hidden={view !== 'month'} data-tour="calendar-grid" className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_2px_16px_rgba(0,0,0,0.04)] p-6 sm:p-7 space-y-5">
         {/* Month Navigation Bar */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div>
@@ -1001,7 +1033,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
       </section>
 
       {/* Próximos Eventos Destacados del Mes Visible */}
-      <section data-tour="calendar-events-list" className="space-y-3">
+      <section hidden={view !== 'month'} data-tour="calendar-events-list" className="space-y-3">
         <h3 className="text-base font-extrabold text-slate-900">
           Próximos Eventos Destacados ({MONTH_NAMES[currentMonth]} {currentYear})
         </h3>
@@ -1014,6 +1046,8 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
               return (
                 <div
                   key={evt.id}
+                  role="button" tabIndex={0}
+                  onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedDayEvents({ dateStr: evt.date, events: [evt] }); } }}
                   onClick={() => {
                     setSelectedDayEvents({
                       dateStr: evt.date,
@@ -1085,6 +1119,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
           onClick={() => setSelectedDayEvents(null)}
         >
           <div 
+            ref={dayRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Eventos del día"
             className="bg-white w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl border border-slate-200 shadow-2xl overflow-hidden max-h-[85dvh] flex flex-col animate-in slide-in-from-bottom duration-200"
             onClick={(e) => e.stopPropagation()}
           >
@@ -1240,6 +1275,8 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
           onClick={() => setShowEventModal(false)}
         >
           <div 
+            ref={formRef}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
             aria-labelledby="calendar-event-title"
@@ -1263,9 +1300,9 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
               {syncError && <p role="alert" className="p-3 rounded-xl bg-rose-50 text-rose-800">{syncError}</p>}
               {/* Fecha */}
               <div className="space-y-1">
-                <label className="font-bold text-slate-700">Fecha del evento</label>
+                <label htmlFor="event-date" className="font-bold text-slate-700">Fecha del evento</label>
                 <input
-                  type="date"
+ id="event-date"                  type="date"
                   required
                   value={formDate}
                   onChange={(e) => setFormDate(e.target.value)}
@@ -1275,10 +1312,10 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
 
               {/* Activo */}
               <div className="space-y-1">
-                <label className="font-bold text-slate-700">Activo financiero</label>
+                <label htmlFor="event-asset" className="font-bold text-slate-700">Activo financiero</label>
                 <div className="grid grid-cols-2 gap-2">
                   <select
-                    value={formAsset}
+ id="event-asset"                    value={formAsset}
                     onChange={(e) => setFormAsset(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-emerald-700"
                   >
@@ -1324,9 +1361,9 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
 
               {/* Nota opcional */}
               <div className="space-y-1">
-                <label className="font-bold text-slate-700">Nota u observación (opcional)</label>
+                <label htmlFor="event-note" className="font-bold text-slate-700">Nota u observación (opcional)</label>
                 <textarea
-                  rows={2}
+ id="event-note"                  rows={2}
                   value={formNote}
                   onChange={(e) => setFormNote(e.target.value)}
                   placeholder="Ej: Cobro de renta semestral para reinversión en GD30..."
@@ -1402,6 +1439,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
           onClick={() => setDeletingEventId(null)}
         >
           <div 
+            ref={deleteRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Eliminar evento"
             className="bg-white w-full max-w-sm rounded-3xl border border-slate-200 p-6 space-y-4 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >

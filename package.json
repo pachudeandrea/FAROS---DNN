@@ -14,7 +14,8 @@
     "lint:server": "tsc --project tsconfig.server.json --noEmit",
     "db:migrate": "tsx scripts/migrate.ts",
     "test": "tsx --test tests/*.test.ts",
-    "test:browser": "npm run build && node --import tsx tests/browser-smoke.mjs"
+    "test:browser": "npm run build && node --import tsx tests/browser-smoke.mjs",
+    "check:deployment": "node scripts/check-deployment.mjs"
   },
   "engines": {
     "node": "24.x"

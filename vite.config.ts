@@ -1,10 +1,17 @@
+import { execFileSync } from 'node:child_process';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
 
+function buildRevision() {
+  if (process.env.VERCEL_GIT_COMMIT_SHA || process.env.FAROS_BUILD_REVISION) return process.env.VERCEL_GIT_COMMIT_SHA || process.env.FAROS_BUILD_REVISION;
+  try { return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(); } catch { return ''; }
+}
+
 export default defineConfig(() => {
   return {
+    define: { __FAROS_REVISION__: JSON.stringify(buildRevision()) },
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

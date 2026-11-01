@@ -97,6 +97,7 @@ test('la API Gemini agrupa fuentes verificadas y conserva caché, actualización
   const args = { portfolioId: 'coverage-fixture', tickers: ['AL30'], profile: 'moderado' };
   const fresh = await server.pulse(args);
   assert.equal(fresh.cached, false);
+  assert.ok(Number.isFinite(Date.parse(fresh.checkedAt)), 'La consulta incluye un horario real');
   assert.equal(fresh.newsVersion, NEWS_CACHE_VERSION);
   const item = fresh.news[0]; assert.ok(item, server.output);
   assert.deepEqual(item.sources.map((s: MediaCoverage) => s.mediaName).sort(), ['El Cronista', 'Infobae', 'Ámbito'].sort(), server.output);
@@ -104,7 +105,8 @@ test('la API Gemini agrupa fuentes verificadas y conserva caché, actualización
   assert.equal(item.briefSummary, 'Síntesis de prueba sin cambios.');
   assert.equal(item.audioScript, 'Audio de prueba sin cambios.'); assert.deepEqual(item.affectedAssetIds, ['AL30']);
   assert.equal((await server.stats()).searches, 1);
-  const cached = await server.pulse(args); assert.equal(cached.cached, true); assert.deepEqual(cached.news, fresh.news);
+  const cached = await server.pulse(args); assert.equal(cached.cached, true);
+  assert.equal(cached.checkedAt, fresh.checkedAt, 'Leer el caché no inventa una consulta nueva'); assert.deepEqual(cached.news, fresh.news);
   assert.equal((await server.stats()).searches, 1, 'El caché evita repetir búsquedas');
   await server.pulse({ ...args, forceRefresh: true }); assert.equal((await server.stats()).searches, 2);
   const energy = await server.pulse({ portfolioId: 'energy-fixture', tickers: ['YPFD'], profile: 'dinamico' });

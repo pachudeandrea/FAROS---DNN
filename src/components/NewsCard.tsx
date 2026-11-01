@@ -15,6 +15,7 @@ import { distinctMediaSources } from '../utils/sourceGrounding';
 interface NewsCardProps {
   news: NewsItem;
   assetsMap: Record<string, Asset>;
+  onCompare: (news: NewsItem) => void;
   onSelect: (news: NewsItem) => void;
   onPlayAudio: (news: NewsItem) => void;
   onToggleSave: (newsId: string) => void;
@@ -39,6 +40,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({
   news,
   assetsMap,
   onSelect,
+  onCompare,
   onPlayAudio,
   onToggleSave,
   isSaved = false,
@@ -85,12 +87,11 @@ export const NewsCard: React.FC<NewsCardProps> = ({
 
   return (
     <article 
-      onClick={() => onSelect(news)}
-      className={`group bg-white rounded-3xl border border-slate-200/90 ${impactBorderClass} hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] transition-all duration-200 p-6 sm:p-7 flex flex-col justify-between cursor-pointer space-y-4`}
+      className={`group bg-white rounded-3xl border border-slate-200/90 ${impactBorderClass}  transition-all duration-200 p-4 sm:p-6 flex flex-col justify-between space-y-4`}
     >
       <div className="space-y-3.5">
         {/* Top Header: Rocket Money-style Ticker Avatar + Category Tag + Time + Bookmark */}
-        <div className="flex items-center justify-between text-xs sm:text-sm">
+        <div className="flex flex-wrap gap-2 items-center justify-between text-sm">
           <div className="flex items-center gap-2.5 flex-wrap">
             {/* Ticker Initial Avatar */}
             <div className="w-8 h-8 rounded-xl bg-emerald-950 text-white font-mono font-bold text-xs flex items-center justify-center shadow-xs">
@@ -114,7 +115,8 @@ export const NewsCard: React.FC<NewsCardProps> = ({
             className={`p-2 rounded-full hover:bg-slate-100 transition-colors ${
               isSaved ? "text-emerald-900 bg-emerald-100/70" : "text-slate-400 hover:text-slate-700"
             }`}
-            aria-label="Guardar noticia"
+            aria-label={isSaved ? "Quitar de guardadas" : "Guardar noticia"}
+            aria-pressed={isSaved}
           >
             <Bookmark className="w-4 h-4 fill-current" />
           </button>
@@ -122,11 +124,11 @@ export const NewsCard: React.FC<NewsCardProps> = ({
 
         {/* Headline: High legibility bold fintech styling */}
         <h3 className="text-lg sm:text-xl font-extrabold text-slate-900 group-hover:text-emerald-950 transition-colors leading-snug tracking-tight">
-          {news.headline}
+          <button className="text-left" onClick={() => onSelect(news)}>{news.headline}</button>
         </h3>
 
         {/* Brief Summary (2-3 lines): clear readable high-contrast text */}
-        <p className="text-sm sm:text-base text-slate-700 leading-relaxed font-normal">
+        <p className="text-base text-slate-700 leading-relaxed font-normal">
           {news.briefSummary}
         </p>
 
@@ -181,10 +183,10 @@ export const NewsCard: React.FC<NewsCardProps> = ({
 
           return (
             <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs">
-              <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 mr-1">
+              <button onClick={() => onCompare(news)} className="text-sm font-bold text-emerald-950 bg-emerald-50 rounded-xl px-3 py-2 flex items-center gap-2">
                 <Layers className="w-4 h-4 text-emerald-800" />
-                {count > 1 ? `Compará ${count} medios:` : 'Fuente verificada:'}
-              </span>
+                {count > 1 ? `Comparar ${count} medios` : 'Ver única fuente verificada'}
+              </button>
               {validSources.slice(0, 3).map((src, i) => (
                 <span 
                   key={i}
@@ -204,7 +206,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({
       </div>
 
       {/* Footer Actions */}
-      <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs sm:text-sm">
+      <div className="pt-3 border-t border-slate-100 flex flex-wrap gap-2 items-center justify-between text-sm">
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -218,10 +220,10 @@ export const NewsCard: React.FC<NewsCardProps> = ({
           </span>
         </button>
 
-        <span data-tour="feed-card-detail" className="inline-flex items-center gap-1.5 font-extrabold text-emerald-950 group-hover:translate-x-1 transition-transform">
-          <span>Ver impacto en cartera</span>
+        <button onClick={() => onSelect(news)} data-tour="feed-card-detail" className="inline-flex items-center gap-1.5 font-extrabold text-emerald-950 group-hover:translate-x-1 transition-transform">
+          <span>Ver impacto</span>
           <ArrowRight className="w-4 h-4" />
-        </span>
+        </button>
       </div>
     </article>
   );

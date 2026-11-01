@@ -1,6 +1,7 @@
+import { usePendingChanges } from '../hooks/usePendingChanges';
+import { useModalFocus } from '../hooks/useModalFocus';
 import React, { useState, useEffect, useMemo } from 'react';
 import { LighthouseLogo } from './LighthouseLogo';
-import { ProfileSelector } from './ProfileCard';
 import { 
   X, 
   ArrowRight, 
@@ -8,16 +9,11 @@ import {
   Check, 
   Eye, 
   EyeOff, 
-  ShieldCheck, 
   AlertCircle, 
   Loader2, 
-  Building2, 
-  Calendar as CalendarIcon, 
   Lock, 
   User, 
   Mail, 
-  Sparkles,
-  Briefcase
 } from 'lucide-react';
 import { RiskProfile, UserAccount, OnboardingDraft } from '../types';
 import { apiRequest } from '../utils/apiClient';
@@ -31,27 +27,14 @@ interface SignUpWizardProps {
   onSwitchToLogin: () => void;
 }
 
-const ALYC_OPTIONS = [
-  'Balanz Capital',
-  'Bull Market Brokers',
-  'IOL invertironline',
-  'PPI (Portfolio Personal Inversiones)',
-  'Cocos Capital',
-  'Allaria Ledesma',
-  'SBS Trading',
-  'Cohen Aliados Financieros',
-  'Puente',
-  'Banco Galicia / Inversiones',
-  'Otro ALyC / Broker'
-];
-
 export const SignUpWizard: React.FC<SignUpWizardProps> = ({
   isOpen,
   onClose,
   onSuccess,
   onSwitchToLogin
 }) => {
-  // 3-step simplified signup: 1 = Cuenta, 2 = Datos y Consentimiento, 3 = Perfil de Inversor
+  const modalRef = useModalFocus(onClose);
+  // Two steps: account credentials, then required age and consent.
   const [step, setStep] = useState<number>(1);
 
   // Form State
@@ -65,19 +48,20 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
 
   // Personal data
   const [birthDate, setBirthDate] = useState('');
-  const [country, setCountry] = useState('Argentina');
-  const [city, setCity] = useState('Buenos Aires');
+  const [country, setCountry] = useState('');
+  const [city, setCity] = useState('');
   const [timeZone] = useState('America/Argentina/Buenos_Aires');
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [notificationsOptIn, setNotificationsOptIn] = useState(false);
 
-  // Investor Profile & ALyC
+  // Retain values from older drafts; new accounts configure these later.
   const [profile, setProfile] = useState<RiskProfile>('moderado');
   const [alyc, setAlyc] = useState('');
 
   // UI status
   const [isLoading, setIsLoading] = useState(false);
   const [stepError, setStepError] = useState<string | null>(null);
+  usePendingChanges(isOpen && (!!name || !!email || !!password || !!recoveryKey || isLoading));
 
   // Load draft from localStorage on mount
   useEffect(() => {
@@ -148,7 +132,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
     // Step 1: Cuenta
     if (step === 1) {
       if (!name.trim()) {
-        setStepError('Ingresá tu nombre completo.');
+        setStepError('Ingresá tu nombre.');
         return;
       }
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -171,34 +155,17 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
       return;
     }
 
-    // Step 2: Datos y Consentimientos
-    if (step === 2) {
-      if (!birthDate) {
-        setStepError('La fecha de nacimiento es obligatoria para validar mayoría de edad.');
-        return;
-      }
-      const birth = new Date(birthDate);
-      const now = new Date();
-      let age = now.getFullYear() - birth.getFullYear();
-      const monthDiff = now.getMonth() - birth.getMonth();
-      if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) {
-        age--;
-      }
-      if (isNaN(age) || age < 18) {
-        setStepError('Debés tener al menos 18 años de edad para operar en FAROS.');
-        return;
-      }
-      if (!termsAccepted) {
-        setStepError('Debés aceptar los Términos y Condiciones y la Política de Privacidad.');
-        return;
-      }
-      setStep(3);
-      return;
-    }
+
   };
 
-  // Final submit (Step 3) - Creates user with empty "Mi Cartera"
+  // Final submit (Step 2) - Creates user with empty "Mi Cartera"
   const handleFinalSubmit = async () => {
+    const birth = new Date(birthDate + 'T00:00:00');
+    const now = new Date();
+    let age = now.getFullYear() - birth.getFullYear();
+    if (now.getMonth() < birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate())) age--;
+    if (!birthDate || !Number.isFinite(age) || age < 18) { setStepError('Ingresá tu fecha de nacimiento. Debés tener al menos 18 años para usar FAROS.'); return; }
+    if (!termsAccepted) { setStepError('Aceptá los Términos del Servicio y la Política de Privacidad para crear tu cuenta.'); return; }
     if (isLoading) return; // Prevent duplicate concurrent requests
     setIsLoading(true);
     setStepError(null);
@@ -213,8 +180,8 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
       recoveryKey,
       provider: 'email',
       birthDate,
-      country,
-      city,
+      country: country || undefined,
+      city: city || undefined,
       timeZone,
       termsAccepted: true,
       notificationsOptIn,
@@ -246,6 +213,8 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
       <div 
+        ref={modalRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="signup-title"
@@ -276,11 +245,10 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
           </div>
 
           {/* Stepper Dots (3 Steps) */}
-          <div className="mt-5 grid grid-cols-3 gap-2">
+          <div className="mt-5 grid grid-cols-2 gap-2">
             {[
               { num: 1, label: 'Cuenta' },
-              { num: 2, label: 'Datos & Términos' },
-              { num: 3, label: 'Perfil de Inversión' }
+              { num: 2, label: 'Términos y listo' }
             ].map(s => (
               <div key={s.num} className="space-y-1">
                 <div className={`h-1.5 rounded-full transition-all duration-300 ${
@@ -299,7 +267,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
         {/* Modal Scrollable Body */}
         <div className="min-h-0 p-4 sm:p-8 overflow-y-auto space-y-6 flex-1">
           {stepError && (
-            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex items-start gap-2.5 animate-in fade-in duration-150">
+            <div role="alert" className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex items-start gap-2.5 animate-in fade-in duration-150">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
               <div className="flex-1 font-semibold leading-relaxed">{stepError}</div>
             </div>
@@ -311,16 +279,16 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
               {/* Email Form */}
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Nombre completo
+                  <label htmlFor="signup-name" className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Nombre
                   </label>
                   <div className="relative">
                     <User className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
-                    <input
+                    <input id="signup-name"
                       type="text"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="Mariano De Andrea"
+                      placeholder="Tu nombre"
                       autoCapitalize="words"
                       autoCorrect="off"
                       autoComplete="name"
@@ -332,12 +300,12 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  <label htmlFor="signup-email" className="block text-xs font-bold text-slate-700 mb-1.5">
                     Correo electrónico
                   </label>
                   <div className="relative">
                     <Mail className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
-                    <input
+                    <input id="signup-email"
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
@@ -354,12 +322,12 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  <label htmlFor="signup-password" className="block text-xs font-bold text-slate-700 mb-1.5">
                     Contraseña
                   </label>
                   <div className="relative">
                     <Lock className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
-                    <input
+                    <input id="signup-password"
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -373,7 +341,8 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-600"
+                      aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                      className="absolute right-0 top-0 text-slate-600 flex items-center justify-center"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -396,12 +365,12 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  <label htmlFor="signup-confirm" className="block text-xs font-bold text-slate-700 mb-1.5">
                     Confirmar contraseña
                   </label>
                   <div className="relative">
                     <Lock className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
-                    <input
+                    <input id="signup-confirm"
                       type={showPassword ? 'text' : 'password'}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
@@ -423,60 +392,12 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
           {/* ================= STEP 2: DATOS Y TÉRMINOS ================= */}
           {step === 2 && (
             <div className="space-y-4">
-              <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200/90 text-xs text-emerald-950 space-y-1">
-                <p className="font-bold flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-700" />
-                  Verificación regulatoria obligatoria
-                </p>
-                <p className="text-[11px] leading-relaxed text-emerald-900">
-                  FAROS requiere validar que seas mayor de 18 años para habilitar el seguimiento financiero y la recepción de resúmenes informativos.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  Fecha de nacimiento <span className="text-rose-500">*</span>
-                </label>
-                <div className="relative">
-                  <CalendarIcon className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
-                  <input
-                    type="date"
-                    value={birthDate}
-                    onChange={(e) => setBirthDate(e.target.value)}
-                    max={new Date().toISOString().split('T')[0]}
-                    className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-800 bg-slate-50/50"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    País de residencia
-                  </label>
-                  <input
-                    type="text"
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-800 bg-slate-50/50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Ciudad
-                  </label>
-                  <input
-                    type="text"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-800 bg-slate-50/50"
-                  />
-                </div>
-              </div>
-
-              {/* Terms Checkbox */}
-              <div className="pt-2 space-y-3">
+              <p className="text-base text-slate-700">Tu cuenta está a un paso. Después podés elegir tus activos y ajustar tu perfil desde Mi cartera.</p>
+              <label htmlFor="signup-birth-date" className="block text-sm font-semibold text-slate-700">Fecha de nacimiento
+                <input id="signup-birth-date" type="date" autoComplete="bday" value={birthDate} onChange={event => setBirthDate(event.target.value)} max={new Date().toISOString().slice(0,10)} required className="block w-full mt-2 px-3 py-3 rounded-xl border border-slate-300 bg-white" />
+                <span className="block mt-1 text-sm font-normal text-slate-600">Para confirmar que tenés al menos 18 años.</span>
+              </label>
+              <div className="space-y-3">
                 <label className="flex items-start gap-3 p-3.5 rounded-2xl border border-slate-200 hover:border-emerald-300 bg-white cursor-pointer transition-colors">
                   <input
                     type="checkbox"
@@ -504,54 +425,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
             </div>
           )}
 
-          {/* ================= STEP 3: PERFIL DE INVERSIÓN ================= */}
-          {step === 3 && (
-            <div className="space-y-5">
-              <div>
-                <span className="text-xs font-black uppercase tracking-wider text-emerald-950 block mb-1">
-                  Tu perfil inversor
-                </span>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Permite calibrar la interpretación y el contexto de las noticias financieras. Podés modificarlo en cualquier momento desde tu cartera.
-                </p>
-              </div>
 
-              {/* Profile Cards */}
-              <ProfileSelector
-                value={profile}
-                onChange={setProfile}
-              />
-
-              {/* ALyC Selector (Optional) */}
-              <div className="pt-2">
-                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Tu ALyC / Broker principal (opcional)</span>
-                </label>
-                <select
-                  value={alyc}
-                  onChange={(e) => setAlyc(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-800 bg-slate-50/50 cursor-pointer"
-                >
-                  <option value="">Seleccioná tu broker o ALyC (opcional)</option>
-                  {ALYC_OPTIONS.map(opt => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Highlight Note: Zero tickers required at signup */}
-              <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 text-xs text-emerald-950 space-y-1.5 shadow-2xs">
-                <div className="flex items-center gap-2 font-black text-emerald-950">
-                  <Sparkles className="w-4 h-4 text-emerald-700" />
-                  <span>Tu cartera se creará limpia y vacía</span>
-                </div>
-                <p className="text-[11px] text-emerald-900 leading-relaxed font-normal">
-                  No necesitás cargar tickers ni montos ahora. Al ingresar a FAROS vas a poder incorporar tus activos favoritos, definir si tu posición es <strong>LONG</strong> o <strong>SHORT</strong>, y personalizar tus fuentes a tu propio ritmo.
-                </p>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Modal Footer Controls */}
@@ -579,7 +453,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
             </button>
           )}
 
-          {step < 3 ? (
+          {step < 2 ? (
             <button
               type="button"
               onClick={handleNextStep}

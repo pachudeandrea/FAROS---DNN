@@ -1,3 +1,5 @@
+import { useModalFocus } from '../hooks/useModalFocus';
+import { usePendingChanges } from '../hooks/usePendingChanges';
 import React, { useState } from 'react';
 import { Asset, Portfolio, RiskProfile, AssetPosition } from '../types';
 import { MOCK_ASSETS, MOCK_PORTFOLIOS } from '../data/mockData';
@@ -25,6 +27,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   onComplete,
   onClose,
 }) => {
+  const modalRef = useModalFocus(() => onClose?.(), isOpen);
   const [step, setStep] = useState<1 | 2>(1);
   const [profile, setProfile] = useState<RiskProfile>('moderado');
   const [portfolioName, setPortfolioName] = useState('Mi Cartera Personal');
@@ -40,6 +43,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
   const [activeCategory, setActiveCategory] = useState<'todos' | 'bonos' | 'acciones' | 'cedears' | 'divisas'>('todos');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  usePendingChanges(isOpen);
 
   // 1. Automatic Long assignment when adding an asset
   const handleAddAsset = (assetId: string) => {
@@ -117,6 +121,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
       <div 
+        ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Crear cartera"
         className="bg-white rounded-3xl max-w-xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >

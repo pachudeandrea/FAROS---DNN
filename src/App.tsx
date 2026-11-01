@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { 
   Asset, 
   Portfolio, 
@@ -19,6 +19,10 @@ import {
 import { useAlerts } from './hooks/useAlerts';
 import { NEWS_CLIENT_CACHE_PREFIX, newsClientCacheKey } from './utils/newsCache';
 import { REAL_GROUNDED_NEWS } from './data/groundedRealNews';
+import { readNewsSnapshot, type NewsQueryState } from './utils/newsQuery';
+import { ScreenBoundary } from './components/ScreenBoundary';
+import { usePendingChanges } from './hooks/usePendingChanges';
+import { VersionNotice } from './components/VersionNotice';
 import { NotificationControls } from './components/NotificationControls';
 
 // Components
@@ -26,18 +30,19 @@ import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
 import { FeedSummaryHero } from './components/FeedSummaryHero';
 import { NewsCard } from './components/NewsCard';
+import { MediaComparisonModal } from './components/MediaComparison';
 import { NewsDetailModal } from './components/NewsDetailModal';
-import { FinancialCalendar } from './components/FinancialCalendar';
-import { PortfolioSettingsView } from './components/PortfolioSettingsView';
+const FinancialCalendar = lazy(() => import('./components/FinancialCalendar').then(m => ({ default: m.FinancialCalendar })));
+const PortfolioSettingsView = lazy(() => import('./components/PortfolioSettingsView').then(m => ({ default: m.PortfolioSettingsView })));
 import { NotificationsModal } from './components/NotificationsModal';
 import { AudioPlayerDrawer } from './components/AudioPlayerDrawer';
 import { OnboardingModal } from './components/OnboardingModal';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { LoginForm } from './components/LoginForm';
 import { SignUpWizard } from './components/SignUpWizard';
-import { InteractiveTour } from './components/InteractiveTour';
+const InteractiveTour = lazy(() => import('./components/InteractiveTour').then(m => ({ default: m.InteractiveTour })));
 import { LighthouseLogo } from './components/LighthouseLogo';
-import { AdminPanel } from './components/admin/AdminPanel';
+const AdminPanel = lazy(() => import('./components/admin/AdminPanel').then(m => ({ default: m.AdminPanel })));
 import { UserAccount } from './types';
 import { 
   audioController, 
@@ -63,6 +68,8 @@ export default function App() {
 
   // User Authentication & Session State
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
+  const [accountSaves, setAccountSaves] = useState(0);
+  usePendingChanges(accountSaves > 0);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [isSessionLoading, setIsSessionLoading] = useState<boolean>(true);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
@@ -189,34 +196,12 @@ export default function App() {
     } catch {}
   }, []);
 
-  // Grounded Real News State initialized from today's cache or empty
-  const [newsList, setNewsList] = useState<NewsItem[]>(() => {
-    try {
-      const timeZone = 'America/Argentina/Buenos_Aires';
-      const todayKey = new Intl.DateTimeFormat('en-CA', {
-        timeZone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      }).format(new Date());
-
-      const hourStr = new Intl.DateTimeFormat('en-GB', {
-        timeZone,
-        hour: '2-digit',
-        hour12: false
-      }).format(new Date());
-
-      const hourKey = `${todayKey}_${hourStr}`;
-      const cached = localStorage.getItem(newsClientCacheKey(MOCK_PORTFOLIOS[0].id, hourKey));
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {}
-    return [];
-  });
-
-  const [isLoadingNews, setIsLoadingNews] = useState<boolean>(false);
+  const [newsList, setNewsList] = useState<NewsItem[]>([]);
+  const [queryState, setQueryState] = useState<NewsQueryState>({ status: 'idle', checkedAt: null });
+  const [isLoadingNews, setIsLoadingNews] = useState(false);
+  const newsRequest = useRef<AbortController | null>(null);
+  const newsPortfolio = useRef('');
+  const [comparisonFirst, setComparisonFirst] = useState(false);
   const [pendingRemindersCount, setPendingRemindersCount] = useState<number>(0);
 
   const notifications = alerts.notifications;
@@ -250,13 +235,13 @@ export default function App() {
     return () => { active = false; };
   }, [activePortfolio.id, activePortfolio.assetIds]);
 
-  // Real duration text of the 320-450 word Daily Summary (guaranteed 2 to 3 minutes)
+  // Estimated duration calculated from the available summary script.
   const dailySummaryDurationText = useMemo(() => {
     try {
       const summary = generateDailySummaryScript(activePortfolio, newsList, calendarEvents, getNowAR());
       return summary.durationText;
     } catch {
-      return '2:40 min';
+      return '';
     }
   }, [activePortfolio, newsList, calendarEvents]);
 
@@ -307,56 +292,54 @@ export default function App() {
 
     const cacheKey = newsClientCacheKey(activePortfolio.id, hourKey);
 
-    // Use cached news if available and not forced refresh
+    newsRequest.current?.abort();
+    const controller = new AbortController();
+    newsRequest.current = controller;
+    if (newsPortfolio.current !== activePortfolio.id) {
+      newsPortfolio.current = activePortfolio.id;
+      setNewsList([]);
+      setQueryState({ status: 'idle', checkedAt: null });
+    }
     if (!isManualRefresh) {
       try {
-        const cached = localStorage.getItem(cacheKey);
+        const cached = readNewsSnapshot(localStorage.getItem(cacheKey));
         if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) {
-            setNewsList(parsed);
-            return;
-          }
+          setNewsList(cached.news);
+          setQueryState({ status: 'cached', checkedAt: cached.checkedAt });
+          setIsLoadingNews(false);
+          return;
         }
       } catch {}
     }
-
     setIsLoadingNews(true);
+    setQueryState(previous => ({ ...previous, status: 'loading', error: undefined }));
+    const timeout = setTimeout(() => controller.abort(), 60000);
     try {
       const response = await fetch('/api/news/pulse', {
-        method: 'POST',
+        method: 'POST', signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          portfolioId: activePortfolio.id,
-          tickers: activePortfolio.assetIds,
-          profile: activePortfolio.profile,
-          forceRefresh: isManualRefresh
-        })
+        body: JSON.stringify({ portfolioId: activePortfolio.id, tickers: activePortfolio.assetIds, profile: activePortfolio.profile, forceRefresh: isManualRefresh })
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (Array.isArray(data.news)) {
-          setNewsList(data.news);
-          if (data.news.length > 0) {
-            try {
-              const hKey = data.hourKey || hourKey;
-              localStorage.setItem(newsClientCacheKey(activePortfolio.id, hKey), JSON.stringify(data.news));
-            } catch {}
-          }
-        }
-      }
+      if (!response.ok) throw new Error('No se pudo completar la consulta.');
+      const data = await response.json();
+      if (!Array.isArray(data.news)) throw new Error('La consulta no devolvió noticias válidas.');
+      if (newsRequest.current !== controller) return;
+      const checkedAt = typeof data.checkedAt === 'string' && Number.isFinite(Date.parse(data.checkedAt)) ? data.checkedAt : data.cached ? null : new Date().toISOString();
+      setNewsList(data.news);
+      setQueryState({ status: data.cached ? 'cached' : 'success', checkedAt });
+      try { localStorage.setItem(cacheKey, JSON.stringify({ news: data.news, checkedAt })); } catch {}
     } catch {
-      // Gracefully maintain verified grounded news in state
+      if (newsRequest.current === controller) setQueryState(previous => ({ ...previous, status: 'error' }));
     } finally {
-      setIsLoadingNews(false);
+      clearTimeout(timeout);
+      if (newsRequest.current === controller) setIsLoadingNews(false);
     }
   }, [activePortfolio.id, activePortfolio.assetIds, activePortfolio.profile, getArgentinaTodayKey, purgeOldClientCache]);
 
-  // Fetch or load from cache when portfolio changes
   useEffect(() => {
     fetchPulseNews(false);
-  }, [activePortfolio.id, fetchPulseNews]);
+    return () => newsRequest.current?.abort();
+  }, [fetchPulseNews]);
 
   const handleSessionSuccess = useCallback((user: UserAccount, token?: string, isNewRegistration: boolean = false) => {
     setCurrentUser(user);
@@ -378,7 +361,7 @@ export default function App() {
     if (isNewRegistration) {
       // Direct new user immediately to Mi Cartera (settings tab)
       setCurrentTab('settings');
-      setShowWelcomeOnboardingModal(true);
+      setShowWelcomeOnboardingModal(false);
     }
   }, []);
 
@@ -599,6 +582,7 @@ export default function App() {
       return 0;
     });
   }, [
+    newsList,
     activePortfolio, 
     searchQuery, 
     relevanceTypeFilter, 
@@ -611,6 +595,7 @@ export default function App() {
 
   // Only confirm account changes after PostgreSQL acknowledges them.
   const handleSavePortfolioSettings = async (updated: Portfolio) => {
+    setAccountSaves(count => count + 1);
     try {
       setAccountError(null);
       if (currentUser && currentUser.id !== 'usr_demo') {
@@ -620,12 +605,18 @@ export default function App() {
       } else {
         setPortfolios(prev => prev.map(p => p.id === updated.id ? updated : p));
       }
+      try {
+        for (const key of Object.keys(localStorage)) if (key.startsWith(NEWS_CLIENT_CACHE_PREFIX + updated.id + '_')) localStorage.removeItem(key);
+      } catch {}
+      return true;
     } catch (error) {
       setAccountError(error instanceof Error ? error.message : 'No se pudo guardar la cartera.');
-    }
+      return false;
+    } finally { setAccountSaves(count => count - 1); }
   };
 
   const handleSavePreferences = async (updated: UserPreferences) => {
+    setAccountSaves(count => count + 1);
     try {
       setAccountError(null);
       if (currentUser && currentUser.id !== 'usr_demo') {
@@ -635,9 +626,11 @@ export default function App() {
       } else {
         setPreferences(updated);
       }
+      return true;
     } catch (error) {
       setAccountError(error instanceof Error ? error.message : 'No se pudieron guardar las preferencias.');
-    }
+      return false;
+    } finally { setAccountSaves(count => count - 1); }
   };
 
   // Toggle impact filter (toggles off if already active)
@@ -677,10 +670,10 @@ export default function App() {
   // Admin View: If /admin URL or state is active, render AdminPanel directly
   if (isAdminView) {
     return (
-      <AdminPanel
+      <ScreenBoundary><Suspense fallback={<p role="status" className="p-6">Cargando administración…</p>}><AdminPanel
         onBackToApp={navigateBackToApp}
         currentUserEmail={currentUser?.email}
-      />
+      /></Suspense></ScreenBoundary>
     );
   }
 
@@ -688,6 +681,7 @@ export default function App() {
   if (!currentUser) {
     return (
       <>
+        <VersionNotice />
         {accountError && <p role="alert" className="fixed bottom-4 left-4 right-4 z-40 mx-auto max-w-xl rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{accountError}</p>}
         <WelcomeScreen
           onOpenSignUp={() => setShowSignUpModal(true)}
@@ -737,17 +731,20 @@ export default function App() {
         onOpenAdmin={navigateToAdmin}
       />
 
+      <VersionNotice />
       {/* Main View Area */}
       <main className="flex-1 min-w-0 max-w-5xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 pb-[calc(7rem+env(safe-area-inset-bottom))] lg:pb-16">
         {accountError && <p role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{accountError}</p>}
         {alerts.message && !alerts.showPrompt && <p role="status" className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{alerts.message}</p>}
         {alerts.error && !alerts.showPrompt && <p role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{alerts.error}</p>}
-        {alerts.showPrompt && <section className="mb-5 p-4 sm:p-5 rounded-2xl bg-white border border-emerald-200 shadow-sm"><NotificationControls alerts={alerts} question /></section>}
+        {alerts.showPrompt && currentTab === 'feed' && <section className="mb-5 p-4 sm:p-5 rounded-2xl bg-white border border-emerald-200 shadow-sm"><NotificationControls alerts={alerts} question /></section>}
+        <ScreenBoundary key={currentTab}><Suspense fallback={<p role="status" className="p-6">Cargando pantalla…</p>}>
         {/* PANTALLA 1: INICIO (FEED) */}
         {currentTab === 'feed' && (
           <div className="space-y-8">
             {/* In-App Executive Dashboard Card */}
             <FeedSummaryHero
+              query={queryState}
               portfolio={activePortfolio}
               newsList={newsList}
               assetsMap={assetsMap}
@@ -841,7 +838,7 @@ export default function App() {
                     <button
                       key={tab.id}
                       onClick={() => setRelevanceTypeFilter(tab.id as any)}
-                      className={`px-3 py-1.5 font-bold rounded-xl whitespace-nowrap transition-all cursor-pointer ${
+                      className={`shrink-0 px-3 py-1.5 font-bold rounded-xl whitespace-nowrap transition-all cursor-pointer ${
                         relevanceTypeFilter === tab.id
                           ? 'bg-emerald-950 text-white shadow-xs'
                           : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -1004,7 +1001,7 @@ export default function App() {
                       <FilterX className="w-7 h-7 stroke-[1.75]" />
                     </div>
                     <h4 className="text-lg font-black text-slate-900 tracking-tight">
-                      Hoy no encontramos noticias relevantes para tu cartera
+                      {isLoadingNews ? 'Buscando noticias…' : queryState.status === 'error' ? 'No pudimos actualizar las noticias' : newsList.length ? 'No hay noticias con estos filtros' : 'Sin novedades verificadas'}
                     </h4>
                     <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto mt-2 leading-relaxed">
                       {impactFilter !== 'todos' && assetFilter !== 'todos'
@@ -1013,7 +1010,7 @@ export default function App() {
                         ? `No hay noticias recientes clasificadas con impacto "${getQualitativeImpactLabel(impactFilter)}" en tu cartera.`
                         : searchQuery || assetFilter !== 'todos' || relevanceTypeFilter !== 'todas' || showSavedOnly
                         ? 'No se encontraron noticias que coincidan con los filtros seleccionados.'
-                        : 'El rastreo en medios financieros especializados (Ámbito, El Cronista, Infobae, Bloomberg Línea, entre otros) no arrojó acontecimientos con impacto directo en tus activos en las últimas 24 a 48 horas.'}
+                        : isLoadingNews ? 'Estamos consultando publicaciones. Podés seguir navegando.' : queryState.status === 'error' ? 'La consulta falló. Intentá actualizar nuevamente; esto no indica ausencia de riesgos.' : 'No hay publicaciones verificadas disponibles en esta consulta. Esto no indica ausencia de riesgos.'}
                     </p>
                     <div className="flex flex-wrap items-center justify-center gap-2.5 mt-5">
                       {impactFilter !== 'todos' && (
@@ -1048,7 +1045,8 @@ export default function App() {
                       key={news.id}
                       news={news}
                       assetsMap={assetsMap}
-                      onSelect={(n) => setSelectedNews(n)}
+                      onSelect={(n) => { setComparisonFirst(false); setSelectedNews(n); }}
+                      onCompare={(n) => { setComparisonFirst(true); setSelectedNews(n); }}
                       onPlayAudio={handlePlayNewsAudio}
                       onToggleSave={handleToggleSave}
                       isSaved={savedNewsIds.includes(news.id)}
@@ -1081,11 +1079,13 @@ export default function App() {
             portfolios={portfolios}
             onSelectPortfolio={(p) => setActivePortfolioId(p.id)}
             onSavePortfolio={handleSavePortfolioSettings}
+            onViewNews={() => handleSelectTab('feed')}
             preferences={preferences}
             onSavePreferences={handleSavePreferences}
             onOpenCreateNew={() => setShowOnboarding(true)}
             currentUser={currentUser}
             notificationsControl={currentUser.id === 'usr_demo' ? <p className="text-xs text-slate-600">Iniciá sesión con una cuenta personal para recibir alertas en tus dispositivos.</p> : <NotificationControls alerts={alerts} />}
+            onAccountSaved={updated => setCurrentUser(previous => previous ? { ...previous, alyc: updated.alyc } : previous)}
             onRecoveryKeySaved={updated => setCurrentUser(previous => previous?.id === updated.id ? { ...previous, hasRecoveryKey: updated.hasRecoveryKey } : previous)}
             onLogout={handleLogout}
             onDeleteAccount={handleDeleteAccount}
@@ -1093,6 +1093,7 @@ export default function App() {
             onOpenAdmin={isCurrentUserAdmin ? navigateToAdmin : undefined}
           />
         )}
+        </Suspense></ScreenBoundary>
       </main>
 
       {/* Rocket Money-Style Contrast Bottom Foundation (Deep Emerald) */}
@@ -1113,7 +1114,7 @@ export default function App() {
             </div>
 
             {/* Quick footer navigation */}
-            <div className="flex items-center gap-6 text-xs text-emerald-200 font-semibold">
+            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-sm text-emerald-200 font-semibold">
               <button onClick={() => setCurrentTab('feed')} className="hover:text-white transition-colors cursor-pointer">
                 Noticias
               </button>
@@ -1155,7 +1156,7 @@ export default function App() {
 
       {/* MODALS */}
       {/* 1. News Detail View */}
-      {selectedNews && (
+      {selectedNews && (comparisonFirst ? <MediaComparisonModal news={selectedNews} onClose={() => setSelectedNews(null)} onReadImpact={() => setComparisonFirst(false)} /> :
         <NewsDetailModal
           news={selectedNews}
           onClose={() => {
@@ -1264,14 +1265,14 @@ export default function App() {
       )}
 
       {/* 7. Comprehensive 3-Stage Guided Interactive Tour (15 Steps) */}
-      <InteractiveTour
+      {isTourActive && <ScreenBoundary><Suspense fallback={<p role="status">Cargando guía…</p>}><InteractiveTour
         isActive={isTourActive}
         onClose={() => setIsTourActive(false)}
         currentTab={currentTab}
         onSelectTab={handleSelectTab}
         onOpenNewsDetail={(item) => setSelectedNews(item)}
         sampleNews={newsList[0] || REAL_GROUNDED_NEWS[0]}
-      />
+      /></Suspense></ScreenBoundary>}
     </div>
   );
 }
