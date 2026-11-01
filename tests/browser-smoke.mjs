@@ -447,6 +447,38 @@ try {
     await page.getByRole('button', { name: 'Ver única fuente verificada', exact: true }).waitFor();
     await context.close();
   });
+  await check('Contadores visibles de impacto filtran inmediatamente la lista y permiten quitar el filtro', async () => {
+    const { context, page, state } = await setup({ viewport: { width: 1440, height: 900 } });
+    await clickVisible(page, 'Ahora no');
+    state.newsData = news.map((item, index) => ({ ...item, affectedAssetIds: ['AL30'], impact: ['favorable', 'alerta', 'neutral'][index] }));
+    await clickVisible(page, 'Actualizar pulso');
+    const group = page.getByRole('group', { name: 'Filtrar noticias por impacto', exact: true });
+    await group.getByRole('button', { name: 'Alertas: 1 noticias', exact: true }).waitFor();
+    const hero = page.getByRole('region', { name: 'Resumen de tu cartera' });
+    const heroBox = await hero.boundingBox(); const groupBox = await group.boundingBox();
+    assert.ok(groupBox.x > heroBox.x + heroBox.width / 2, 'Los contadores ocupan el espacio derecho del resumen');
+    await page.screenshot({ path: path.join(artifacts, 'impact-summary-1440.png') });
+    for (const [index, label] of ['Favorables', 'Alertas', 'Neutrales'].entries()) {
+      const button = group.getByRole('button', { name: `${label}: 1 noticias`, exact: true });
+      await button.click();
+      await page.waitForFunction(() => document.querySelectorAll('#news-feed-section article').length === 1);
+      assert.equal(await page.locator('#news-feed-section article h3').innerText(), news[index].headline);
+      assert.equal(await button.getAttribute('aria-pressed'), 'true');
+      await page.waitForFunction(() => window.scrollY > 0);
+      await button.click();
+      await page.waitForFunction(() => document.querySelectorAll('#news-feed-section article').length === 3);
+      assert.equal(await button.getAttribute('aria-pressed'), 'false');
+    }
+    for (const width of [320, 390, 768]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(() => scrollTo(0, 0));
+      await fits(page, `Contadores de impacto ${width}`);
+      assert.equal(await group.getByRole('button').count(), 3);
+      for (const button of await group.getByRole('button').all()) assert.equal(await button.isVisible(), true);
+      await page.screenshot({ path: path.join(artifacts, `impact-summary-${width}.png`) });
+    }
+    await context.close();
+  });
   await check('Worker real muestra avisos con la página cerrada y filtra otras cuentas', async () => {
     const context = await browser.newContext({ permissions: ['notifications'] });
     await context.route('**/api/**', route => route.fulfill({ contentType: 'application/json', body: '{"authenticated":false}' }));

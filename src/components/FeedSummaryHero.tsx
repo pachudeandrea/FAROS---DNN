@@ -1,6 +1,6 @@
 import React from 'react';
 import { Portfolio, NewsItem, Asset, getEffectiveImpactForPortfolio } from '../types';
-import { Volume2, RefreshCw, ChevronDown } from 'lucide-react';
+import { Volume2, RefreshCw, ChevronDown, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import type { NewsQueryState } from '../utils/newsQuery';
 import { describeNewsQuery } from '../utils/newsQuery';
 
@@ -24,6 +24,8 @@ export const FeedSummaryHero: React.FC<FeedSummaryHeroProps> = ({ portfolio, new
   });
   const sources = [...new Set(items.flatMap(n => n.sources.map(s => s.mediaName)))];
   return <section data-tour="feed-hero-pulso" aria-label="Resumen de tu cartera" aria-busy={isLoadingNews} className="min-w-0 rounded-2xl bg-white border border-slate-200 p-4 sm:p-5 space-y-3">
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] gap-4 lg:gap-6 items-center">
+    <div className="min-w-0 space-y-3">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-emerald-800">Tu pulso financiero</p>
@@ -43,10 +45,26 @@ export const FeedSummaryHero: React.FC<FeedSummaryHeroProps> = ({ portfolio, new
       </button>
     </div>
     {!portfolio.assetIds.length && <p className="text-sm text-slate-600">Panorama general. Agregá activos desde Mi cartera para personalizarlo.</p>}
+    </div>
+    <div role="group" aria-label="Filtrar noticias por impacto" className="grid grid-cols-3 gap-2 sm:gap-3">
+      {([
+        { impact: 'favorable', label: 'Favorables', icon: TrendingUp, colors: 'bg-emerald-50 text-emerald-900 border-emerald-200', selected: 'bg-emerald-900 text-white border-emerald-900' },
+        { impact: 'alerta', label: 'Alertas', icon: TrendingDown, colors: 'bg-rose-50 text-rose-900 border-rose-200', selected: 'bg-rose-800 text-white border-rose-800' },
+        { impact: 'neutral', label: 'Neutrales', icon: Minus, colors: 'bg-slate-50 text-slate-700 border-slate-200', selected: 'bg-slate-700 text-white border-slate-700' },
+      ] as const).map(({ impact, label, icon: Icon, colors, selected }) => {
+        const active = activeImpactFilter === impact || activeImpactFilter === ({ favorable: 'positivo', alerta: 'negativo', neutral: 'neutro' } as const)[impact];
+        return <button key={impact} type="button" aria-pressed={active} aria-label={`${label}: ${counts[impact]} noticias`} onClick={() => onToggleImpactFilter?.(impact)} className={`min-w-0 rounded-2xl border px-2 sm:px-4 py-2 sm:py-3 lg:py-6 flex flex-col items-center gap-1.5 transition-colors ${active ? selected : colors} hover:brightness-95`}>
+          <Icon aria-hidden="true" className="hidden sm:block w-5 h-5" />
+          <span className="text-2xl sm:text-3xl font-bold tabular-nums leading-none">{counts[impact]}</span>
+          <span className="text-xs sm:text-sm font-semibold">{label}</span>
+        </button>;
+      })}
+    </div>
+    </div>
     <details className="border-t border-slate-100 pt-1">
       <summary className="flex items-center justify-between py-2 text-sm font-semibold text-emerald-900 cursor-pointer">Balance y activos mencionados<ChevronDown className="w-4 h-4" /></summary>
       <div className="space-y-3 pt-2">
-        <div className="flex flex-wrap gap-2">{(['favorable', 'alerta', 'neutral'] as const).map(impact => <button key={impact} aria-pressed={activeImpactFilter === impact} onClick={() => onToggleImpactFilter?.(impact)} className={`rounded-xl px-3 py-2 text-sm border ${activeImpactFilter === impact ? 'bg-emerald-950 text-white border-emerald-950' : 'border-slate-200 text-slate-800'}`}>{counts[impact]} {impact === 'favorable' ? 'favorables' : impact === 'alerta' ? 'alertas' : 'neutrales'}</button>)}</div>
+
         <p className="text-sm text-slate-600">El impacto refleja las noticias disponibles y tus posiciones LONG/SHORT. Una consulta vacía no permite concluir que no haya riesgos.</p>
         <div className="flex flex-wrap gap-2">{Object.entries(assets).sort((a,b) => b[1]-a[1]).slice(0,5).map(([id, count]) => <button key={id} onClick={() => onFilterByAsset?.(id)} className="rounded-xl px-3 py-2 bg-slate-50 text-sm text-slate-800" title={assetsMap[id]?.name}>{id} · {count}</button>)}</div>
         {sources.length > 0 && <p className="text-sm text-slate-600">Publicaciones incluidas: {sources.join(', ')}.</p>}
