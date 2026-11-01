@@ -534,7 +534,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
       {/* Clicks inside the hole pass right through to the underlying element! */}
       <div 
         style={clipPathStyle}
-        className="fixed inset-0 z-40 bg-slate-950/65 backdrop-blur-[1px] transition-all duration-200 pointer-events-auto"
+        className="fixed inset-0 z-40 bg-ink-950/65 backdrop-blur-[1px] transition-all duration-200 pointer-events-auto"
         onClick={(e) => e.stopPropagation()}
       />
 
@@ -550,11 +550,11 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
             zIndex: 45,
             pointerEvents: 'none'
           }}
-          className="rounded-2xl ring-4 ring-emerald-400 ring-offset-2 ring-offset-slate-950/80 shadow-[0_0_35px_rgba(16,185,129,0.38)] transition-all duration-200"
+          className="rounded-2xl ring-4 ring-brand-400 ring-offset-2 ring-offset-ink-950/80 shadow-brand-soft transition-all duration-200"
         >
           {/* Interactive badge pill */}
-          <div className="absolute -top-3.5 left-4 px-2.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 text-[10px] font-black uppercase tracking-wider shadow-sm flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />
+          <div className="absolute -top-3.5 left-4 px-2.5 py-0.5 rounded-full bg-brand-500 text-ink-950 text-[10px] font-bold uppercase tracking-wider shadow-sm flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-ink-950 animate-ping" />
             <span>Zona interactiva</span>
           </div>
         </div>
@@ -567,18 +567,18 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
           className="fixed z-50 pointer-events-auto"
         >
           <div 
-            className="bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-lg rounded-full px-3 py-1.5 flex items-center gap-2 text-xs animate-in fade-in zoom-in-95 duration-150"
+            className="bg-paper/95 backdrop-blur-md border border-ink-200/90 shadow-lg rounded-full px-3 py-1.5 flex items-center gap-2 text-xs animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
-            <span className="font-bold text-slate-800 text-[11px] shrink-0">{stepIndex + 1}/15</span>
-            <span className="font-semibold text-slate-700 text-[11px] truncate max-w-[130px] sm:max-w-[190px]">
+            <span className="font-bold text-ink-800 text-[11px] shrink-0">{stepIndex + 1}/15</span>
+            <span className="font-semibold text-muted text-[11px] truncate max-w-[130px] sm:max-w-[190px]">
               {currentStep.title}
             </span>
-            <div className="flex items-center gap-1 border-l border-slate-200 pl-1.5 shrink-0">
+            <div className="flex items-center gap-1 border-l border-ink-200 pl-1.5 shrink-0">
               <button
                 type="button"
                 onClick={() => setIsMinimized(false)}
-                className="p-1 text-emerald-800 hover:text-emerald-950 rounded-full hover:bg-emerald-50 transition-colors cursor-pointer"
+                className="p-1 text-brand-800 hover:text-brand-950 rounded-full hover:bg-brand-50 transition-colors cursor-pointer"
                 title="Expandir instructivo"
               >
                 <Maximize2 className="w-3.5 h-3.5" />
@@ -587,7 +587,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
                 <button
                   type="button"
                   onClick={handlePrev}
-                  className="px-1 py-0.5 text-slate-500 hover:text-slate-800 text-xs font-semibold cursor-pointer"
+                  className="px-1 py-0.5 text-muted hover:text-ink-800 text-xs font-semibold cursor-pointer"
                   title="Anterior"
                 >
                   ‹
@@ -596,7 +596,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
               <button
                 type="button"
                 onClick={handleNext}
-                className="px-2 py-0.5 bg-[#0d4f3b] hover:bg-[#093d2d] text-white text-[10px] font-bold rounded-full transition-colors cursor-pointer"
+                className="px-2 py-0.5 bg-brand-800 hover:bg-brand-950 text-paper text-[10px] font-bold rounded-full transition-colors cursor-pointer"
                 title="Siguiente"
               >
                 ›
@@ -604,7 +604,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="p-1 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                className="p-1 text-muted hover:text-muted transition-colors cursor-pointer"
                 title="Salir del tutorial"
               >
                 <X className="w-3.5 h-3.5" />
@@ -613,22 +613,22 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
           </div>
         </div>
       ) : (
-        /* Mini Floating Card — Exactly as requested in image_7d59e02d.png */
+        /* Mini Floating Card */
         <div 
           style={placement.style}
           className="fixed z-50 pointer-events-auto"
         >
           <div 
-            className="w-[320px] max-w-[calc(100vw-24px)] bg-white rounded-2xl border border-slate-200/90 shadow-xl p-3.5 flex flex-col justify-between animate-in fade-in zoom-in-95 duration-150"
+            className="w-[320px] max-w-[calc(100vw-24px)] bg-paper rounded-2xl border border-ink-200/90 shadow-xl p-3.5 flex flex-col justify-between animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header: One single line */}
             <div className="flex items-center justify-between pb-1">
               <div className="flex items-baseline gap-2 min-w-0">
-                <span className="text-xs font-bold text-slate-900 shrink-0">
+                <span className="text-xs font-bold text-ink-900 shrink-0">
                   {stepIndex + 1}/15
                 </span>
-                <h4 className="text-xs font-bold text-slate-900 truncate">
+                <h4 className="text-xs font-bold text-ink-900 truncate">
                   {currentStep.title}
                 </h4>
               </div>
@@ -637,7 +637,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsMinimized(true)}
-                  className="p-1 text-slate-400 hover:text-slate-700 rounded-md transition-colors cursor-pointer"
+                  className="p-1 text-muted hover:text-muted rounded-md transition-colors cursor-pointer"
                   title="Minimizar instructivo"
                 >
                   <Minimize2 className="w-3.5 h-3.5" />
@@ -645,7 +645,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="p-1 text-slate-400 hover:text-slate-700 rounded-md transition-colors cursor-pointer"
+                  className="p-1 text-muted hover:text-muted rounded-md transition-colors cursor-pointer"
                   title="Salir del tutorial"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -655,19 +655,19 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
 
             {/* Body: exactly 1 or 2 concise practical sentences */}
             <div className="py-2">
-              <p className="text-xs sm:text-[13px] text-slate-700 leading-snug font-normal">
+              <p className="text-xs sm:text-[13px] text-muted leading-snug font-normal">
                 {currentStep.description}
               </p>
             </div>
 
             {/* Divider & Footer */}
-            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+            <div className="pt-2 border-t border-ink-100 flex items-center justify-between">
               <div>
                 {stepIndex > 0 ? (
                   <button
                     type="button"
                     onClick={handlePrev}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-muted hover:text-ink-800 transition-colors cursor-pointer"
                   >
                     <span>‹</span>
                     <span>Anterior</span>
@@ -676,7 +676,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
                   <button
                     type="button"
                     onClick={onClose}
-                    className="text-[11px] font-medium text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                    className="text-[11px] font-medium text-muted hover:text-muted transition-colors cursor-pointer"
                   >
                     Salir
                   </button>
@@ -686,8 +686,8 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
               <button
                 type="button"
                 onClick={handleNext}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer active:scale-95 ${
-                  hasInteracted ? 'bg-[#0d4f3b] hover:bg-[#093d2d] ring-2 ring-emerald-400/40' : 'bg-[#0d4f3b] hover:bg-[#093d2d]'
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-paper text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer active:scale-95 ${
+                  hasInteracted ? 'bg-brand-800 hover:bg-brand-950 ring-2 ring-brand-400/40' : 'bg-brand-800 hover:bg-brand-950'
                 }`}
               >
                 <span>{currentStep.isStageEnd && currentStep.stage === 3 ? 'Comenzar' : 'Siguiente'}</span>
@@ -700,33 +700,33 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
 
       {/* Tour Completion Celebration Modal */}
       {showCompletionModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-ink-950/80 backdrop-blur-xs flex items-center justify-center p-4">
           <div 
-            className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl p-6 sm:p-8 text-center space-y-5 animate-in fade-in zoom-in-95 duration-200"
+            className="bg-paper rounded-3xl max-w-md w-full border border-ink-200 shadow-2xl p-6 sm:p-8 text-center space-y-5 animate-in fade-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="w-16 h-16 rounded-3xl bg-emerald-950 text-emerald-300 flex items-center justify-center mx-auto shadow-md">
+            <div className="w-16 h-16 rounded-3xl bg-brand-950 text-brand-300 flex items-center justify-center mx-auto shadow-md">
               <Sparkles className="w-8 h-8" />
             </div>
 
             <div className="space-y-2">
-              <span className="text-[11px] font-black uppercase tracking-wider text-emerald-900 bg-emerald-100/80 px-2.5 py-0.5 rounded-full">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-brand-900 bg-brand-100/80 px-2.5 py-0.5 rounded-full">
                 ¡Recorrido Completado!
               </span>
-              <h3 className="text-xl sm:text-2xl font-black text-slate-900">
+              <h3 className="text-xl sm:text-2xl font-bold text-ink-900">
                 ¡Ya conocés FAROS!
               </h3>
-              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-sm mx-auto">
+              <p className="text-xs sm:text-sm text-muted leading-relaxed max-w-sm mx-auto">
                 Ahora podés administrar tu cartera, seguir las noticias que te interesan y organizar tus eventos financieros desde un mismo lugar.
               </p>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-left text-xs text-slate-700 space-y-1.5">
-              <div className="flex items-center gap-1.5 font-bold text-slate-900">
-                <Check className="w-4 h-4 text-emerald-700 stroke-[3]" />
+            <div className="p-3.5 rounded-2xl bg-ink-50 border border-ink-200 text-left text-xs text-muted space-y-1.5">
+              <div className="flex items-center gap-1.5 font-bold text-ink-900">
+                <Check className="w-4 h-4 text-brand-text stroke-[3]" />
                 <span>¿Necesitás repasar alguna sección?</span>
               </div>
-              <p className="text-[11px] text-slate-500 leading-normal">
+              <p className="text-[11px] text-muted leading-normal">
                 Podés volver a iniciar este tutorial interactivo cuando quieras haciendo clic en el botón <strong>"Tutorial"</strong> en la cabecera o en la pestaña Mi Cartera.
               </p>
             </div>
@@ -734,7 +734,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
             <button
               type="button"
               onClick={handleFinishTour}
-              className="w-full py-3 px-6 bg-emerald-950 hover:bg-emerald-900 text-white text-xs font-black uppercase tracking-wider rounded-2xl shadow-md cursor-pointer transition-all active:scale-95"
+              className="w-full py-3 px-6 bg-brand-950 hover:bg-brand-900 text-paper text-xs font-bold uppercase tracking-wider rounded-2xl shadow-md cursor-pointer transition-all active:scale-95"
             >
               Empezar a usar FAROS
             </button>

@@ -1,54 +1,185 @@
 @import "tailwindcss";
 
-@layer base {
-  :root {
-    --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
-  }
+@custom-variant dark (&:where(.dark, .dark *));
 
+
+@theme {
+  --color-*: initial;
+  --color-paper: var(--brand-paper);
+  --color-night: var(--brand-night);
+  --text-xs: var(--type-xs);
+  --text-sm: var(--type-sm);
+  --text-base: var(--type-base);
+  --text-lg: var(--type-lg);
+  --text-xl: var(--type-xl);
+  --text-2xl: var(--type-2xl);
+  --text-3xl: var(--type-3xl);
+  --text-4xl: var(--type-4xl);
+  --text-5xl: var(--type-5xl);
+  --text-6xl: var(--type-6xl);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-data);
+  --font-weight-medium: 400;
+  --font-weight-semibold: 700;
+  --font-weight-extrabold: 700;
+  --font-weight-black: 700;
+  --radius-xs: .375rem;
+  --radius-sm: .5rem;
+  --radius-md: .75rem;
+  --radius-lg: var(--radius-control);
+  --radius-xl: var(--radius-control);
+  --radius-2xl: var(--radius-card);
+  --radius-3xl: var(--radius-dialog);
+  --radius-device: var(--brand-radius-device);
+  --radius-device-screen: var(--brand-radius-device-screen);
+  --shadow-2xs: var(--shadow-soft);
+  --shadow-xs: var(--shadow-soft);
+  --shadow-sm: var(--shadow-soft);
+  --shadow-md: var(--shadow-card);
+  --shadow-lg: var(--shadow-card);
+  --shadow-xl: var(--shadow-overlay);
+  --shadow-2xl: var(--shadow-overlay);
+  --shadow-brand-soft: var(--shadow-soft);
+  --shadow-brand-overlay: var(--shadow-overlay);
+  --shadow-brand-focus: var(--shadow-focus);
+  --color-brand-50: var(--brand-mint);
+  --color-brand-100: var(--brand-mint);
+  --color-brand-200: var(--brand-mint);
+  --color-brand-300: var(--brand-mint);
+  --color-brand-400: var(--brand-accent);
+  --color-brand-500: var(--brand-accent);
+  --color-brand-600: var(--brand-success);
+  --color-brand-700: var(--brand-success);
+  --color-brand-800: var(--brand-primary);
+  --color-brand-900: var(--brand-primary);
+  --color-brand-950: var(--brand-primary);
+  --color-ink-50: var(--brand-paper);
+  --color-ink-100: var(--brand-cloud);
+  --color-ink-200: var(--brand-cloud);
+  --color-ink-300: var(--brand-cloud);
+  --color-ink-400: var(--brand-gray);
+  --color-ink-500: var(--brand-gray);
+  --color-ink-600: var(--brand-primary);
+  --color-ink-700: var(--brand-primary);
+  --color-ink-800: var(--brand-primary);
+  --color-ink-900: var(--brand-night);
+  --color-ink-950: var(--brand-night);
+  --color-danger-50: var(--brand-danger-pale);
+  --color-danger-100: var(--brand-danger-soft);
+  --color-danger-200: var(--brand-danger-soft);
+  --color-danger-300: var(--brand-danger-soft);
+  --color-danger-400: var(--brand-danger);
+  --color-danger-500: var(--brand-danger);
+  --color-danger-600: var(--brand-danger);
+  --color-danger-700: var(--brand-danger);
+  --color-danger-800: var(--brand-danger);
+  --color-danger-900: var(--brand-danger);
+  --color-danger-950: var(--brand-danger);
+  --color-warning-50: var(--brand-warning-soft);
+  --color-warning-100: var(--brand-warning-soft);
+  --color-warning-200: var(--brand-warning-soft);
+  --color-warning-300: var(--brand-warning-soft);
+  --color-warning-400: var(--brand-warning);
+  --color-warning-500: var(--brand-warning);
+  --color-warning-600: var(--brand-warning);
+  --color-warning-700: var(--brand-primary);
+  --color-warning-800: var(--brand-primary);
+  --color-warning-900: var(--brand-primary);
+  --color-warning-950: var(--brand-primary);
+  --color-info-50: var(--brand-info-soft);
+  --color-info-100: var(--brand-info-soft);
+  --color-info-200: var(--brand-info-soft);
+  --color-info-300: var(--brand-info-soft);
+  --color-info-400: var(--brand-info);
+  --color-info-500: var(--brand-info);
+  --color-info-600: var(--brand-info);
+  --color-info-700: var(--brand-primary);
+  --color-info-800: var(--brand-primary);
+  --color-info-900: var(--brand-primary);
+  --color-info-950: var(--brand-primary);
+  --color-accent-50: var(--brand-violet-soft);
+  --color-accent-100: var(--brand-violet-soft);
+  --color-accent-200: var(--brand-violet-soft);
+  --color-accent-300: var(--brand-violet-soft);
+  --color-accent-400: var(--brand-violet);
+  --color-accent-500: var(--brand-violet);
+  --color-accent-600: var(--brand-violet);
+  --color-accent-700: var(--brand-violet);
+  --color-accent-800: var(--brand-violet);
+  --color-accent-900: var(--brand-violet);
+  --color-accent-950: var(--brand-violet);
+}
+
+@theme inline {
+  --color-muted: var(--content-muted);
+  --color-brand-text: var(--content-accent);
+  --color-info-text: var(--content-info);
+  --color-warning-text: var(--content-warning);
+}
+
+
+@layer base {
   body {
-    font-family: var(--font-sans);
-    background-color: #ffffff;
-    color: #0f172a;
+    font-family: var(--font-body);
+    background: var(--surface-page);
+    color: var(--content-primary);
+    font-synthesis: none;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     min-width: 0;
     width: 100%;
   }
-
-  #root { min-width: 0; min-height: 100dvh; }
-  input, select, textarea { min-width: 0; max-width: 100%; }
+  h1, h2, h3, h4 { font-family: var(--font-heading); letter-spacing: var(--type-tracking-heading); }
   h1, h2, h3, h4, p { overflow-wrap: anywhere; }
+  #root { min-width: 0; min-height: 100dvh; }
+  input::placeholder, textarea::placeholder { color: var(--content-muted); opacity: 1; }
+  input, select, textarea { min-width: 0; max-width: 100%; font-family: var(--font-body); }
+  .font-mono, .tabular-nums { font-family: var(--font-data); font-variant-numeric: tabular-nums lining-nums; }
 }
 
-/* Keep Safari from zooming into small form controls on phones. Pinch zoom
-   remains available; the viewport is never locked. */
-@media (max-width: 767px) {
-  input, select, textarea { font-size: 16px !important; }
+/* Semantic foregrounds adapt to the existing light/dark surfaces, without changing screens. */
+:where([class~="bg-brand-600"], [class~="bg-brand-700"], [class~="bg-brand-800"], [class~="bg-brand-900"], [class~="bg-brand-950"], [class~="bg-ink-700"], [class~="bg-ink-800"], [class~="bg-ink-900"], [class~="bg-ink-950"], [class~="bg-ink-950/95"], [class~="from-brand-950"], [class~="from-brand-900"], [class~="from-ink-950"]) {
+  --content-muted: var(--brand-cloud);
+  --content-accent: var(--brand-accent);
+  --content-info: var(--brand-info-soft);
+  --content-warning: var(--brand-warning-soft);
+  --focus-color: var(--brand-accent);
 }
-
-/* Custom scrollbar for clean reading */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+:where([class~="bg-paper"], [class~="bg-paper/95"], [class~="bg-ink-50"], [class~="bg-ink-100"], [class~="bg-brand-50"], [class~="bg-brand-100"], [class~="bg-danger-50"], [class~="bg-warning-50"], [class~="bg-info-50"]) {
+  --content-muted: var(--brand-primary);
+  --content-accent: var(--brand-success);
+  --content-info: var(--brand-primary);
+  --content-warning: var(--brand-primary);
+  --focus-color: var(--brand-primary);
 }
-::-webkit-scrollbar-track {
-  background: #f8fafc;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* Comfortable targets and a consistent keyboard focus across FAROS. */
+/* Accent fills require dark text to meet AA. The brand colors themselves stay unchanged. */
+:is(.bg-brand-300,.bg-brand-400,.bg-brand-500,.bg-warning-400,.bg-warning-500,.bg-warning-600).text-paper { color: var(--brand-night); }
 button, [role="button"], summary, a { touch-action: manipulation; }
 button, [role="button"], summary { min-height: 44px; min-width: 44px; }
 a { min-height: 44px; }
-:focus-visible { outline: 3px solid #047857 !important; outline-offset: 3px; }
+:focus-visible { outline: 3px solid var(--focus-color) !important; outline-offset: 3px; }
 [hidden] { display: none !important; }
+@media (max-width: 767px) { input, select, textarea { font-size: 16px !important; } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--brand-paper); }
+::-webkit-scrollbar-thumb { background: var(--brand-cloud); border-radius: var(--radius-pill); }
+::-webkit-scrollbar-thumb:hover { background: var(--brand-gray); }
+.brand-logo { display: inline-flex; flex: none; align-items: center; justify-content: center; }
+.brand-logo img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.brand-logo-symbol { min-width: var(--logo-symbol-min); min-height: var(--logo-symbol-min); }
+.brand-logo-full { min-height: var(--logo-full-min-height); }
+
+:where(.dark, .dark [class*="dark:bg-ink-"], .dark [class*="dark:bg-brand-"]) {
+  --content-muted: var(--brand-cloud);
+  --content-accent: var(--brand-accent);
+  --content-info: var(--brand-info-soft);
+  --content-warning: var(--brand-warning-soft);
+  --focus-color: var(--brand-accent);
+}
+svg.lucide { stroke-linecap: round; stroke-linejoin: round; }
+
+.bg-warning-400, .bg-warning-500, .bg-warning-600 { --content-warning: var(--brand-night); }
+.rounded-full { border-radius: var(--radius-pill); }

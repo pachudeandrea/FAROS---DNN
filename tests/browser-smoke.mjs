@@ -52,7 +52,7 @@ const browser = await chromium.launch({ executablePath, headless: true, args: ['
 const pageErrors = [];
 let checks = 0;
 async function check(name, run) { if (process.env.BROWSER_CHECK && !name.includes(process.env.BROWSER_CHECK)) return; await run(); checks++; console.log(`ok ${checks} - ${name}`); }
-async function setup({ anonymous = false, permission = 'granted', longName = false, legacyNews = false, ...options } = {}) {
+async function setup({ anonymous = false, admin = false, permission = 'granted', longName = false, legacyNews = false, ...options } = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, ...options });
   if (legacyNews) await context.addInitScript(({ item, portfolioId }) => {
     const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -76,6 +76,7 @@ async function setup({ anonymous = false, permission = 'granted', longName = fal
     PushManager.prototype.subscribe = async () => { localStorage.setItem('test_push', 'yes'); return local(); };
   }, { permission, subscription });
   const state = { user: structuredClone(fixture), active: false, calls: [], events: [], newsData: news, newsMode: 'ok', revision: null, saveFailure: false, delayNews: 0 };
+  if (admin) state.user.isAdmin = true;
   if (longName) state.user.portfolio.name = 'Cartera' + 'Diversificada'.repeat(12);
   await context.route('**/*', async route => {
     const request = route.request(); const url = new URL(request.url());
@@ -99,7 +100,7 @@ async function setup({ anonymous = false, permission = 'granted', longName = fal
     if (url.pathname === '/api/auth/register') { state.user = { ...state.user, ...body, preferences: { ...state.user.preferences, ...body.preferences }, portfolio: { ...state.user.portfolio, assetIds: [], assetPositions: {} } }; data = { success: true, user: state.user, token: 'local-browser-test' }; }
     if (url.pathname === '/api/audio/synthesize') data = { success: true, audioBase64: 'UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA', mimeType: 'audio/wav', engine: 'test', voice: 'test' };
     if (url.pathname === '/api/calendar/events') data = { events: [] };
-    if (url.pathname === '/api/admin/check') data = { isAdmin: false };
+    if (url.pathname === '/api/admin/check') data = { isAdmin: !!state.user.isAdmin };
     if (url.pathname === '/api/notifications') data = { userId: fixture.id, notifications: [], enabled: state.active, subscribed: state.active, publicKey };
     if (url.pathname === '/api/notifications/subscription') {
       state.active = request.method() === 'POST'; state.user.preferences.notificationsEnabled = state.active;
@@ -504,6 +505,95 @@ try {
     assert.equal(await mep.getAttribute('aria-pressed'), 'false');
     assert.equal(await page.locator('[data-tour="feed-filters"] select').inputValue(), 'todos');
     await context.close();
+  });
+  await check('Identidad Faros: logos originales, tokens, tipografía declarada y contraste de las pantallas', async () => {
+    const { context, page } = await setup();
+    await clickVisible(page, 'Ahora no');
+    const report = [];
+    let auditPage = page;
+    const inspect = async label => {
+      await auditPage.evaluate(async () => { await Promise.all([300,400,700].map(weight => document.fonts.load(`${weight} 16px "Basis Grotesque Arabic Pro"`, 'ÁÉÍÓÚÑáéíóúñ0123456789€'))); await document.fonts.ready; });
+      await auditPage.waitForTimeout(250);
+      const audit = await auditPage.evaluate(() => {
+        const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const rgba = color => { ctx.clearRect(0,0,1,1); ctx.fillStyle = color; ctx.fillRect(0,0,1,1); return [...ctx.getImageData(0,0,1,1).data].map((x,i) => i === 3 ? x/255 : x); };
+        const blend = (front, back) => front.slice(0,3).map((x,i) => x*front[3]+back[i]*(1-front[3]));
+        const luminance = c => c.map(x => x/255).map(x => x <= .04045 ? x/12.92 : ((x+.055)/1.055)**2.4).reduce((n,x,i) => n+x*[.2126,.7152,.0722][i],0);
+        const failures = [];
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) {
+          const node = walker.currentNode; const el = node.parentElement; const text = node.textContent.trim();
+          if (!text || !el || ['SCRIPT','STYLE','OPTION','SUMMARY'].includes(el.tagName) || el.closest('[disabled], [aria-disabled="true"], [aria-hidden="true"], .sr-only')) continue;
+          const r = el.getBoundingClientRect(); const style = getComputedStyle(el);
+          if (!r.width || !r.height || r.bottom < 0 || r.top > innerHeight || style.visibility === 'hidden') continue;
+          const chain = []; let ancestor = el; let complex = false; let opacity = 1;
+          while (ancestor) { const c = getComputedStyle(ancestor); if (c.backgroundImage !== 'none') complex = true; opacity *= Number(c.opacity); chain.unshift(rgba(c.backgroundColor)); ancestor = ancestor.parentElement; }
+          if (complex || opacity < .9) continue;
+          let background = [252,252,252]; for (const layer of chain) background = blend(layer, background);
+          const foreground = blend(rgba(style.color),background);
+          const [a,b] = [luminance(foreground),luminance(background)].sort((a,b) => a-b);
+          const ratio = (b+.05)/(a+.05); const large = parseFloat(style.fontSize) >= 24 || (parseFloat(style.fontSize) >= 18.66 && Number(style.fontWeight) >= 700);
+          if (ratio + .01 < (large ? 3 : 4.5)) failures.push({ text: text.slice(0,80), ratio: +ratio.toFixed(2), color: style.color, background, class: el.className });
+        }
+        return { failures, fontFamily: getComputedStyle(document.body).fontFamily, logoPaths: [...document.querySelectorAll('.brand-logo img')].filter(el => el.getClientRects().length).map(el => new URL(el.src).pathname), fontAvailable: document.fonts.check('16px "Basis Grotesque Arabic Pro"') };
+      });
+      report.push({ label, ...audit });
+      assert.match(audit.fontFamily, /Basis Grotesque Arabic Pro/);
+      assert.equal(audit.fontAvailable, true, 'La fuente real se descarga y está disponible');
+      assert.ok(await auditPage.locator('.brand-logo img').evaluateAll(images => images.every(img => img.complete && img.naturalWidth > 0)), 'Los logos se cargan correctamente');
+      assert.ok(audit.logoPaths.length > 0 && audit.logoPaths.every(path => /^\/brand\/faros-(logo|symbol)-(light|dark|gray)\.svg$/.test(path)));
+      await auditPage.screenshot({ path: path.join(artifacts, `brand-${label}.png`), fullPage: false });
+    };
+    for (const width of [320,390,768,1024,1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const tab of ['Noticias','Calendario','Mi cartera']) {
+        await clickVisible(page, tab);
+        if (tab === 'Calendario') await page.getByRole('button', { name: 'Agregar evento', exact: true }).waitFor();
+        if (tab === 'Mi cartera') await page.getByRole('navigation', { name: 'Secciones de Mi cartera' }).waitFor();
+        await page.evaluate(() => scrollTo({ top: 0, behavior: 'instant' }));
+        await fits(page, `Marca ${tab} ${width}`);
+        await inspect(`${tab === 'Noticias' ? 'feed' : tab === 'Calendario' ? 'calendar' : 'portfolio'}-${width}`);
+      }
+    }
+    await clickVisible(page, 'Preferencias'); await inspect('preferences-1440');
+    await clickVisible(page, 'Activos y carteras'); await clickVisible(page, 'Crear nueva cartera');
+    await dialogFits(page); await inspect('onboarding-step-1');
+    await clickVisible(page, 'Elegir activos'); await dialogFits(page); await inspect('onboarding-step-2');
+    await page.keyboard.press('Escape');
+    await context.close();
+    await import('node:fs/promises').then(fs => fs.writeFile(path.join(artifacts,'brand-audit.json'), JSON.stringify(report,null,2)));
+    const anonymous = await setup({ anonymous: true, viewport: { width: 390, height: 844 } });
+    auditPage = anonymous.page;
+    await inspect('welcome-390');
+    // Anonymous surfaces are also captured with the exact supplied dark-background logo.
+    for (const action of ['Crear cuenta','Cerrar registro','Iniciar sesión','¿Olvidaste tu contraseña?']) {
+      await clickVisible(anonymous.page, action);
+      if (action !== 'Cerrar registro') await dialogFits(anonymous.page);
+      await inspect(`auth-${action.replaceAll(' ','-').replaceAll('¿','').replaceAll('?','')}`);
+      if (action === 'Crear cuenta') {
+        await anonymous.page.getByLabel('Nombre', { exact: true }).fill('Cuenta de prueba');
+        await anonymous.page.getByLabel('Correo electrónico', { exact: true }).fill('brand@example.test');
+        await anonymous.page.getByLabel('Contraseña', { exact: true }).fill('PasswordTest42!');
+        await anonymous.page.getByLabel('Confirmar contraseña', { exact: true }).fill('PasswordTest42!');
+        await anonymous.page.getByPlaceholder('4 dígitos').fill('0042');
+        await anonymous.page.getByLabel('Repetir código de recuperación', { exact: true }).fill('0042');
+        await clickVisible(anonymous.page, 'Continuar'); await dialogFits(anonymous.page); await inspect('signup-step-2');
+      }
+    }
+    await anonymous.context.close();
+    const administrative = await setup({ admin: true, viewport: { width: 1440, height: 900 } });
+    await clickVisible(administrative.page, 'Ahora no');
+    await administrative.page.getByRole('button', { name: 'Abrir panel administrador', exact: true }).click();
+    await administrative.page.getByTitle('Cambiar a modo oscuro', { exact: true }).waitFor();
+    auditPage = administrative.page; await inspect('admin-light-1440');
+    await administrative.page.getByTitle('Cambiar a modo oscuro', { exact: true }).click();
+    await administrative.page.getByTitle('Cambiar a modo claro', { exact: true }).waitFor();
+    await inspect('admin-dark-1440');
+    await administrative.context.close();
+    await import('node:fs/promises').then(fs => fs.writeFile(path.join(artifacts,'brand-audit.json'), JSON.stringify(report,null,2)));
+    const failures = report.flatMap(item => item.failures.map(failure => ({ screen: item.label, ...failure })));
+    assert.deepEqual(failures, [], 'Contraste AA en textos visibles sobre superficies planas');
   });
   await check('Worker real muestra avisos con la página cerrada y filtra otras cuentas', async () => {
     const context = await browser.newContext({ permissions: ['notifications'] });

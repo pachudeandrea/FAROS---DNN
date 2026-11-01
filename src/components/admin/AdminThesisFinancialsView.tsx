@@ -71,39 +71,39 @@ export const AdminThesisFinancialsView: React.FC<AdminThesisFinancialsProps> = (
     }).format(amount);
   };
 
-  const cardBg = isDark ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200/90 text-slate-900';
-  const subText = isDark ? 'text-slate-400' : 'text-slate-500';
+  const cardBg = isDark ? 'bg-ink-900 border-ink-800 text-ink-100' : 'bg-paper border-ink-200/90 text-ink-900';
+  const subText = isDark ? 'text-muted' : 'text-muted';
 
   return (
     <div className="space-y-6">
       {/* Top Banner: Real MRR vs Breakeven Target */}
-      <div className="bg-gradient-to-br from-emerald-950 via-emerald-900 to-slate-950 text-white rounded-3xl p-6 sm:p-7 shadow-lg border border-emerald-800/60 relative overflow-hidden">
-        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-52 h-52 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none" />
+      <div className="bg-gradient-to-br from-brand-950 via-brand-900 to-ink-950 text-paper rounded-3xl p-6 sm:p-7 shadow-lg border border-brand-800/60 relative overflow-hidden">
+        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-52 h-52 rounded-full bg-brand-500/10 blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-emerald-800/60">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-brand-800/60">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-black uppercase tracking-wider text-emerald-300 bg-emerald-900/80 px-2 py-0.5 rounded-md border border-emerald-700/60 flex items-center gap-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-brand-300 bg-brand-900/80 px-2 py-0.5 rounded-md border border-brand-700/60 flex items-center gap-1.5">
                 <DollarSign className="w-3.5 h-3.5" />
                 Modelo Financiero de Tesis
               </span>
-              <span className="text-xs text-emerald-200">
+              <span className="text-xs text-brand-200">
                 · Plan Market vs. Partner
               </span>
             </div>
-            <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight mt-1">
+            <h3 className="text-2xl sm:text-3xl font-bold text-paper tracking-tight mt-1">
               Ingresos Mensuales Recurrentes (MRR)
             </h3>
-            <p className="text-xs sm:text-sm text-emerald-200/90 max-w-2xl mt-1">
+            <p className="text-xs sm:text-sm text-brand-200/90 max-w-2xl mt-1">
               Evaluación económica con precios fijados: Retail a $11.500/mes y Brokers a $16.500/mes.
             </p>
           </div>
 
           <div className="text-right shrink-0">
-            <span className="text-3xl sm:text-4xl font-mono font-black text-white block">
+            <span className="text-3xl sm:text-4xl font-mono font-bold text-paper block">
               {formatCurrency(realCurrent.realMrrArs)}
             </span>
-            <span className="text-xs font-semibold text-emerald-300">
+            <span className="text-xs font-semibold text-brand-300">
               MRR actual de usuarios asignados a planes pagos
             </span>
           </div>
@@ -111,32 +111,32 @@ export const AdminThesisFinancialsView: React.FC<AdminThesisFinancialsProps> = (
 
         {/* 3 Quick Highlight Metrics */}
         <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-4 pt-5 text-xs">
-          <div className="p-3.5 rounded-2xl bg-emerald-900/40 border border-emerald-700/50">
-            <span className="text-emerald-300 block font-bold">Clientes Market (Retail)</span>
-            <span className="text-xl font-mono font-black text-white mt-0.5 block">
+          <div className="p-3.5 rounded-2xl bg-brand-900/40 border border-brand-700/50">
+            <span className="text-brand-300 block font-bold">Clientes Market (Retail)</span>
+            <span className="text-xl font-mono font-bold text-paper mt-0.5 block">
               {realCurrent.retailUsersCount} activos
             </span>
-            <span className="text-emerald-200/80 text-[11px]">
+            <span className="text-brand-200/80 text-[11px]">
               {formatCurrency(realCurrent.retailUsersCount * marketPrice)} / mes
             </span>
           </div>
 
-          <div className="p-3.5 rounded-2xl bg-emerald-900/40 border border-emerald-700/50">
-            <span className="text-blue-300 block font-bold">Clientes Partner (Brokers)</span>
-            <span className="text-xl font-mono font-black text-white mt-0.5 block">
+          <div className="p-3.5 rounded-2xl bg-brand-900/40 border border-brand-700/50">
+            <span className="text-info-300 block font-bold">Clientes Partner (Brokers)</span>
+            <span className="text-xl font-mono font-bold text-paper mt-0.5 block">
               {realCurrent.partnerUsersCount} activos
             </span>
-            <span className="text-emerald-200/80 text-[11px]">
+            <span className="text-brand-200/80 text-[11px]">
               {formatCurrency(realCurrent.partnerUsersCount * partnerPrice)} / mes
             </span>
           </div>
 
-          <div className="p-3.5 rounded-2xl bg-emerald-900/40 border border-emerald-700/50">
-            <span className="text-amber-300 block font-bold">Cobertura de Costos Fijos</span>
-            <span className="text-xl font-mono font-black text-white mt-0.5 block">
+          <div className="p-3.5 rounded-2xl bg-brand-900/40 border border-brand-700/50">
+            <span className="text-warning-300 block font-bold">Cobertura de Costos Fijos</span>
+            <span className="text-xl font-mono font-bold text-paper mt-0.5 block">
               {realCurrent.breakevenCoveragePct}%
             </span>
-            <span className="text-emerald-200/80 text-[11px]">
+            <span className="text-brand-200/80 text-[11px]">
               Meta Breakeven: {formatCurrency(totalMonthlyCosts)}
             </span>
           </div>
@@ -145,37 +145,37 @@ export const AdminThesisFinancialsView: React.FC<AdminThesisFinancialsProps> = (
 
       {/* 3 Scenarios Comparison Table (Tesis Business Plan) */}
       <div className={`p-6 sm:p-7 rounded-3xl border shadow-xs space-y-4 ${cardBg}`}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-ink-100 dark:border-ink-800">
           <div>
             <h4 className="font-extrabold text-base tracking-tight flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-emerald-600" />
+              <TrendingUp className="w-4 h-4 text-brand-text" />
               Comparativa de Escenarios de la Tesis
             </h4>
             <p className={`text-xs ${subText}`}>
               Proyección de demanda, mix de clientes y facturación mensual estimada.
             </p>
           </div>
-          <span className="text-xs font-mono font-bold text-slate-500">
+          <span className="text-xs font-mono font-bold text-muted">
             Mix Base: 92% Retail / 8% Brokers
           </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Pesimista */}
-          <div className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700 space-y-3 text-xs">
+          <div className="p-5 rounded-3xl bg-ink-50 dark:bg-ink-800/50 border border-ink-200/80 dark:border-ink-700 space-y-3 text-xs">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-black uppercase text-amber-600 dark:text-amber-400">
+              <span className="text-xs font-bold uppercase text-warning-text dark:text-warning-text">
                 Escenario Pesimista
               </span>
-              <span className="font-mono text-slate-500">475 usuarios</span>
+              <span className="font-mono text-muted">475 usuarios</span>
             </div>
             <div>
-              <span className="text-2xl font-black font-mono block text-slate-900 dark:text-white">
+              <span className="text-2xl font-bold font-mono block text-ink-900 dark:text-paper">
                 {formatCurrency(model.scenarios?.pesimista?.mrrArs || 5587500)}
               </span>
               <span className={subText}>MRR Mensual</span>
             </div>
-            <div className="space-y-1 pt-1 border-t border-slate-200/80 dark:border-slate-700 text-[11px]">
+            <div className="space-y-1 pt-1 border-t border-ink-200/80 dark:border-ink-700 text-[11px]">
               <div className="flex justify-between">
                 <span>Retail (450 u.):</span>
                 <span className="font-mono font-bold">{formatCurrency(450 * marketPrice)}</span>
@@ -188,23 +188,23 @@ export const AdminThesisFinancialsView: React.FC<AdminThesisFinancialsProps> = (
           </div>
 
           {/* Realista / Breakeven */}
-          <div className="p-5 rounded-3xl bg-emerald-50/70 dark:bg-emerald-950/40 border-2 border-emerald-600 space-y-3 text-xs relative shadow-xs">
-            <span className="absolute -top-3 right-4 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full">
+          <div className="p-5 rounded-3xl bg-brand-50/70 dark:bg-brand-950/40 border-2 border-brand-600 space-y-3 text-xs relative shadow-xs">
+            <span className="absolute -top-3 right-4 bg-brand-600 text-paper text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full">
               Breakeven Meta
             </span>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-black uppercase text-emerald-900 dark:text-emerald-300">
+              <span className="text-xs font-bold uppercase text-brand-900 dark:text-brand-300">
                 Escenario Realista (Hito 1)
               </span>
-              <span className="font-mono font-bold text-emerald-800 dark:text-emerald-400">1.000 usuarios</span>
+              <span className="font-mono font-bold text-brand-800 dark:text-brand-text">1.000 usuarios</span>
             </div>
             <div>
-              <span className="text-2xl font-black font-mono block text-emerald-950 dark:text-white">
+              <span className="text-2xl font-bold font-mono block text-brand-950 dark:text-paper">
                 {formatCurrency(model.scenarios?.realista?.mrrArs || 11900000)}
               </span>
-              <span className="text-emerald-700 dark:text-emerald-300 font-bold">MRR de Equilibrio Operativo</span>
+              <span className="text-brand-text dark:text-brand-300 font-bold">MRR de Equilibrio Operativo</span>
             </div>
-            <div className="space-y-1 pt-1 border-t border-emerald-200 dark:border-emerald-800 text-[11px]">
+            <div className="space-y-1 pt-1 border-t border-brand-200 dark:border-brand-800 text-[11px]">
               <div className="flex justify-between">
                 <span>Retail (920 u.):</span>
                 <span className="font-mono font-bold">{formatCurrency(920 * marketPrice)}</span>
@@ -217,20 +217,20 @@ export const AdminThesisFinancialsView: React.FC<AdminThesisFinancialsProps> = (
           </div>
 
           {/* Optimista / Escala */}
-          <div className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700 space-y-3 text-xs">
+          <div className="p-5 rounded-3xl bg-ink-50 dark:bg-ink-800/50 border border-ink-200/80 dark:border-ink-700 space-y-3 text-xs">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-black uppercase text-blue-600 dark:text-blue-400">
+              <span className="text-xs font-bold uppercase text-info-text dark:text-info-text">
                 Escenario Optimista (Escala)
               </span>
-              <span className="font-mono text-slate-500">10.000 usuarios</span>
+              <span className="font-mono text-muted">10.000 usuarios</span>
             </div>
             <div>
-              <span className="text-2xl font-black font-mono block text-slate-900 dark:text-white">
+              <span className="text-2xl font-bold font-mono block text-ink-900 dark:text-paper">
                 {formatCurrency(model.scenarios?.optimista?.mrrArs || 119000000)}
               </span>
               <span className={subText}>MRR Mensual</span>
             </div>
-            <div className="space-y-1 pt-1 border-t border-slate-200/80 dark:border-slate-700 text-[11px]">
+            <div className="space-y-1 pt-1 border-t border-ink-200/80 dark:border-ink-700 text-[11px]">
               <div className="flex justify-between">
                 <span>Retail (9.200 u.):</span>
                 <span className="font-mono font-bold">{formatCurrency(9200 * marketPrice)}</span>
@@ -246,10 +246,10 @@ export const AdminThesisFinancialsView: React.FC<AdminThesisFinancialsProps> = (
 
       {/* Interactive Breakeven Calculator */}
       <div className={`p-6 sm:p-7 rounded-3xl border shadow-xs space-y-6 ${cardBg}`}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-ink-100 dark:border-ink-800">
           <div>
             <h4 className="font-extrabold text-base tracking-tight flex items-center gap-2">
-              <Calculator className="w-4 h-4 text-emerald-600" />
+              <Calculator className="w-4 h-4 text-brand-text" />
               Calculadora Interactiva de Breakeven y Costos Fijos
             </h4>
             <p className={`text-xs ${subText}`}>
@@ -264,14 +264,14 @@ export const AdminThesisFinancialsView: React.FC<AdminThesisFinancialsProps> = (
           <div className="space-y-1.5">
             <label className="font-bold flex items-center justify-between">
               <span>Hosting Cloud & Vercel</span>
-              <span className="font-mono text-slate-400">ARS</span>
+              <span className="font-mono text-muted">ARS</span>
             </label>
             <input
               type="number"
               value={fixedCosts.hosting}
               onChange={(e) => setFixedCosts({ ...fixedCosts, hosting: Number(e.target.value) || 0 })}
               className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
-                isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                isDark ? 'bg-ink-800 border-ink-700 text-paper' : 'bg-ink-50 border-ink-300 text-ink-900'
               }`}
             />
           </div>
@@ -280,14 +280,14 @@ export const AdminThesisFinancialsView: React.FC<AdminThesisFinancialsProps> = (
           <div className="space-y-1.5">
             <label className="font-bold flex items-center justify-between">
               <span>APIs Gemini & Grounding</span>
-              <span className="font-mono text-slate-400">ARS</span>
+              <span className="font-mono text-muted">ARS</span>
             </label>
             <input
               type="number"
               value={fixedCosts.gemini}
               onChange={(e) => setFixedCosts({ ...fixedCosts, gemini: Number(e.target.value) || 0 })}
               className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
-                isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                isDark ? 'bg-ink-800 border-ink-700 text-paper' : 'bg-ink-50 border-ink-300 text-ink-900'
               }`}
             />
           </div>
@@ -296,14 +296,14 @@ export const AdminThesisFinancialsView: React.FC<AdminThesisFinancialsProps> = (
           <div className="space-y-1.5">
             <label className="font-bold flex items-center justify-between">
               <span>Infraestructura TTS Audio</span>
-              <span className="font-mono text-slate-400">ARS</span>
+              <span className="font-mono text-muted">ARS</span>
             </label>
             <input
               type="number"
               value={fixedCosts.tts}
               onChange={(e) => setFixedCosts({ ...fixedCosts, tts: Number(e.target.value) || 0 })}
               className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
-                isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                isDark ? 'bg-ink-800 border-ink-700 text-paper' : 'bg-ink-50 border-ink-300 text-ink-900'
               }`}
             />
           </div>
@@ -312,14 +312,14 @@ export const AdminThesisFinancialsView: React.FC<AdminThesisFinancialsProps> = (
           <div className="space-y-1.5">
             <label className="font-bold flex items-center justify-between">
               <span>Desarrollo & Soporte</span>
-              <span className="font-mono text-slate-400">ARS</span>
+              <span className="font-mono text-muted">ARS</span>
             </label>
             <input
               type="number"
               value={fixedCosts.engineering}
               onChange={(e) => setFixedCosts({ ...fixedCosts, engineering: Number(e.target.value) || 0 })}
               className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
-                isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                isDark ? 'bg-ink-800 border-ink-700 text-paper' : 'bg-ink-50 border-ink-300 text-ink-900'
               }`}
             />
           </div>
@@ -334,7 +334,7 @@ export const AdminThesisFinancialsView: React.FC<AdminThesisFinancialsProps> = (
               value={marketPrice}
               onChange={(e) => setMarketPrice(Number(e.target.value) || 0)}
               className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
-                isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                isDark ? 'bg-ink-800 border-ink-700 text-paper' : 'bg-ink-50 border-ink-300 text-ink-900'
               }`}
             />
           </div>
@@ -346,7 +346,7 @@ export const AdminThesisFinancialsView: React.FC<AdminThesisFinancialsProps> = (
               value={partnerPrice}
               onChange={(e) => setPartnerPrice(Number(e.target.value) || 0)}
               className={`w-full px-3 py-2 rounded-xl border font-mono font-bold focus:outline-none ${
-                isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                isDark ? 'bg-ink-800 border-ink-700 text-paper' : 'bg-ink-50 border-ink-300 text-ink-900'
               }`}
             />
           </div>
@@ -354,7 +354,7 @@ export const AdminThesisFinancialsView: React.FC<AdminThesisFinancialsProps> = (
           <div className="space-y-1.5">
             <label className="font-bold flex justify-between">
               <span>Mix Retail (%)</span>
-              <span className="font-mono text-emerald-600">{retailMixPct}% / {partnerMixPct}%</span>
+              <span className="font-mono text-brand-text">{retailMixPct}% / {partnerMixPct}%</span>
             </label>
             <input
               type="range"
@@ -362,28 +362,28 @@ export const AdminThesisFinancialsView: React.FC<AdminThesisFinancialsProps> = (
               max="98"
               value={retailMixPct}
               onChange={(e) => setRetailMixPct(Number(e.target.value))}
-              className="w-full accent-emerald-600 cursor-pointer"
+              className="w-full accent-brand-600 cursor-pointer"
             />
           </div>
         </div>
 
         {/* Breakeven Result Box */}
-        <div className="p-5 rounded-3xl bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
+        <div className="p-5 rounded-3xl bg-gradient-to-r from-brand-950 via-ink-900 to-brand-900 text-paper flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
           <div className="space-y-1">
-            <span className="text-xs uppercase tracking-wider font-extrabold text-emerald-300">
+            <span className="text-xs uppercase tracking-wider font-extrabold text-brand-300">
               Punto de Equilibrio Calculado
             </span>
-            <h5 className="text-xl sm:text-2xl font-black">
-              Necesitás <span className="font-mono text-emerald-400">{calculatedBreakevenUsers.toLocaleString('es-AR')}</span> usuarios pagos
+            <h5 className="text-xl sm:text-2xl font-bold">
+              Necesitás <span className="font-mono text-brand-text">{calculatedBreakevenUsers.toLocaleString('es-AR')}</span> usuarios pagos
             </h5>
-            <p className="text-xs text-emerald-200/80">
+            <p className="text-xs text-brand-200/80">
               Para cubrir {formatCurrency(totalMonthlyCosts)} mensuales con un ingreso medio por usuario de {formatCurrency(Math.round(weightedAvgRevenuePerUser))}/mes.
             </p>
           </div>
 
           <div className="text-right shrink-0">
-            <span className="text-xs font-semibold text-emerald-300 block">Facturación Meta</span>
-            <span className="text-2xl font-mono font-black text-white">
+            <span className="text-xs font-semibold text-brand-300 block">Facturación Meta</span>
+            <span className="text-2xl font-mono font-bold text-paper">
               {formatCurrency(totalMonthlyCosts)}
             </span>
           </div>

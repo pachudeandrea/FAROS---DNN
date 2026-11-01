@@ -1,7 +1,7 @@
 import { usePendingChanges } from '../hooks/usePendingChanges';
 import { useModalFocus } from '../hooks/useModalFocus';
 import React, { useState, useEffect, useMemo } from 'react';
-import { LighthouseLogo } from './LighthouseLogo';
+import { BrandLogo } from './BrandLogo';
 import { 
   X, 
   ArrowRight, 
@@ -113,16 +113,16 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
 
   // Password strength calculation
   const passwordStrength = useMemo(() => {
-    if (!password) return { label: 'Sin ingresar', score: 0, color: 'bg-slate-200' };
+    if (!password) return { label: 'Sin ingresar', score: 0, color: 'bg-ink-200' };
     let score = 0;
     if (password.length >= 8) score++;
     if (/[A-Z]/.test(password)) score++;
     if (/[0-9]/.test(password)) score++;
     if (/[^A-Za-z0-9]/.test(password)) score++;
 
-    if (score <= 1) return { label: 'Débil', score: 1, color: 'bg-rose-500' };
-    if (score <= 3) return { label: 'Media', score: 2, color: 'bg-amber-500' };
-    return { label: 'Fuerte', score: 3, color: 'bg-emerald-600' };
+    if (score <= 1) return { label: 'Débil', score: 1, color: 'bg-danger-500' };
+    if (score <= 3) return { label: 'Media', score: 2, color: 'bg-warning-500' };
+    return { label: 'Fuerte', score: 3, color: 'bg-brand-600' };
   }, [password]);
 
   // Step validation and transition
@@ -211,33 +211,33 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-ink-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
       <div 
         ref={modalRef}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="signup-title"
-        className="bg-white rounded-3xl max-w-xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-1.5rem)] transition-none animate-in fade-in zoom-in-95 duration-200"
+        className="bg-paper rounded-3xl max-w-xl w-full border border-ink-200 shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-1.5rem)] transition-none animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header with Lighthouse Brand & Stepper */}
-        <div className="shrink-0 px-4 sm:px-8 pt-6 pb-4 border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white">
+        <div className="shrink-0 px-4 sm:px-8 pt-6 pb-4 border-b border-ink-100 bg-gradient-to-b from-ink-50 to-paper">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <LighthouseLogo size="md" />
+              <BrandLogo size="md" variant="full" />
               <div>
-                <span className="font-extrabold text-xs uppercase tracking-wider text-emerald-950 font-sans block">
+                <span className="font-extrabold text-xs uppercase tracking-wider text-brand-950 font-sans block">
                   FAROS · Registro Simple
                 </span>
-                <h3 id="signup-title" className="font-black text-slate-900 text-lg leading-tight">
+                <h3 id="signup-title" className="font-bold text-ink-900 text-lg leading-tight">
                   Crear cuenta personal
                 </h3>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+              className="p-2 text-muted hover:text-muted rounded-full hover:bg-ink-100 transition-colors cursor-pointer"
               aria-label="Cerrar registro"
             >
               <X className="w-5 h-5" />
@@ -252,10 +252,10 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
             ].map(s => (
               <div key={s.num} className="space-y-1">
                 <div className={`h-1.5 rounded-full transition-all duration-300 ${
-                  step >= s.num ? 'bg-emerald-950' : 'bg-slate-200'
+                  step >= s.num ? 'bg-brand-950' : 'bg-ink-200'
                 }`} />
                 <span className={`text-[10px] font-bold block truncate ${
-                  step === s.num ? 'text-emerald-950' : 'text-slate-400'
+                  step === s.num ? 'text-brand-950' : 'text-muted'
                 }`}>
                   {s.num}. {s.label}
                 </span>
@@ -267,8 +267,8 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
         {/* Modal Scrollable Body */}
         <div className="min-h-0 p-4 sm:p-8 overflow-y-auto space-y-6 flex-1">
           {stepError && (
-            <div role="alert" className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex items-start gap-2.5 animate-in fade-in duration-150">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <div role="alert" className="p-3.5 rounded-2xl bg-danger-50 border border-danger-200 text-danger-900 text-xs flex items-start gap-2.5 animate-in fade-in duration-150">
+              <AlertCircle className="w-4 h-4 text-danger-600 shrink-0 mt-0.5" />
               <div className="flex-1 font-semibold leading-relaxed">{stepError}</div>
             </div>
           )}
@@ -279,11 +279,11 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
               {/* Email Form */}
               <div className="space-y-4">
                 <div>
-                  <label htmlFor="signup-name" className="block text-xs font-bold text-slate-700 mb-1.5">
+                  <label htmlFor="signup-name" className="block text-xs font-bold text-muted mb-1.5">
                     Nombre
                   </label>
                   <div className="relative">
-                    <User className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
+                    <User className="w-4 h-4 absolute left-3.5 top-3.5 text-muted" />
                     <input id="signup-name"
                       type="text"
                       value={name}
@@ -293,18 +293,18 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
                       autoCorrect="off"
                       autoComplete="name"
                       spellCheck={false}
-                      className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-800 bg-slate-50/50"
+                      className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl border border-ink-300 focus:outline-none focus:border-brand-800 bg-ink-50/50"
                       required
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label htmlFor="signup-email" className="block text-xs font-bold text-slate-700 mb-1.5">
+                  <label htmlFor="signup-email" className="block text-xs font-bold text-muted mb-1.5">
                     Correo electrónico
                   </label>
                   <div className="relative">
-                    <Mail className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
+                    <Mail className="w-4 h-4 absolute left-3.5 top-3.5 text-muted" />
                     <input id="signup-email"
                       type="email"
                       value={email}
@@ -315,18 +315,18 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
                       autoComplete="email"
                       inputMode="email"
                       spellCheck={false}
-                      className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-800 bg-slate-50/50"
+                      className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl border border-ink-300 focus:outline-none focus:border-brand-800 bg-ink-50/50"
                       required
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label htmlFor="signup-password" className="block text-xs font-bold text-slate-700 mb-1.5">
+                  <label htmlFor="signup-password" className="block text-xs font-bold text-muted mb-1.5">
                     Contraseña
                   </label>
                   <div className="relative">
-                    <Lock className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
+                    <Lock className="w-4 h-4 absolute left-3.5 top-3.5 text-muted" />
                     <input id="signup-password"
                       type={showPassword ? 'text' : 'password'}
                       value={password}
@@ -335,14 +335,14 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
                       autoCapitalize="none"
                       autoCorrect="off"
                       autoComplete="new-password"
-                      className="w-full pl-10 pr-10 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-800 bg-slate-50/50"
+                      className="w-full pl-10 pr-10 py-2.5 text-xs rounded-xl border border-ink-300 focus:outline-none focus:border-brand-800 bg-ink-50/50"
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                      className="absolute right-0 top-0 text-slate-600 flex items-center justify-center"
+                      className="absolute right-0 top-0 text-muted flex items-center justify-center"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -352,24 +352,24 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
                   {password && (
                     <div className="mt-2 space-y-1">
                       <div className="flex items-center justify-between text-[10px]">
-                        <span className="text-slate-500">Fortaleza:</span>
-                        <span className="font-bold text-slate-700">{passwordStrength.label}</span>
+                        <span className="text-muted">Fortaleza:</span>
+                        <span className="font-bold text-muted">{passwordStrength.label}</span>
                       </div>
-                      <div className="h-1 bg-slate-100 rounded-full overflow-hidden flex gap-1">
-                        <div className={`h-full flex-1 ${passwordStrength.score >= 1 ? passwordStrength.color : 'bg-slate-200'}`} />
-                        <div className={`h-full flex-1 ${passwordStrength.score >= 2 ? passwordStrength.color : 'bg-slate-200'}`} />
-                        <div className={`h-full flex-1 ${passwordStrength.score >= 3 ? passwordStrength.color : 'bg-slate-200'}`} />
+                      <div className="h-1 bg-ink-100 rounded-full overflow-hidden flex gap-1">
+                        <div className={`h-full flex-1 ${passwordStrength.score >= 1 ? passwordStrength.color : 'bg-ink-200'}`} />
+                        <div className={`h-full flex-1 ${passwordStrength.score >= 2 ? passwordStrength.color : 'bg-ink-200'}`} />
+                        <div className={`h-full flex-1 ${passwordStrength.score >= 3 ? passwordStrength.color : 'bg-ink-200'}`} />
                       </div>
                     </div>
                   )}
                 </div>
 
                 <div>
-                  <label htmlFor="signup-confirm" className="block text-xs font-bold text-slate-700 mb-1.5">
+                  <label htmlFor="signup-confirm" className="block text-xs font-bold text-muted mb-1.5">
                     Confirmar contraseña
                   </label>
                   <div className="relative">
-                    <Lock className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
+                    <Lock className="w-4 h-4 absolute left-3.5 top-3.5 text-muted" />
                     <input id="signup-confirm"
                       type={showPassword ? 'text' : 'password'}
                       value={confirmPassword}
@@ -378,7 +378,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
                       autoCapitalize="none"
                       autoCorrect="off"
                       autoComplete="new-password"
-                      className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-800 bg-slate-50/50"
+                      className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl border border-ink-300 focus:outline-none focus:border-brand-800 bg-ink-50/50"
                       required
                     />
                   </div>
@@ -392,32 +392,32 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
           {/* ================= STEP 2: DATOS Y TÉRMINOS ================= */}
           {step === 2 && (
             <div className="space-y-4">
-              <p className="text-base text-slate-700">Tu cuenta está a un paso. Después podés elegir tus activos y ajustar tu perfil desde Mi cartera.</p>
-              <label htmlFor="signup-birth-date" className="block text-sm font-semibold text-slate-700">Fecha de nacimiento
-                <input id="signup-birth-date" type="date" autoComplete="bday" value={birthDate} onChange={event => setBirthDate(event.target.value)} max={new Date().toISOString().slice(0,10)} required className="block w-full mt-2 px-3 py-3 rounded-xl border border-slate-300 bg-white" />
-                <span className="block mt-1 text-sm font-normal text-slate-600">Para confirmar que tenés al menos 18 años.</span>
+              <p className="text-base text-muted">Tu cuenta está a un paso. Después podés elegir tus activos y ajustar tu perfil desde Mi cartera.</p>
+              <label htmlFor="signup-birth-date" className="block text-sm font-semibold text-muted">Fecha de nacimiento
+                <input id="signup-birth-date" type="date" autoComplete="bday" value={birthDate} onChange={event => setBirthDate(event.target.value)} max={new Date().toISOString().slice(0,10)} required className="block w-full mt-2 px-3 py-3 rounded-xl border border-ink-300 bg-paper" />
+                <span className="block mt-1 text-sm font-normal text-muted">Para confirmar que tenés al menos 18 años.</span>
               </label>
               <div className="space-y-3">
-                <label className="flex items-start gap-3 p-3.5 rounded-2xl border border-slate-200 hover:border-emerald-300 bg-white cursor-pointer transition-colors">
+                <label className="flex items-start gap-3 p-3.5 rounded-2xl border border-ink-200 hover:border-brand-300 bg-paper cursor-pointer transition-colors">
                   <input
                     type="checkbox"
                     checked={termsAccepted}
                     onChange={(e) => setTermsAccepted(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 rounded text-emerald-800 focus:ring-emerald-700 cursor-pointer"
+                    className="mt-0.5 w-4 h-4 rounded text-brand-800 focus:ring-brand-700 cursor-pointer"
                   />
-                  <span className="text-xs text-slate-700 leading-snug">
-                    Acepto los <a href="#" onClick={(e) => e.preventDefault()} className="text-emerald-900 font-bold underline">Términos del Servicio</a> y la <a href="#" onClick={(e) => e.preventDefault()} className="text-emerald-900 font-bold underline">Política de Privacidad</a> de FAROS. <span className="text-rose-500">*</span>
+                  <span className="text-xs text-muted leading-snug">
+                    Acepto los <a href="#" onClick={(e) => e.preventDefault()} className="text-brand-900 font-bold underline">Términos del Servicio</a> y la <a href="#" onClick={(e) => e.preventDefault()} className="text-brand-900 font-bold underline">Política de Privacidad</a> de FAROS. <span className="text-danger-500">*</span>
                   </span>
                 </label>
 
-                <label className="flex items-start gap-3 p-3.5 rounded-2xl border border-slate-200 hover:border-emerald-300 bg-white cursor-pointer transition-colors">
+                <label className="flex items-start gap-3 p-3.5 rounded-2xl border border-ink-200 hover:border-brand-300 bg-paper cursor-pointer transition-colors">
                   <input
                     type="checkbox"
                     checked={notificationsOptIn}
                     onChange={(e) => setNotificationsOptIn(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 rounded text-emerald-800 focus:ring-emerald-700 cursor-pointer"
+                    className="mt-0.5 w-4 h-4 rounded text-brand-800 focus:ring-brand-700 cursor-pointer"
                   />
-                  <span className="text-xs text-slate-600 leading-snug">
+                  <span className="text-xs text-muted leading-snug">
                     Me interesa recibir alertas sobre mi cartera. Podré activarlas al ingresar y elegir si permito las notificaciones.
                   </span>
                 </label>
@@ -429,7 +429,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
         </div>
 
         {/* Modal Footer Controls */}
-        <div className="shrink-0 px-4 sm:px-8 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-3">
+        <div className="shrink-0 px-4 sm:px-8 py-4 border-t border-ink-100 bg-ink-50 flex items-center justify-between gap-3">
           {step > 1 ? (
             <button
               type="button"
@@ -438,7 +438,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
                 setStep(step - 1);
               }}
               disabled={isLoading}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-slate-700 hover:text-slate-900 hover:bg-slate-200/60 rounded-xl transition-all cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-muted hover:text-ink-900 hover:bg-ink-200/60 rounded-xl transition-all cursor-pointer disabled:opacity-50"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Anterior</span>
@@ -447,7 +447,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
             <button
               type="button"
               onClick={onSwitchToLogin}
-              className="text-xs font-bold text-emerald-900 hover:text-emerald-950 cursor-pointer"
+              className="text-xs font-bold text-brand-900 hover:text-brand-950 cursor-pointer"
             >
               ¿Ya tenés cuenta? Iniciar sesión
             </button>
@@ -457,7 +457,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
             <button
               type="button"
               onClick={handleNextStep}
-              className="inline-flex items-center gap-1.5 px-6 py-2.5 bg-emerald-950 hover:bg-emerald-900 text-white text-xs font-extrabold rounded-xl transition-all shadow-xs cursor-pointer ml-auto"
+              className="inline-flex items-center gap-1.5 px-6 py-2.5 bg-brand-950 hover:bg-brand-900 text-paper text-xs font-extrabold rounded-xl transition-all shadow-xs cursor-pointer ml-auto"
             >
               <span>Continuar</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -467,16 +467,16 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
               type="button"
               onClick={handleFinalSubmit}
               disabled={isLoading}
-              className="inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-950 hover:bg-emerald-900 text-white text-xs font-extrabold rounded-xl transition-all shadow-xs cursor-pointer disabled:opacity-50 ml-auto"
+              className="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-950 hover:bg-brand-900 text-paper text-xs font-extrabold rounded-xl transition-all shadow-xs cursor-pointer disabled:opacity-50 ml-auto"
             >
               {isLoading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin text-emerald-300" />
+                  <Loader2 className="w-4 h-4 animate-spin text-brand-300" />
                   <span>Creando cuenta...</span>
                 </>
               ) : (
                 <>
-                  <Check className="w-4 h-4 text-emerald-300 stroke-[3]" />
+                  <Check className="w-4 h-4 text-brand-300 stroke-[3]" />
                   <span>Crear mi cuenta en FAROS</span>
                 </>
               )}

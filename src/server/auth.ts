@@ -584,36 +584,38 @@ function renderOAuthCallbackHtml(payload: {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FAROS Autenticación</title>
+  <title>Faros Autenticación</title>
+  <link rel="icon" href="/favicon.svg" />
+  <link rel="stylesheet" href="/brand/tokens.css" />
   <style>
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: var(--font-body);
       display: flex;
       align-items: center;
       justify-content: center;
       height: 100vh;
       margin: 0;
-      background-color: ${isError ? '#1c1917' : '#022c22'};
-      color: #ffffff;
+      background-color: var(--brand-primary);
+      color: var(--brand-paper);
       text-align: center;
       padding: 16px;
       box-sizing: border-box;
     }
     .box {
-      background: rgba(255, 255, 255, 0.08);
+      background: color-mix(in srgb, var(--brand-paper) 8%, transparent);
       padding: 32px 24px;
-      border-radius: 24px;
-      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: var(--radius-dialog);
+      border: 1px solid color-mix(in srgb, var(--brand-paper) 15%, transparent);
       max-width: 440px;
       width: 100%;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+      box-shadow: var(--shadow-overlay);
     }
-    h2 { font-size: 18px; margin: 12px 0 6px; font-weight: 800; }
-    p { font-size: 13px; color: ${isError ? '#fecdd3' : '#a7f3d0'}; line-height: 1.5; margin: 8px 0 16px; }
+    h2 { font-size: var(--type-lg); margin: 12px 0 6px; font-weight: 700; }
+    p { font-size: var(--type-sm); color: ${isError ? 'var(--brand-danger-soft)' : 'var(--brand-mint)'}; line-height: 1.5; margin: 8px 0 16px; }
     .spinner {
-      border: 3px solid rgba(255, 255, 255, 0.2);
-      border-top: 3px solid #34d399;
-      border-radius: 50%;
+      border: 3px solid color-mix(in srgb, var(--brand-paper) 20%, transparent);
+      border-top: 3px solid var(--brand-accent);
+      border-radius: var(--radius-pill);
       width: 28px;
       height: 28px;
       animation: spin 1s linear infinite;
@@ -622,36 +624,37 @@ function renderOAuthCallbackHtml(payload: {
     .error-icon {
       width: 40px;
       height: 40px;
-      border-radius: 50%;
-      background: rgba(244, 63, 94, 0.2);
-      border: 2px solid #f43f5e;
-      color: #f43f5e;
+      border-radius: var(--radius-pill);
+      background: var(--brand-danger-soft);
+      border: 2px solid var(--brand-danger);
+      color: var(--brand-danger);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 20px;
+      font-size: var(--type-xl);
       font-weight: bold;
       margin: 0 auto 12px;
     }
     .btn {
       display: inline-block;
       padding: 10px 20px;
-      background: #059669;
-      color: white;
+      background: var(--brand-accent);
+      color: var(--brand-primary);
       border: none;
-      border-radius: 12px;
-      font-size: 13px;
+      border-radius: var(--radius-control);
+      font-size: var(--type-sm);
       font-weight: 700;
       cursor: pointer;
       text-decoration: none;
-      transition: background 0.2s;
+      transition: background var(--motion-standard);
     }
-    .btn:hover { background: #047857; }
+    .btn:hover { background: var(--brand-mint); }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
   <div class="box">
+    <img src="/brand/faros-logo-dark.svg" alt="Faros" width="100" height="130" style="object-fit:contain" />
     ${isError ? `
       <div class="error-icon">!</div>
       <h2>Error de autenticación</h2>

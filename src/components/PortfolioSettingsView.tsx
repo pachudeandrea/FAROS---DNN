@@ -192,18 +192,18 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
       {/* Title & Onboarding Help Trigger */}
       <div 
         data-tour="portfolio-title"
-        className="border-b border-slate-200 pb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+        className="border-b border-ink-200 pb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
       >
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-black uppercase tracking-wider text-emerald-950 bg-emerald-100/70 border border-emerald-300/80 px-2 py-0.5 rounded-md">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-brand-950 bg-brand-100/70 border border-brand-300/80 px-2 py-0.5 rounded-md">
               Configuración de Cartera
             </span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">
+          <h2 className="text-2xl sm:text-3xl font-bold text-ink-900 tracking-tight mt-1">
             Mi Cartera
           </h2>
-          <p className="text-xs sm:text-sm text-slate-600 mt-1">
+          <p className="text-xs sm:text-sm text-muted mt-1">
             Este es tu espacio personal de inversión. Acá podés agregar los activos que querés monitorear y configurar qué información te interesa recibir.
           </p>
         </div>
@@ -212,33 +212,33 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
           <button
             type="button"
             onClick={onStartTour}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-emerald-50 text-emerald-950 border border-slate-200 hover:border-emerald-300 text-xs font-bold transition-all shadow-2xs shrink-0 cursor-pointer self-start sm:self-center"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-paper hover:bg-brand-50 text-brand-950 border border-ink-200 hover:border-brand-300 text-xs font-bold transition-all shadow-2xs shrink-0 cursor-pointer self-start sm:self-center"
             title="Iniciar o reiniciar la guía interactiva de FAROS"
           >
-            <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
+            <Sparkles className="w-3.5 h-3.5 text-brand-text" />
             <span>Ver tutorial interactivo</span>
           </button>
         )}
       </div>
 
       <nav aria-label="Secciones de Mi cartera" className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {([{ id: 'assets', label: 'Activos y carteras', icon: Wallet }, { id: 'preferences', label: 'Preferencias', icon: SlidersHorizontal }, { id: 'alerts', label: 'Alertas', icon: Bell }, { id: 'account', label: 'Cuenta y privacidad', icon: Lock }] as const).map(item => <button key={item.id} aria-current={section === item.id ? 'page' : undefined} onClick={() => setSection(item.id)} className={`flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-semibold text-left ${section === item.id ? 'bg-emerald-950 text-white' : 'bg-white text-slate-700 border border-slate-200'}`}><item.icon className="w-4 h-4 shrink-0" />{item.label}</button>)}
+        {([{ id: 'assets', label: 'Activos y carteras', icon: Wallet }, { id: 'preferences', label: 'Preferencias', icon: SlidersHorizontal }, { id: 'alerts', label: 'Alertas', icon: Bell }, { id: 'account', label: 'Cuenta y privacidad', icon: Lock }] as const).map(item => <button key={item.id} aria-current={section === item.id ? 'page' : undefined} onClick={() => setSection(item.id)} className={`flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-semibold text-left ${section === item.id ? 'bg-brand-950 text-paper' : 'bg-paper text-muted border border-ink-200'}`}><item.icon className="w-4 h-4 shrink-0" />{item.label}</button>)}
       </nav>
       <div hidden={section !== 'assets'} className="space-y-4">
-      <p className="text-base text-slate-700">{portfolio.assetIds.length ? 'Tu cartera está lista para personalizar las noticias.' : 'Buscá tu primer activo, elegí LONG o SHORT y agregalo a tu cartera.'}</p>
-      {portfolio.assetIds.length > 0 && onViewNews && <button onClick={onViewNews} className="px-4 py-3 bg-emerald-950 text-white rounded-xl font-semibold">Ver noticias de mi cartera</button>}
+      <p className="text-base text-muted">{portfolio.assetIds.length ? 'Tu cartera está lista para personalizar las noticias.' : 'Buscá tu primer activo, elegí LONG o SHORT y agregalo a tu cartera.'}</p>
+      {portfolio.assetIds.length > 0 && onViewNews && <button onClick={onViewNews} className="px-4 py-3 bg-brand-950 text-paper rounded-xl font-semibold">Ver noticias de mi cartera</button>}
       {/* BLOQUE 1: CARTERAS Y ACTIVOS */}
-      <section className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_2px_16px_rgba(0,0,0,0.04)] p-6 sm:p-8 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+      <section className="bg-paper rounded-3xl border border-ink-200/90 shadow-brand-soft p-6 sm:p-8 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-ink-100">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-900 flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-2xl bg-brand-100 text-brand-900 flex items-center justify-center shrink-0">
               <Wallet className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-[11px] font-black uppercase tracking-wider text-emerald-950">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-brand-950">
                 Cartera Activa
               </span>
-              <h3 className="text-xl font-black text-slate-900">
+              <h3 className="text-xl font-bold text-ink-900">
                 {portfolio.name}
               </h3>
             </div>
@@ -246,16 +246,16 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
 
           <button
             onClick={onOpenCreateNew}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-slate-100 hover:bg-emerald-50 text-emerald-950 text-xs font-bold transition-colors border border-slate-200/80 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-ink-100 hover:bg-brand-50 text-brand-950 text-xs font-bold transition-colors border border-ink-200/80 cursor-pointer"
           >
-            <Plus className="w-4 h-4 text-emerald-800" />
+            <Plus className="w-4 h-4 text-brand-800" />
             <span>Crear nueva cartera</span>
           </button>
         </div>
 
         {/* Carteras disponibles (Step 5 in tour) */}
         <div data-tour="portfolio-cards" className="space-y-2">
-          <label className="block text-xs font-bold text-slate-700">
+          <label className="block text-xs font-bold text-muted">
             Tus carteras de inversión ({portfolios.length}):
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -269,26 +269,26 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                   onClick={() => onSelectPortfolio(p)}
                   className={`text-left p-4 rounded-2xl border transition-all cursor-pointer ${
                     isSelected
-                      ? 'border-emerald-800 bg-emerald-50/70 shadow-sm ring-1 ring-emerald-800'
-                      : 'border-slate-200/90 hover:border-slate-300 bg-white hover:bg-slate-50'
+                      ? 'border-brand-800 bg-brand-50/70 shadow-sm ring-1 ring-brand-800'
+                      : 'border-ink-200/90 hover:border-ink-300 bg-paper hover:bg-ink-50'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-extrabold text-sm text-slate-900 truncate">
+                    <span className="font-extrabold text-sm text-ink-900 truncate">
                       {p.name}
                     </span>
                     {isSelected ? (
-                      <div className="w-5 h-5 rounded-full bg-emerald-800 text-white flex items-center justify-center shrink-0">
+                      <div className="w-5 h-5 rounded-full bg-brand-800 text-paper flex items-center justify-center shrink-0">
                         <Check className="w-3 h-3 stroke-[3]" />
                       </div>
                     ) : (
-                      <span className="w-2 h-2 rounded-full bg-slate-300 shrink-0" />
+                      <span className="w-2 h-2 rounded-full bg-ink-300 shrink-0" />
                     )}
                   </div>
-                  <p className="text-xs text-slate-600 font-medium">
+                  <p className="text-xs text-muted font-medium">
                     {p.assetIds.length} activos ({pLong} Long · {pShort} Short)
                   </p>
-                  <span className="text-[11px] text-emerald-800 font-semibold mt-1 block">
+                  <span className="text-[11px] text-brand-800 font-semibold mt-1 block">
                     Perfil: {p.profile === 'dinamico' ? 'Dinámico' : p.profile === 'conservador' ? 'Conservador' : 'Moderado'}
                   </span>
                 </button>
@@ -300,30 +300,30 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
         {/* Asset Search to Add (Step 2 in tour) */}
         <div data-tour="portfolio-search" className="space-y-3 pt-2">
           <div>
-            <label className="block text-xs font-bold text-slate-900 mb-0.5">
+            <label className="block text-xs font-bold text-ink-900 mb-0.5">
               Buscar e incorporar activos a tu cartera:
             </label>
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-muted">
               Buscá por ticker o nombre (ej: AL30, GD30, YPFD, GGAL, AAPL, MEP). Podés agregar todos los que desees.
             </p>
           </div>
 
           <div className="relative">
-            <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-muted" />
             <input
               type="text"
               value={assetSearch}
               onChange={(e) => setAssetSearch(e.target.value)}
               placeholder="Escribí el símbolo o nombre del activo..."
-              className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-emerald-800 bg-slate-50/50"
+              className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl border border-ink-300 focus:outline-none focus:border-brand-800 bg-ink-50/50"
             />
           </div>
 
           {/* Quick results dropdown if typing */}
           {assetSearch.trim().length > 0 && !selectedCandidate && (
-            <div className="p-2 rounded-2xl border border-slate-200 bg-white shadow-lg max-h-52 overflow-y-auto space-y-1">
+            <div className="p-2 rounded-2xl border border-ink-200 bg-paper shadow-lg max-h-52 overflow-y-auto space-y-1">
               {unownedAssets.length === 0 ? (
-                <p className="text-xs text-slate-400 p-3 text-center">
+                <p className="text-xs text-muted p-3 text-center">
                   No se encontraron activos disponibles o ya están en tu cartera.
                 </p>
               ) : (
@@ -334,18 +334,18 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                       setSelectedCandidate(a);
                       setPendingPosition('long');
                     }}
-                    className="p-2.5 rounded-xl hover:bg-emerald-50/60 flex items-center justify-between text-xs border border-transparent hover:border-emerald-200 transition-colors cursor-pointer group"
+                    className="p-2.5 rounded-xl hover:bg-brand-50/60 flex items-center justify-between text-xs border border-transparent hover:border-brand-200 transition-colors cursor-pointer group"
                   >
                     <div className="flex items-center gap-2">
-                      <span className="w-7 h-7 rounded-lg bg-emerald-950 text-white font-mono font-bold text-xs flex items-center justify-center">
+                      <span className="w-7 h-7 rounded-lg bg-brand-950 text-paper font-mono font-bold text-xs flex items-center justify-center">
                         {a.symbol.slice(0, 2)}
                       </span>
                       <div>
-                        <span className="font-mono font-bold text-slate-900 mr-2 group-hover:text-emerald-950">{a.symbol}</span>
-                        <span className="text-slate-600 text-[11px]">{a.name}</span>
+                        <span className="font-mono font-bold text-ink-900 mr-2 group-hover:text-brand-950">{a.symbol}</span>
+                        <span className="text-muted text-[11px]">{a.name}</span>
                       </div>
                     </div>
-                    <span className="text-xs font-bold text-emerald-900 bg-emerald-100/70 px-2.5 py-1 rounded-lg">
+                    <span className="text-xs font-bold text-brand-900 bg-brand-100/70 px-2.5 py-1 rounded-lg">
                       Seleccionar
                     </span>
                   </div>
@@ -358,18 +358,18 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
           {selectedCandidate && (
             <div 
               data-tour="portfolio-long-short-demo"
-              className="p-4 rounded-2xl bg-gradient-to-br from-slate-50 to-emerald-50/40 border-2 border-emerald-600/70 shadow-sm space-y-3.5 animate-in fade-in duration-150"
+              className="p-4 rounded-2xl bg-gradient-to-br from-ink-50 to-brand-50/40 border-2 border-brand-600/70 shadow-sm space-y-3.5 animate-in fade-in duration-150"
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-950 block">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-brand-950 block">
                     Ticker seleccionado
                   </span>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className="font-mono font-black text-base text-slate-900">
+                    <span className="font-mono font-bold text-base text-ink-900">
                       {selectedCandidate.symbol}
                     </span>
-                    <span className="text-xs text-slate-600 font-medium">
+                    <span className="text-xs text-muted font-medium">
                       · {selectedCandidate.name}
                     </span>
                   </div>
@@ -378,7 +378,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setSelectedCandidate(null)}
-                  className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-white transition-colors"
+                  className="p-1.5 text-muted hover:text-muted rounded-lg hover:bg-paper transition-colors"
                   title="Cancelar selección"
                 >
                   <X className="w-4 h-4" />
@@ -387,7 +387,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
 
               {/* Selector LONG / SHORT */}
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1.5">
+                <label className="block text-xs font-bold text-ink-800 mb-1.5">
                   Tipo de posición para {selectedCandidate.symbol}:
                 </label>
                 <div className="grid grid-cols-2 gap-2.5">
@@ -396,14 +396,14 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                     onClick={() => setPendingPosition('long')}
                     className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-between cursor-pointer transition-all ${
                       pendingPosition === 'long'
-                        ? 'bg-blue-600 text-white border-blue-700 shadow-xs ring-2 ring-blue-500/30'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                        ? 'bg-info-600 text-paper border-info-700 shadow-xs ring-2 ring-info-500/30'
+                        : 'bg-paper text-muted border-ink-200 hover:bg-ink-50'
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       <ArrowUpRight className="w-4 h-4" />
                       <div className="text-left">
-                        <span className="block font-black">LONG</span>
+                        <span className="block font-bold">LONG</span>
                         <span className="text-[10px] font-normal opacity-90 block">Comprado (suba)</span>
                       </div>
                     </div>
@@ -415,14 +415,14 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                     onClick={() => setPendingPosition('short')}
                     className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-between cursor-pointer transition-all ${
                       pendingPosition === 'short'
-                        ? 'bg-amber-400 text-amber-950 border-amber-500 shadow-xs ring-2 ring-amber-500/30'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                        ? 'bg-warning-400 text-warning-text border-warning-500 shadow-xs ring-2 ring-warning-500/30'
+                        : 'bg-paper text-muted border-ink-200 hover:bg-ink-50'
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       <ArrowDownRight className="w-4 h-4" />
                       <div className="text-left">
-                        <span className="block font-black">SHORT</span>
+                        <span className="block font-bold">SHORT</span>
                         <span className="text-[10px] font-normal opacity-90 block">Vendido (baja)</span>
                       </div>
                     </div>
@@ -430,8 +430,8 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                   </button>
                 </div>
 
-                <div className="p-2.5 bg-white/80 rounded-xl border border-slate-200/80 text-[11px] text-slate-600 mt-2 flex items-start gap-2">
-                  <Info className="w-3.5 h-3.5 text-emerald-800 shrink-0 mt-0.5" />
+                <div className="p-2.5 bg-paper/80 rounded-xl border border-ink-200/80 text-[11px] text-muted mt-2 flex items-start gap-2">
+                  <Info className="w-3.5 h-3.5 text-brand-800 shrink-0 mt-0.5" />
                   <span>
                     {pendingPosition === 'long'
                       ? 'Posición LONG: Te beneficiás de una suba en la cotización. Las noticias alcistas se interpretarán como favorables para tu cartera.'
@@ -445,7 +445,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => handleConfirmAddAsset(selectedCandidate.id, pendingPosition)}
-                  className="flex-1 py-2.5 px-4 bg-emerald-950 hover:bg-emerald-900 text-white text-xs font-extrabold rounded-xl transition-all shadow-xs cursor-pointer flex items-center justify-center gap-2"
+                  className="flex-1 py-2.5 px-4 bg-brand-950 hover:bg-brand-900 text-paper text-xs font-extrabold rounded-xl transition-all shadow-xs cursor-pointer flex items-center justify-center gap-2"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Agregar a mi cartera ({pendingPosition.toUpperCase()})</span>
@@ -453,7 +453,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setSelectedCandidate(null)}
-                  className="py-2.5 px-4 bg-white hover:bg-slate-100 text-slate-600 text-xs font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  className="py-2.5 px-4 bg-paper hover:bg-ink-100 text-muted text-xs font-semibold rounded-xl border border-ink-200 transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -465,28 +465,28 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
         {/* Step 4: Administrar los activos incorporados */}
         <div data-tour="portfolio-assets-list" className="space-y-3 pt-2">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <span className="text-xs font-bold text-slate-700 block">
-              Activos bajo monitoreo: <span className="text-emerald-950 font-black">{portfolio.assetIds.length}</span> ({longCount} Long · {shortCount} Short)
+            <span className="text-xs font-bold text-muted block">
+              Activos bajo monitoreo: <span className="text-brand-950 font-bold">{portfolio.assetIds.length}</span> ({longCount} Long · {shortCount} Short)
             </span>
-            <div className="text-[10px] text-slate-500 flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
-                <span className="w-2 h-2 rounded-full bg-blue-600" />
+            <div className="text-[10px] text-muted flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 font-bold text-info-text bg-info-50 px-2 py-0.5 rounded-md border border-info-200">
+                <span className="w-2 h-2 rounded-full bg-info-600" />
                 LONG = Azul
               </span>
-              <span className="inline-flex items-center gap-1 font-bold text-amber-950 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-300">
-                <span className="w-2 h-2 rounded-full bg-amber-500" />
+              <span className="inline-flex items-center gap-1 font-bold text-warning-text bg-warning-50 px-2 py-0.5 rounded-md border border-warning-300">
+                <span className="w-2 h-2 rounded-full bg-warning-500" />
                 SHORT = Amarillo
               </span>
             </div>
           </div>
 
           {portfolio.assetIds.length === 0 ? (
-            <div className="p-6 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 text-center space-y-2">
-              <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+            <div className="p-6 rounded-2xl border-2 border-dashed border-ink-200 bg-ink-50/50 text-center space-y-2">
+              <div className="w-10 h-10 rounded-full bg-ink-100 text-muted flex items-center justify-center mx-auto">
                 <Wallet className="w-5 h-5" />
               </div>
-              <h4 className="font-bold text-slate-800 text-sm">Tu cartera está vacía</h4>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+              <h4 className="font-bold text-ink-800 text-sm">Tu cartera está vacía</h4>
+              <p className="text-xs text-muted max-w-sm mx-auto leading-relaxed">
                 Utilizá el buscador superior para agregar tus instrumentos (acciones, bonos o CEDEARs) y definir si operás en LONG o SHORT.
               </p>
             </div>
@@ -502,14 +502,14 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                     key={assetId}
                     className={`inline-flex max-w-full min-w-0 items-center gap-2 pl-3 pr-2 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
                       isLong
-                        ? 'bg-blue-50/80 border-blue-300 text-blue-950 shadow-2xs'
-                        : 'bg-amber-50/90 border-amber-300 text-amber-950 shadow-2xs'
+                        ? 'bg-info-50/80 border-info-300 text-info-text shadow-2xs'
+                        : 'bg-warning-50/90 border-warning-300 text-warning-text shadow-2xs'
                     }`}
                   >
                     <span className="font-mono font-bold">
                       {asset?.symbol || assetId}
                     </span>
-                    <span className={`text-sm min-w-0 truncate max-w-[110px] ${isLong ? 'text-blue-800/80' : 'text-amber-900/80'}`}>
+                    <span className={`text-sm min-w-0 truncate max-w-[110px] ${isLong ? 'text-info-text/80' : 'text-warning-text/80'}`}>
                       {asset?.name || ''}
                     </span>
 
@@ -520,8 +520,8 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                       aria-label={`${assetId}: posición ${position.toUpperCase()}, cambiar a ${isLong ? 'SHORT' : 'LONG'}`}
                       className={`shrink-0 font-mono text-xs font-bold px-1.5 py-0.5 rounded uppercase tracking-wider cursor-pointer transition-opacity hover:opacity-85 ${
                         isLong
-                          ? 'bg-blue-600 text-white shadow-2xs'
-                          : 'bg-amber-400 text-amber-950 border border-amber-500/60 shadow-2xs'
+                          ? 'bg-info-600 text-paper shadow-2xs'
+                          : 'bg-warning-400 text-warning-text border border-warning-500/60 shadow-2xs'
                       }`}
                       title={`Posición actual: ${position.toUpperCase()}. Hacé clic para cambiar a ${isLong ? 'SHORT' : 'LONG'}`}
                     >
@@ -532,7 +532,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                       type="button"
                       onClick={() => handleRemoveAsset(assetId)}
                       className={`shrink-0 flex items-center justify-center p-0.5 rounded transition-colors ml-0.5 cursor-pointer ${
-                        isLong ? 'hover:bg-blue-200 text-blue-400 hover:text-blue-800' : 'hover:bg-amber-200 text-amber-600 hover:text-amber-950'
+                        isLong ? 'hover:bg-info-200 text-info-text hover:text-info-text' : 'hover:bg-warning-200 text-warning-text hover:text-warning-text'
                       }`}
                       title={`Quitar ${assetId} de la cartera`}
                       aria-label={`Quitar ${assetId}`}
@@ -552,16 +552,16 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
       {/* BLOQUE 2: MI PERFIL (Step 6 in tour) */}
       <section 
         data-tour="portfolio-profile"
-        className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 sm:p-7 space-y-4"
+        className="bg-paper rounded-3xl border border-ink-200/90 shadow-sm p-6 sm:p-7 space-y-4"
       >
         <div>
-          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-950">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-brand-950">
             Paso de Configuración
           </span>
-          <h3 className="text-lg font-bold text-slate-900">
+          <h3 className="text-lg font-bold text-ink-900">
             Mi Perfil de Inversor
           </h3>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-muted mt-0.5">
             Seleccioná tu tolerancia al riesgo para calibrar el análisis y la jerarquización de noticias.
           </p>
         </div>
@@ -575,16 +575,16 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
       {/* BLOQUE 3: QUÉ NOTICIAS ME IMPORTAN (Step 7 in tour) */}
       <section 
         data-tour="portfolio-relevance"
-        className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 sm:p-7 space-y-5"
+        className="bg-paper rounded-3xl border border-ink-200/90 shadow-sm p-6 sm:p-7 space-y-5"
       >
         <div>
-          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-950">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-brand-950">
             Filtro de Ruido Informativo
           </span>
-          <h3 className="text-lg font-bold text-slate-900">
+          <h3 className="text-lg font-bold text-ink-900">
             Qué Noticias me Importan
           </h3>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-muted mt-0.5">
             Activá o desactivá las cuatro categorías que querés que FAROS priorice en tu pantalla de inicio.
           </p>
         </div>
@@ -622,21 +622,21 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                 tabIndex={0}
                 onKeyDown={event => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); toggleRelevanceType(item.id); } }}
                 onClick={() => toggleRelevanceType(item.id)}
-                className="flex items-center justify-between p-3.5 rounded-2xl border border-slate-200 hover:border-slate-300 bg-slate-50/40 cursor-pointer transition-colors"
+                className="flex items-center justify-between p-3.5 rounded-2xl border border-ink-200 hover:border-ink-300 bg-ink-50/40 cursor-pointer transition-colors"
               >
                 <div className="pr-4">
-                  <span className="text-xs sm:text-sm font-bold text-slate-900 block">
+                  <span className="text-xs sm:text-sm font-bold text-ink-900 block">
                     {item.label}
                   </span>
-                  <span className="text-[11px] text-slate-500 block leading-tight mt-0.5">
+                  <span className="text-[11px] text-muted block leading-tight mt-0.5">
                     {item.desc}
                   </span>
                 </div>
 
                 <div className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors shrink-0 ${
-                  isChecked ? 'bg-emerald-950' : 'bg-slate-300'
+                  isChecked ? 'bg-brand-950' : 'bg-ink-300'
                 }`}>
-                  <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                  <div className={`bg-paper w-4 h-4 rounded-full shadow-md transform transition-transform ${
                     isChecked ? 'translate-x-5' : 'translate-x-0'
                   }`} />
                 </div>
@@ -651,16 +651,16 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
       {/* BLOQUE 4: NOTIFICACIONES Y OPCIONES AVANZADAS (Step 8 in tour) */}
       <section 
         data-tour="portfolio-notifications"
-        className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 sm:p-7 space-y-4"
+        className="bg-paper rounded-3xl border border-ink-200/90 shadow-sm p-6 sm:p-7 space-y-4"
       >
         <div>
-          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-950">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-brand-950">
             Alertas & Opciones
           </span>
-          <h3 className="text-lg font-bold text-slate-900">
+          <h3 className="text-lg font-bold text-ink-900">
             Notificaciones y Preferencias Avanzadas
           </h3>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-muted mt-0.5">
             Configurá cuándo recibir avisos y qué temáticas del mercado te interesan.
           </p>
         </div>
@@ -668,18 +668,18 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
         {notificationsControl}
 
         {/* Revelado Progresivo ("Más opciones avanzadas") */}
-        <div className="pt-2 border-t border-slate-100">
+        <div className="pt-2 border-t border-ink-100">
           <button
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 py-1 cursor-pointer"
+            className="flex items-center gap-1.5 text-xs font-bold text-muted hover:text-ink-900 py-1 cursor-pointer"
           >
             <span>{showAdvanced ? 'Ocultar opciones avanzadas' : 'Más opciones avanzadas'}</span>
             {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
 
           {showAdvanced && (
-            <div className="mt-3 p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 text-xs animate-in fade-in duration-150">
-              <span className="font-bold text-slate-700 block">
+            <div className="mt-3 p-4 rounded-2xl bg-ink-50 border border-ink-200 space-y-3 text-xs animate-in fade-in duration-150">
+              <span className="font-bold text-muted block">
                 Temáticas específicas con prioridad de visualización:
               </span>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -695,15 +695,15 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                   return (
                     <label 
                       key={t.id} 
-                      className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-emerald-300 transition-colors"
+                      className="flex items-center gap-2 p-2.5 rounded-xl bg-paper border border-ink-200 cursor-pointer hover:border-brand-300 transition-colors"
                     >
                       <input
                         type="checkbox"
                         checked={isChecked}
                         onChange={() => toggleTopic(t.id)}
-                        className="rounded text-emerald-950 accent-emerald-950 cursor-pointer"
+                        className="rounded text-brand-950 accent-brand-950 cursor-pointer"
                       />
-                      <span className="text-[11px] font-semibold text-slate-800">{t.label}</span>
+                      <span className="text-[11px] font-semibold text-ink-800">{t.label}</span>
                     </label>
                   );
                 })}
@@ -718,16 +718,16 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
       {/* BLOQUE 5: CUENTA Y PRIVACIDAD (Step 9 in tour) */}
       <section 
         data-tour="portfolio-account"
-        className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 sm:p-7 space-y-5"
+        className="bg-paper rounded-3xl border border-ink-200/90 shadow-sm p-6 sm:p-7 space-y-5"
       >
         <div>
-          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-950">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-brand-950">
             Seguridad & Sesión
           </span>
-          <h3 className="text-lg font-bold text-slate-900">
+          <h3 className="text-lg font-bold text-ink-900">
             Cuenta y Privacidad
           </h3>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-muted mt-0.5">
             Gestión de sesión, credenciales y protección de tus datos financieros.
           </p>
         </div>
@@ -735,9 +735,9 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
         {currentUser && currentUser.id !== 'usr_demo' && <AccountDetails user={currentUser} onSaved={onAccountSaved} />}
         {currentUser ? (
           <div className="space-y-4">
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="p-4 rounded-2xl bg-ink-50 border border-ink-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-emerald-950 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                <div className="w-10 h-10 rounded-full bg-brand-950 text-paper flex items-center justify-center font-bold text-sm shrink-0">
                   {currentUser.picture ? (
                     <img src={currentUser.picture} alt={currentUser.name} className="w-10 h-10 rounded-full object-cover" />
                   ) : (
@@ -745,10 +745,10 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                   )}
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-slate-900">{currentUser.name}</h4>
-                  <p className="text-xs text-slate-500">{currentUser.email}</p>
+                  <h4 className="text-sm font-bold text-ink-900">{currentUser.name}</h4>
+                  <p className="text-xs text-muted">{currentUser.email}</p>
                   {currentUser.alyc && (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-800 mt-0.5">
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-800 mt-0.5">
                       <Building2 className="w-3 h-3" />
                       ALyC: {currentUser.alyc}
                     </span>
@@ -756,9 +756,9 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                 </div>
               </div>
 
-              <div className="text-left sm:text-right text-[11px] text-slate-500">
+              <div className="text-left sm:text-right text-[11px] text-muted">
                 <span className="block font-medium">Método: {currentUser.provider === 'google' ? 'Google' : currentUser.provider === 'microsoft' ? 'Microsoft' : 'Email'}</span>
-                <span className="block text-slate-400">Zona: {currentUser.timeZone}</span>
+                <span className="block text-muted">Zona: {currentUser.timeZone}</span>
               </div>
             </div>
 
@@ -766,14 +766,14 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
 
             {/* Admin Access Card (founders & admins) */}
             {onOpenAdmin && (
-              <div className="p-4 rounded-2xl bg-amber-50/90 border border-amber-300 flex items-center justify-between gap-3 text-xs">
+              <div className="p-4 rounded-2xl bg-warning-50/90 border border-warning-300 flex items-center justify-between gap-3 text-xs">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-amber-200 text-amber-900 flex items-center justify-center shrink-0">
-                    <Shield className="w-5 h-5 text-amber-800" />
+                  <div className="w-9 h-9 rounded-xl bg-warning-200 text-warning-text flex items-center justify-center shrink-0">
+                    <Shield className="w-5 h-5 text-warning-text" />
                   </div>
                   <div>
-                    <h5 className="font-black text-amber-950">Panel Administrador Interno</h5>
-                    <p className="text-[11px] text-amber-800">
+                    <h5 className="font-bold text-warning-text">Panel Administrador Interno</h5>
+                    <p className="text-[11px] text-warning-text">
                       Métricas de negocio, usuarios, embudo, salud del pipeline y modelo de tesis.
                     </p>
                   </div>
@@ -781,7 +781,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                 <button
                   type="button"
                   onClick={onOpenAdmin}
-                  className="px-3.5 py-2 rounded-xl bg-amber-950 hover:bg-amber-900 text-white font-black text-xs transition-all shadow-xs shrink-0 cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl bg-warning-950 hover:bg-warning-900 text-paper font-bold text-xs transition-all shadow-xs shrink-0 cursor-pointer"
                 >
                   Abrir Panel
                 </button>
@@ -789,24 +789,24 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
             )}
 
             {/* Privacy Compliance Notice */}
-            <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200/80 text-xs text-emerald-950 space-y-1.5">
+            <div className="p-4 rounded-2xl bg-brand-50/60 border border-brand-200/80 text-xs text-brand-950 space-y-1.5">
               <div className="flex items-center gap-1.5 font-bold">
-                <Lock className="w-3.5 h-3.5 text-emerald-800" />
+                <Lock className="w-3.5 h-3.5 text-brand-800" />
                 <span>Privacidad y Cumplimiento de Datos Financieros</span>
               </div>
-              <p className="text-[11px] text-slate-700 leading-relaxed">
+              <p className="text-[11px] text-muted leading-relaxed">
                 FAROS almacena únicamente los tickers seleccionados y tus preferencias de notificación para calibrar el feed periodístico y el calendario de vencimientos. Tus contraseñas están resguardadas mediante hash criptográfico (bcrypt) y las sesiones utilizan cookies seguras HttpOnly con SameSite. Nunca compartimos tu cartera con terceros.
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 border-t border-ink-100">
               {onLogout && (
                 <button
                   type="button"
                   onClick={onLogout}
-                  className="px-4 py-2.5 rounded-xl border border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-800 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl border border-ink-300 hover:border-ink-400 hover:bg-ink-50 text-ink-800 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <LogOut className="w-3.5 h-3.5 text-slate-500" />
+                  <LogOut className="w-3.5 h-3.5 text-muted" />
                   <span>Cerrar sesión</span>
                 </button>
               )}
@@ -819,22 +819,22 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                       onDeleteAccount();
                     }
                   }}
-                  className="px-4 py-2.5 rounded-xl border border-rose-200 hover:border-rose-300 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl border border-danger-200 hover:border-danger-300 hover:bg-danger-50 text-danger-700 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                  <Trash2 className="w-3.5 h-3.5 text-danger-500" />
                   <span>Eliminar cuenta y datos</span>
                 </button>
               )}
             </div>
           </div>
         ) : (
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 text-xs text-slate-600 flex items-center justify-between">
+          <div className="p-4 rounded-2xl bg-ink-50 border border-ink-200/90 text-xs text-muted flex items-center justify-between">
             <span>Sesión local activa. Podés sincronizar tu cuenta en la nube cuando lo desees.</span>
             {onLogout && (
               <button
                 type="button"
                 onClick={onLogout}
-                className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-white text-xs font-semibold cursor-pointer"
+                className="px-3 py-1.5 rounded-lg border border-ink-300 hover:bg-paper text-xs font-semibold cursor-pointer"
               >
                 Cerrar sesión
               </button>

@@ -55,8 +55,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
   const [isUpdatingPlanId, setIsUpdatingPlanId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const cardBg = isDark ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200/90 text-slate-900';
-  const subText = isDark ? 'text-slate-400' : 'text-slate-500';
+  const cardBg = isDark ? 'bg-ink-900 border-ink-800 text-ink-100' : 'bg-paper border-ink-200/90 text-ink-900';
+  const subText = isDark ? 'text-muted' : 'text-muted';
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -133,8 +133,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
     <div className="space-y-6">
       {/* Toast feedback */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-emerald-950 text-emerald-200 border border-emerald-700 px-4 py-2.5 rounded-2xl shadow-xl text-xs font-bold animate-in fade-in flex items-center gap-2">
-          <Check className="w-4 h-4 text-emerald-400" />
+        <div className="fixed bottom-6 right-6 z-50 bg-brand-950 text-brand-200 border border-brand-700 px-4 py-2.5 rounded-2xl shadow-xl text-xs font-bold animate-in fade-in flex items-center gap-2">
+          <Check className="w-4 h-4 text-brand-text" />
           <span>{toastMessage}</span>
         </div>
       )}
@@ -144,14 +144,14 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           {/* Search Input */}
           <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder="Buscar por nombre, email o broker..."
-              className={`w-full pl-10 pr-4 py-2 text-xs sm:text-sm rounded-xl border focus:outline-none focus:ring-2 focus:ring-emerald-700 ${
-                isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+              className={`w-full pl-10 pr-4 py-2 text-xs sm:text-sm rounded-xl border focus:outline-none focus:ring-2 focus:ring-brand-700 ${
+                isDark ? 'bg-ink-800 border-ink-700 text-paper' : 'bg-ink-50 border-ink-200 text-ink-900'
               }`}
             />
           </div>
@@ -165,7 +165,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 value={selectedPlanFilter}
                 onChange={(e) => onPlanFilterChange(e.target.value)}
                 className={`py-1.5 px-3 rounded-xl border text-xs font-bold focus:outline-none ${
-                  isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'
+                  isDark ? 'bg-ink-800 border-ink-700 text-paper' : 'bg-ink-50 border-ink-200 text-ink-800'
                 }`}
               >
                 <option value="todos">Todos los planes</option>
@@ -183,7 +183,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 value={selectedProfileFilter}
                 onChange={(e) => onProfileFilterChange(e.target.value)}
                 className={`py-1.5 px-3 rounded-xl border text-xs font-bold focus:outline-none ${
-                  isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'
+                  isDark ? 'bg-ink-800 border-ink-700 text-paper' : 'bg-ink-50 border-ink-200 text-ink-800'
                 }`}
               >
                 <option value="todos">Todos los perfiles</option>
@@ -196,7 +196,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             {/* CSV Download Button */}
             <button
               onClick={handleExportCsv}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-950 hover:bg-emerald-900 text-white text-xs font-bold transition-all shadow-xs cursor-pointer ml-auto"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-950 hover:bg-brand-900 text-paper text-xs font-bold transition-all shadow-xs cursor-pointer ml-auto"
               title="Descargar base de usuarios en formato CSV"
             >
               <Download className="w-3.5 h-3.5" />
@@ -205,7 +205,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
           </div>
         </div>
 
-        <div className="text-xs text-slate-500 flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800">
+        <div className="text-xs text-muted flex items-center justify-between pt-1 border-t border-ink-100 dark:border-ink-800">
           <span>Mostrando {users.length} de {total} usuarios registrados</span>
           <span>Página {page} de {totalPages}</span>
         </div>
@@ -216,7 +216,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className={`border-b uppercase font-bold tracking-wider text-[11px] ${
-              isDark ? 'bg-slate-800/80 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
+              isDark ? 'bg-ink-800/80 border-ink-800 text-muted' : 'bg-ink-50 border-ink-200 text-muted'
             }`}>
               <tr>
                 <th className="py-3.5 px-4">Usuario</th>
@@ -229,10 +229,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                 <th className="py-3.5 px-4 text-right">Acción</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+            <tbody className="divide-y divide-ink-100 dark:divide-ink-800 font-medium">
               {users.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-500">
+                  <td colSpan={8} className="py-12 text-center text-muted">
                     No se encontraron usuarios con los filtros aplicados.
                   </td>
                 </tr>
@@ -243,22 +243,22 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                   const isPending = isUpdatingPlanId === u.id;
 
                   return (
-                    <tr key={u.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                    <tr key={u.id} className="hover:bg-ink-50/60 dark:hover:bg-ink-800/40 transition-colors">
                       {/* Name & Email */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-emerald-950 text-white font-mono font-bold text-xs flex items-center justify-center shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-brand-950 text-paper font-mono font-bold text-xs flex items-center justify-center shrink-0">
                             {u.name?.slice(0, 2).toUpperCase() || 'U'}
                           </div>
                           <div>
-                            <span className="font-extrabold text-slate-900 dark:text-white block text-xs">
+                            <span className="font-extrabold text-ink-900 dark:text-paper block text-xs">
                               {u.name}
                             </span>
                             <span className={`text-[11px] ${subText} block`}>
                               {u.email}
                             </span>
                             {u.alyc && u.alyc !== 'No especificado' && (
-                              <span className="text-[10px] text-emerald-800 dark:text-emerald-400 font-bold">
+                              <span className="text-[10px] text-brand-800 dark:text-brand-text font-bold">
                                 ALyC: {u.alyc}
                               </span>
                             )}
@@ -270,10 +270,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       <td className="py-3.5 px-3">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${
                           u.provider === 'google' 
-                            ? 'bg-red-50 text-red-700 border border-red-200' 
+                            ? 'bg-danger-50 text-danger-700 border border-danger-200'
                             : u.provider === 'microsoft' 
-                            ? 'bg-blue-50 text-blue-700 border border-blue-200' 
-                            : 'bg-slate-100 text-slate-700 border border-slate-200'
+                            ? 'bg-info-50 text-info-text border border-info-200'
+                            : 'bg-ink-100 text-muted border border-ink-200'
                         }`}>
                           {u.provider || 'email'}
                         </span>
@@ -286,7 +286,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
                       {/* Profile */}
                       <td className="py-3.5 px-3">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold capitalize bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold capitalize bg-ink-100 dark:bg-ink-800 border border-ink-200 dark:border-ink-700">
                           {u.profile}
                         </span>
                       </td>
@@ -294,7 +294,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       {/* Portfolio Tickers & Long/Short Badges */}
                       <td className="py-3.5 px-3">
                         {assetIds.length === 0 ? (
-                          <span className="text-[11px] text-slate-400 italic">0 activos</span>
+                          <span className="text-[11px] text-muted italic">0 activos</span>
                         ) : (
                           <div className="flex flex-wrap items-center gap-1 max-w-[190px]">
                             {assetIds.slice(0, 3).map((sym: string) => {
@@ -304,8 +304,8 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                                   key={sym}
                                   className={`inline-flex items-center gap-1 font-mono text-[10px] font-bold px-1.5 py-0.2 rounded border ${
                                     pos === 'short'
-                                      ? 'bg-amber-100/90 text-amber-950 border-amber-300'
-                                      : 'bg-blue-100/90 text-blue-950 border-blue-300'
+                                      ? 'bg-warning-100/90 text-warning-text border-warning-300'
+                                      : 'bg-info-100/90 text-info-text border-info-300'
                                   }`}
                                   title={`${sym} (${pos.toUpperCase()})`}
                                 >
@@ -315,7 +315,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                               );
                             })}
                             {assetIds.length > 3 && (
-                              <span className="text-[10px] text-slate-500 font-bold">
+                              <span className="text-[10px] text-muted font-bold">
                                 +{assetIds.length - 3}
                               </span>
                             )}
@@ -331,10 +331,10 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           onChange={(e) => handlePlanSelect(u.id, e.target.value as UserPlan)}
                           className={`text-xs font-bold rounded-xl px-2.5 py-1 border focus:outline-none transition-colors cursor-pointer ${
                             u.plan === 'partner'
-                              ? 'bg-blue-50 dark:bg-blue-950/70 border-blue-300 text-blue-900 dark:text-blue-300'
+                              ? 'bg-info-50 dark:bg-info-950/70 border-info-300 text-info-text dark:text-info-300'
                               : u.plan === 'market'
-                              ? 'bg-emerald-50 dark:bg-emerald-950/70 border-emerald-300 text-emerald-900 dark:text-emerald-300'
-                              : 'bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200'
+                              ? 'bg-brand-50 dark:bg-brand-950/70 border-brand-300 text-brand-900 dark:text-brand-300'
+                              : 'bg-ink-50 dark:bg-ink-800 border-ink-300 dark:border-ink-700 text-ink-800 dark:text-ink-200'
                           } ${isPending ? 'opacity-50 cursor-wait' : ''}`}
                         >
                           <option value="prueba">Prueba</option>
@@ -347,12 +347,12 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       {/* Notifications */}
                       <td className="py-3.5 px-3">
                         {u.notificationsEnabled ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-brand-text dark:text-brand-text">
                             <Check className="w-3.5 h-3.5" />
                             Sí
                           </span>
                         ) : (
-                          <span className="text-[11px] text-slate-400">No</span>
+                          <span className="text-[11px] text-muted">No</span>
                         )}
                       </td>
 
@@ -360,7 +360,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                       <td className="py-3.5 px-4 text-right">
                         <button
                           onClick={() => setSelectedUserDetail(u)}
-                          className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 transition-colors cursor-pointer"
+                          className="px-2.5 py-1 rounded-lg border border-ink-200 dark:border-ink-700 hover:bg-ink-100 dark:hover:bg-ink-800 text-xs font-bold text-muted dark:text-ink-300 transition-colors cursor-pointer"
                         >
                           Detalle
                         </button>
@@ -375,7 +375,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
         {/* Pagination Controls */}
         {totalPages > 1 && (
-          <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+          <div className="p-4 border-t border-ink-100 dark:border-ink-800 flex items-center justify-between">
             <button
               onClick={() => onPageChange(page - 1)}
               disabled={page <= 1}
@@ -385,7 +385,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
               <span>Anterior</span>
             </button>
 
-            <span className="text-xs font-mono text-slate-500">
+            <span className="text-xs font-mono text-muted">
               Página {page} de {totalPages}
             </span>
 
@@ -403,21 +403,21 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
       {/* User Detail Modal */}
       {selectedUserDetail && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-50 bg-ink-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
           <div className={`max-w-2xl w-full rounded-3xl border shadow-2xl p-6 sm:p-7 max-h-[85vh] overflow-y-auto space-y-6 ${cardBg}`}>
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center justify-between pb-4 border-b border-ink-100 dark:border-ink-800">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-950 text-white font-mono font-bold flex items-center justify-center">
+                <div className="w-10 h-10 rounded-2xl bg-brand-950 text-paper font-mono font-bold flex items-center justify-center">
                   {selectedUserDetail.name?.slice(0, 2).toUpperCase()}
                 </div>
                 <div>
-                  <h3 className="text-lg font-black">{selectedUserDetail.name}</h3>
+                  <h3 className="text-lg font-bold">{selectedUserDetail.name}</h3>
                   <p className={`text-xs ${subText}`}>{selectedUserDetail.email}</p>
                 </div>
               </div>
               <button
                 onClick={() => setSelectedUserDetail(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                className="p-1 rounded-lg text-muted hover:text-muted dark:hover:text-paper"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -425,27 +425,27 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
 
             {/* User Metadata Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700">
+              <div className="p-3 rounded-2xl bg-ink-50 dark:bg-ink-800/60 border border-ink-200/80 dark:border-ink-700">
                 <span className={subText}>Alta</span>
                 <p className="font-bold font-mono mt-0.5">
                   {new Date(selectedUserDetail.createdAt).toLocaleDateString('es-AR')}
                 </p>
               </div>
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700">
+              <div className="p-3 rounded-2xl bg-ink-50 dark:bg-ink-800/60 border border-ink-200/80 dark:border-ink-700">
                 <span className={subText}>Perfil</span>
                 <p className="font-bold capitalize mt-0.5">
                   {selectedUserDetail.profile}
                 </p>
               </div>
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700">
+              <div className="p-3 rounded-2xl bg-ink-50 dark:bg-ink-800/60 border border-ink-200/80 dark:border-ink-700">
                 <span className={subText}>ALyC</span>
                 <p className="font-bold mt-0.5 truncate">
                   {selectedUserDetail.alyc || 'No asignado'}
                 </p>
               </div>
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700">
+              <div className="p-3 rounded-2xl bg-ink-50 dark:bg-ink-800/60 border border-ink-200/80 dark:border-ink-700">
                 <span className={subText}>Plan Actual</span>
-                <p className="font-bold capitalize text-emerald-700 dark:text-emerald-400 mt-0.5">
+                <p className="font-bold capitalize text-brand-text dark:text-brand-text mt-0.5">
                   {selectedUserDetail.plan || 'Prueba'}
                 </p>
               </div>
@@ -455,11 +455,11 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             <div className="space-y-2">
               <h4 className="font-extrabold text-sm flex items-center justify-between">
                 <span>Activos en Cartera ({selectedUserDetail.portfolio?.assetIds?.length || 0})</span>
-                <span className="text-xs font-normal text-slate-500">{selectedUserDetail.portfolio?.name}</span>
+                <span className="text-xs font-normal text-muted">{selectedUserDetail.portfolio?.name}</span>
               </h4>
 
               {(selectedUserDetail.portfolio?.assetIds?.length || 0) === 0 ? (
-                <p className="text-xs text-slate-400 italic p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                <p className="text-xs text-muted italic p-3 bg-ink-50 dark:bg-ink-800/50 rounded-xl">
                   El usuario aún no ha agregado activos a su cartera.
                 </p>
               ) : (
@@ -471,13 +471,13 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                         key={sym} 
                         className={`p-2.5 rounded-xl border flex items-center justify-between ${
                           pos === 'short'
-                            ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800'
-                            : 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800'
+                            ? 'bg-warning-50 dark:bg-warning-950/40 border-warning-300 dark:border-warning-800'
+                            : 'bg-info-50 dark:bg-info-950/40 border-info-300 dark:border-info-800'
                         }`}
                       >
                         <span className="font-mono font-bold text-xs">{sym}</span>
-                        <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded ${
-                          pos === 'short' ? 'bg-amber-400 text-amber-950' : 'bg-blue-600 text-white'
+                        <span className={`text-[9px] font-bold uppercase px-1.5 py-0.2 rounded ${
+                          pos === 'short' ? 'bg-warning-400 text-warning-text' : 'bg-info-600 text-paper'
                         }`}>
                           {pos.toUpperCase()}
                         </span>
@@ -489,20 +489,20 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
             </div>
 
             {/* Activity Events Timeline */}
-            <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <div className="space-y-3 pt-2 border-t border-ink-100 dark:border-ink-800">
               <h4 className="font-extrabold text-sm flex items-center gap-1.5">
-                <Activity className="w-4 h-4 text-emerald-700" />
+                <Activity className="w-4 h-4 text-brand-text" />
                 Línea de Tiempo de Actividad
               </h4>
 
               {(!selectedUserDetail.recentEvents || selectedUserDetail.recentEvents.length === 0) ? (
-                <p className="text-xs text-slate-400 italic">No hay eventos recientes registrados para este usuario.</p>
+                <p className="text-xs text-muted italic">No hay eventos recientes registrados para este usuario.</p>
               ) : (
                 <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                   {selectedUserDetail.recentEvents.map((evt: any) => (
-                    <div key={evt.id} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700 flex items-center justify-between text-xs">
+                    <div key={evt.id} className="p-2.5 rounded-xl bg-ink-50 dark:bg-ink-800/50 border border-ink-200/80 dark:border-ink-700 flex items-center justify-between text-xs">
                       <div>
-                        <span className="font-bold text-slate-800 dark:text-slate-200 font-mono">
+                        <span className="font-bold text-ink-800 dark:text-ink-200 font-mono">
                           {evt.eventType}
                         </span>
                         {evt.metadata && Object.keys(evt.metadata).length > 0 && (
@@ -511,7 +511,7 @@ export const AdminUsersView: React.FC<AdminUsersViewProps> = ({
                           </span>
                         )}
                       </div>
-                      <span className="font-mono text-[11px] text-slate-400 shrink-0 ml-2">
+                      <span className="font-mono text-[11px] text-muted shrink-0 ml-2">
                         {new Date(evt.timestamp).toLocaleString('es-AR')}
                       </span>
                     </div>

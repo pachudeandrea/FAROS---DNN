@@ -24,10 +24,10 @@ export function VersionNotice() {
     return () => { controller.abort(); clearInterval(timer); window.removeEventListener('focus', check); document.removeEventListener('visibilitychange', check); };
   }, []);
   if (!available) return null;
-  return <aside aria-label="Nueva versión de FAROS" className="bg-emerald-50 border-b border-emerald-200 p-3">
-    <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-2 text-sm text-emerald-950">
+  return <aside aria-label="Nueva versión de FAROS" className="bg-brand-50 border-b border-brand-200 p-3">
+    <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-2 text-sm text-brand-950">
       <p role="status">Hay una nueva versión de FAROS.{blocked && ' Guardá o cancelá los cambios pendientes antes de actualizar.'}</p>
-      <button className="px-4 py-2 rounded-xl bg-emerald-950 text-white font-semibold" onClick={() => {
+      <button className="px-4 py-2 rounded-xl bg-brand-950 text-paper font-semibold" onClick={() => {
         if (hasPendingChanges()) return setBlocked(true);
         window.location.reload();
       }}>Actualizar FAROS</button>

@@ -74,28 +74,28 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
       onClick={(e) => e.stopPropagation()}
       className={`fixed z-[9999] ${bottomPositionClass} left-3 right-3 sm:left-1/2 sm:-translate-x-1/2 sm:right-auto sm:w-[580px] max-w-[calc(100vw-1.5rem)] animate-in fade-in slide-in-from-bottom-5 duration-200 select-none`}
     >
-      <div className="bg-slate-950/95 backdrop-blur-xl text-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.7)] border border-emerald-800/70 overflow-hidden ring-1 ring-white/10">
+      <div className="bg-ink-950/95 backdrop-blur-xl text-paper rounded-3xl shadow-brand-soft border border-brand-800/70 overflow-hidden ring-1 ring-paper/10">
         
         {/* Preparing audio status with retry button */}
         {audioState.error && (
-          <div className="p-3.5 bg-slate-900/95 border-b border-emerald-800/40 text-xs text-emerald-200 space-y-2">
+          <div className="p-3.5 bg-ink-900/95 border-b border-brand-800/40 text-xs text-brand-200 space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-emerald-300 font-bold">
-                <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+              <div className="flex items-center gap-2 text-brand-300 font-bold">
+                <Loader2 className="w-4 h-4 animate-spin text-brand-text" />
                 <span>Preparando audio...</span>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => track && audioController.playTrack(track)}
-                  className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] rounded-lg transition-colors cursor-pointer shadow-xs active:scale-95"
+                  className="px-2.5 py-1 bg-brand-500 hover:bg-brand-400 text-ink-950 font-bold text-[11px] rounded-lg transition-colors cursor-pointer shadow-xs active:scale-95"
                 >
                   Reintentar
                 </button>
                 <button
                   type="button"
                   onClick={handleClose}
-                  className="text-slate-400 hover:text-white p-0.5 cursor-pointer"
+                  className="text-muted hover:text-paper p-0.5 cursor-pointer"
                   title="Cerrar aviso"
                 >
                   <X className="w-4 h-4" />
@@ -106,7 +106,7 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
               <button
                 type="button"
                 onClick={() => setShowScript(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-950 text-emerald-300 rounded-lg border border-emerald-800/60 hover:bg-emerald-900 transition-colors text-[11px] font-medium cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1 bg-brand-950 text-brand-300 rounded-lg border border-brand-800/60 hover:bg-brand-900 transition-colors text-[11px] font-medium cursor-pointer"
               >
                 <FileText className="w-3 h-3" />
                 <span>Leer resumen en texto</span>
@@ -117,15 +117,15 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
 
         {/* Notice banner for fallback voice (e.g. edge-tts) */}
         {!audioState.error && audioState.notice && (
-          <div className="px-4 py-2 bg-amber-950/80 border-b border-amber-800/40 text-[11px] text-amber-200 flex items-center justify-between gap-2">
+          <div className="px-4 py-2 bg-warning-950/80 border-b border-warning-800/40 text-[11px] text-warning-200 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Info className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <Info className="w-3.5 h-3.5 text-warning-300 shrink-0" />
               <span className="truncate">{audioState.notice}</span>
             </div>
             <button
               type="button"
               onClick={() => audioController.clearError()}
-              className="text-amber-400 hover:text-white p-0.5 cursor-pointer shrink-0"
+              className="text-warning-text hover:text-paper p-0.5 cursor-pointer shrink-0"
               title="Descartar"
             >
               <X className="w-3 h-3" />
@@ -135,22 +135,22 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
 
         {/* Collapsible Transcript / Voice Script */}
         {showScript && track?.script && (
-          <div className="p-4 bg-slate-900/90 border-b border-emerald-900/40 text-xs text-slate-300 max-h-44 overflow-y-auto leading-relaxed space-y-1.5">
-            <div className="flex items-center justify-between text-emerald-400 font-bold uppercase tracking-wide text-[10px]">
+          <div className="p-4 bg-ink-900/90 border-b border-brand-900/40 text-xs text-ink-300 max-h-44 overflow-y-auto leading-relaxed space-y-1.5">
+            <div className="flex items-center justify-between text-brand-text font-bold uppercase tracking-wide text-[10px]">
               <span className="flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                <Sparkles className="w-3.5 h-3.5 text-brand-text" />
                 Texto del Resumen
               </span>
               <button
                 type="button"
                 onClick={() => setShowScript(false)}
-                className="text-slate-400 hover:text-white p-0.5 cursor-pointer"
+                className="text-muted hover:text-paper p-0.5 cursor-pointer"
                 title="Ocultar texto"
               >
                 <ChevronDown className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-slate-200 font-normal leading-relaxed">{track.script}</p>
+            <p className="text-ink-200 font-normal leading-relaxed">{track.script}</p>
           </div>
         )}
 
@@ -162,17 +162,17 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-800/60 shadow-xs">
-                    <Volume2 className="w-3 h-3 text-emerald-400" />
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-brand-300 bg-brand-950 px-2 py-0.5 rounded-md border border-brand-800/60 shadow-xs">
+                    <Volume2 className="w-3 h-3 text-brand-text" />
                     {track.subtitle || (track.title === 'Resumen del día' ? 'Síntesis FAROS' : 'Noticia en Audio')}
                   </span>
 
-                  <span className="text-[10px] text-slate-400 font-mono">
+                  <span className="text-[10px] text-muted font-mono">
                     {formatTime(audioState.totalDuration)}
                   </span>
                 </div>
 
-                <p className="text-xs sm:text-sm font-bold text-white truncate mt-1" title={track.title}>
+                <p className="text-xs sm:text-sm font-bold text-paper truncate mt-1" title={track.title}>
                   {track.title}
                 </p>
               </div>
@@ -180,7 +180,7 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
               <button
                 type="button"
                 onClick={handleClose}
-                className="text-slate-400 hover:text-white p-1.5 rounded-full hover:bg-slate-800/80 transition-colors shrink-0 cursor-pointer"
+                className="text-muted hover:text-paper p-1.5 rounded-full hover:bg-ink-800/80 transition-colors shrink-0 cursor-pointer"
                 aria-label="Cerrar reproductor y detener audio"
                 title="Cerrar reproductor"
               >
@@ -192,19 +192,19 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
             <div className="space-y-1">
               <div
                 onClick={handleProgressBarClick}
-                className="w-full bg-slate-800 hover:bg-slate-700/80 rounded-full h-2 cursor-pointer relative overflow-hidden transition-colors py-0.5"
+                className="w-full bg-ink-800 hover:bg-ink-700/80 rounded-full h-2 cursor-pointer relative overflow-hidden transition-colors py-0.5"
                 title="Avanzar o retroceder"
               >
                 <div
-                  className="bg-emerald-500 h-full rounded-full transition-all duration-100"
+                  className="bg-brand-500 h-full rounded-full transition-all duration-100"
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
-              <div className="flex justify-between items-center text-[10px] font-mono text-slate-400">
-                <span className="font-semibold text-emerald-300">
+              <div className="flex justify-between items-center text-[10px] font-mono text-muted">
+                <span className="font-semibold text-brand-300">
                   {formatTime(audioState.currentSeconds)}
                 </span>
-                <span className="text-slate-400 font-medium">
+                <span className="text-muted font-medium">
                   -{formatTime(audioState.remainingSeconds)}
                 </span>
               </div>
@@ -214,7 +214,7 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
             <div className="flex items-center justify-between pt-0.5">
               {/* Speed Selector (1x, 1.25x, 1.5x) & Transcript button */}
               <div className="flex items-center gap-1.5">
-                <div className="flex items-center gap-0.5 bg-emerald-950/80 p-0.5 rounded-lg border border-emerald-800/50">
+                <div className="flex items-center gap-0.5 bg-brand-950/80 p-0.5 rounded-lg border border-brand-800/50">
                   {([1, 1.25, 1.5] as const).map(rate => (
                     <button
                       key={rate}
@@ -222,8 +222,8 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
                       onClick={() => audioController.setSpeed(rate)}
                       className={`px-1.5 py-0.5 text-[10px] font-mono font-bold rounded transition-colors cursor-pointer ${
                         audioState.speed === rate
-                          ? 'bg-emerald-500 text-slate-950 shadow-xs'
-                          : 'text-emerald-300 hover:text-white hover:bg-emerald-900/60'
+                          ? 'bg-brand-500 text-ink-950 shadow-xs'
+                          : 'text-brand-300 hover:text-paper hover:bg-brand-900/60'
                       }`}
                       title={`Velocidad ${rate}x`}
                     >
@@ -238,8 +238,8 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
                     onClick={() => setShowScript(!showScript)}
                     className={`p-1.5 rounded-lg text-xs flex items-center gap-1 transition-colors cursor-pointer ${
                       showScript
-                        ? 'bg-emerald-900/80 text-emerald-300 border border-emerald-700/60'
-                        : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                        ? 'bg-brand-900/80 text-brand-300 border border-brand-700/60'
+                        : 'text-muted hover:text-paper hover:bg-ink-800/60'
                     }`}
                     title={showScript ? "Ocultar transcripción" : "Ver transcripción"}
                   >
@@ -256,12 +256,12 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
                   type="button"
                   onClick={() => audioController.rewind(10)}
                   disabled={audioState.isLoading || audioState.totalDuration === 0}
-                  className="p-2 text-slate-300 hover:text-white hover:bg-slate-800/80 rounded-full transition-colors cursor-pointer relative group disabled:opacity-40"
+                  className="p-2 text-ink-300 hover:text-paper hover:bg-ink-800/80 rounded-full transition-colors cursor-pointer relative group disabled:opacity-40"
                   title="Retroceder 10 segundos"
                   aria-label="Retroceder 10 segundos"
                 >
                   <RotateCcw className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-                  <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 text-[8px] font-bold text-slate-400 font-mono group-hover:text-emerald-300">
+                  <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 text-[8px] font-bold text-muted font-mono group-hover:text-brand-300">
                     -10s
                   </span>
                 </button>
@@ -273,14 +273,14 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
                   disabled={audioState.isLoading}
                   className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-lg cursor-pointer active:scale-95 ${
                     audioState.isLoading
-                      ? 'bg-emerald-900/80 text-emerald-300 cursor-wait'
-                      : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-950/50'
+                      ? 'bg-brand-900/80 text-brand-300 cursor-wait'
+                      : 'bg-brand-500 hover:bg-brand-400 text-ink-950 shadow-brand-950/50'
                   }`}
                   aria-label={audioState.isLoading ? "Cargando audio" : audioState.isPlaying ? "Pausar audio" : "Reproducir audio"}
                   title={audioState.isLoading ? "Generando audio en backend..." : audioState.isPlaying ? "Pausar" : "Reproducir"}
                 >
                   {audioState.isLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-emerald-300" />
+                    <Loader2 className="w-4 h-4 animate-spin text-brand-300" />
                   ) : audioState.isPlaying ? (
                     <Pause className="w-4 h-4 fill-current stroke-current" />
                   ) : (
@@ -293,26 +293,26 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
                   type="button"
                   onClick={() => audioController.forward(10)}
                   disabled={audioState.isLoading || audioState.totalDuration === 0}
-                  className="p-2 text-slate-300 hover:text-white hover:bg-slate-800/80 rounded-full transition-colors cursor-pointer relative group disabled:opacity-40"
+                  className="p-2 text-ink-300 hover:text-paper hover:bg-ink-800/80 rounded-full transition-colors cursor-pointer relative group disabled:opacity-40"
                   title="Avanzar 10 segundos"
                   aria-label="Avanzar 10 segundos"
                 >
                   <RotateCw className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-                  <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 text-[8px] font-bold text-slate-400 font-mono group-hover:text-emerald-300">
+                  <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 text-[8px] font-bold text-muted font-mono group-hover:text-brand-300">
                     +10s
                   </span>
                 </button>
               </div>
 
               {/* Status indicator: Shows engine or 'Preparando audio...' when waiting */}
-              <div className="hidden sm:flex items-center gap-1.5 text-[10px] text-emerald-300 font-medium">
+              <div className="hidden sm:flex items-center gap-1.5 text-[10px] text-brand-300 font-medium">
                 {audioState.isLoading ? (
-                  <span className="text-emerald-300/90 flex items-center gap-1 animate-pulse">
-                    <Loader2 className="w-3 h-3 animate-spin text-emerald-400" />
+                  <span className="text-brand-300/90 flex items-center gap-1 animate-pulse">
+                    <Loader2 className="w-3 h-3 animate-spin text-brand-text" />
                     <span>Preparando audio...</span>
                   </span>
                 ) : (
-                  <span className="text-emerald-400/90 font-mono">{audioState.engine || 'Piper TTS'}</span>
+                  <span className="text-brand-text/90 font-mono">{audioState.engine || 'Piper TTS'}</span>
                 )}
               </div>
             </div>

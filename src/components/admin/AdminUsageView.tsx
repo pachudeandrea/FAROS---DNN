@@ -27,8 +27,8 @@ export const AdminUsageView: React.FC<AdminUsageProps> = ({ data, isDark }) => {
     bookmarksTotal: 312
   };
 
-  const cardBg = isDark ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200/90 text-slate-900';
-  const subText = isDark ? 'text-slate-400' : 'text-slate-500';
+  const cardBg = isDark ? 'bg-ink-900 border-ink-800 text-ink-100' : 'bg-paper border-ink-200/90 text-ink-900';
+  const subText = isDark ? 'text-muted' : 'text-muted';
 
   const maxTickerCount = Math.max(...(usage.topTickers || []).map((t: any) => t.count), 10);
 
@@ -42,33 +42,33 @@ export const AdminUsageView: React.FC<AdminUsageProps> = ({ data, isDark }) => {
             <span className={`text-xs font-bold uppercase tracking-wider ${subText}`}>
               Proporción Long vs. Short
             </span>
-            <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-info-100 dark:bg-info-950 text-info-text dark:text-info-300 flex items-center justify-center">
               <TrendingUp className="w-4 h-4" />
             </div>
           </div>
 
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black font-mono text-blue-600 dark:text-blue-400">
+            <span className="text-3xl font-bold font-mono text-info-text dark:text-info-text">
               {usage.positionBreakdown.longPct}%
             </span>
-            <span className="text-sm font-bold text-slate-400">LONG</span>
-            <span className="text-slate-300">/</span>
-            <span className="text-2xl font-black font-mono text-amber-500">
+            <span className="text-sm font-bold text-muted">LONG</span>
+            <span className="text-ink-300">/</span>
+            <span className="text-2xl font-bold font-mono text-warning-text">
               {usage.positionBreakdown.shortPct}%
             </span>
-            <span className="text-sm font-bold text-slate-400">SHORT</span>
+            <span className="text-sm font-bold text-muted">SHORT</span>
           </div>
 
           {/* Distribution bar */}
-          <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex p-0.5 border border-slate-200/80 dark:border-slate-700">
+          <div className="w-full h-3 bg-ink-100 dark:bg-ink-800 rounded-full overflow-hidden flex p-0.5 border border-ink-200/80 dark:border-ink-700">
             <div 
               style={{ width: `${usage.positionBreakdown.longPct}%` }}
-              className="bg-blue-600 h-full rounded-l-full transition-all duration-500" 
+              className="bg-info-600 h-full rounded-l-full transition-all duration-500"
               title={`Long: ${usage.positionBreakdown.longPct}%`}
             />
             <div 
               style={{ width: `${usage.positionBreakdown.shortPct}%` }}
-              className="bg-amber-400 h-full rounded-r-full transition-all duration-500" 
+              className="bg-warning-400 h-full rounded-r-full transition-all duration-500"
               title={`Short: ${usage.positionBreakdown.shortPct}%`}
             />
           </div>
@@ -83,12 +83,12 @@ export const AdminUsageView: React.FC<AdminUsageProps> = ({ data, isDark }) => {
             <span className={`text-xs font-bold uppercase tracking-wider ${subText}`}>
               Reproducciones de Audio
             </span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-brand-100 dark:bg-brand-950 text-brand-800 dark:text-brand-300 flex items-center justify-center">
               <Volume2 className="w-4 h-4" />
             </div>
           </div>
-          <span className="text-3xl font-black font-mono tracking-tight block">
-            {usage.audioPlaysTotal || 940} <span className="text-sm font-sans font-semibold text-slate-500">reproducciones</span>
+          <span className="text-3xl font-bold font-mono tracking-tight block">
+            {usage.audioPlaysTotal || 940} <span className="text-sm font-sans font-semibold text-muted">reproducciones</span>
           </span>
           <p className={`text-xs ${subText}`}>
             Resumen diario ejecutiva (2 a 3 min) y síntesis individual de noticias.
@@ -101,12 +101,12 @@ export const AdminUsageView: React.FC<AdminUsageProps> = ({ data, isDark }) => {
             <span className={`text-xs font-bold uppercase tracking-wider ${subText}`}>
               Noticias Guardadas
             </span>
-            <div className="w-8 h-8 rounded-xl bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-accent-100 dark:bg-accent-950 text-accent-800 dark:text-accent-300 flex items-center justify-center">
               <Bookmark className="w-4 h-4" />
             </div>
           </div>
-          <span className="text-3xl font-black font-mono tracking-tight block">
-            {usage.bookmarksTotal || 312} <span className="text-sm font-sans font-semibold text-slate-500">marcadas</span>
+          <span className="text-3xl font-bold font-mono tracking-tight block">
+            {usage.bookmarksTotal || 312} <span className="text-sm font-sans font-semibold text-muted">marcadas</span>
           </span>
           <p className={`text-xs ${subText}`}>
             Artículos guardados por usuarios para análisis o archivo.
@@ -119,7 +119,7 @@ export const AdminUsageView: React.FC<AdminUsageProps> = ({ data, isDark }) => {
         {/* Sections Breakdown */}
         <div className={`p-5 rounded-3xl border shadow-xs space-y-3 ${cardBg}`}>
           <h4 className="font-extrabold text-sm tracking-tight flex items-center gap-2">
-            <Layers className="w-4 h-4 text-emerald-700" />
+            <Layers className="w-4 h-4 text-brand-text" />
             Secciones Más Usadas
           </h4>
           <p className={`text-xs ${subText}`}>
@@ -131,13 +131,13 @@ export const AdminUsageView: React.FC<AdminUsageProps> = ({ data, isDark }) => {
             <div className="space-y-1">
               <div className="flex justify-between font-bold">
                 <span>1. Noticias y Pulso de Mercado</span>
-                <span className="font-mono text-emerald-700 dark:text-emerald-400">
+                <span className="font-mono text-brand-text dark:text-brand-text">
                   {usage.sectionsVisited.noticias}%
                 </span>
               </div>
-              <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div className="w-full h-2 bg-ink-100 dark:bg-ink-800 rounded-full overflow-hidden">
                 <div 
-                  className="h-full bg-emerald-600 rounded-full" 
+                  className="h-full bg-brand-600 rounded-full"
                   style={{ width: `${usage.sectionsVisited.noticias}%` }} 
                 />
               </div>
@@ -147,13 +147,13 @@ export const AdminUsageView: React.FC<AdminUsageProps> = ({ data, isDark }) => {
             <div className="space-y-1">
               <div className="flex justify-between font-bold">
                 <span>2. Calendario Financiero</span>
-                <span className="font-mono text-blue-600 dark:text-blue-400">
+                <span className="font-mono text-info-text dark:text-info-text">
                   {usage.sectionsVisited.calendario}%
                 </span>
               </div>
-              <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div className="w-full h-2 bg-ink-100 dark:bg-ink-800 rounded-full overflow-hidden">
                 <div 
-                  className="h-full bg-blue-500 rounded-full" 
+                  className="h-full bg-info-500 rounded-full"
                   style={{ width: `${usage.sectionsVisited.calendario}%` }} 
                 />
               </div>
@@ -163,13 +163,13 @@ export const AdminUsageView: React.FC<AdminUsageProps> = ({ data, isDark }) => {
             <div className="space-y-1">
               <div className="flex justify-between font-bold">
                 <span>3. Mi Cartera y Ajustes</span>
-                <span className="font-mono text-amber-600 dark:text-amber-400">
+                <span className="font-mono text-warning-text dark:text-warning-text">
                   {usage.sectionsVisited.cartera}%
                 </span>
               </div>
-              <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div className="w-full h-2 bg-ink-100 dark:bg-ink-800 rounded-full overflow-hidden">
                 <div 
-                  className="h-full bg-amber-500 rounded-full" 
+                  className="h-full bg-warning-500 rounded-full"
                   style={{ width: `${usage.sectionsVisited.cartera}%` }} 
                 />
               </div>
@@ -180,7 +180,7 @@ export const AdminUsageView: React.FC<AdminUsageProps> = ({ data, isDark }) => {
         {/* Risk Profiles Breakdown */}
         <div className={`p-5 rounded-3xl border shadow-xs space-y-3 ${cardBg}`}>
           <h4 className="font-extrabold text-sm tracking-tight flex items-center gap-2">
-            <Compass className="w-4 h-4 text-blue-600" />
+            <Compass className="w-4 h-4 text-info-text" />
             Distribución de Perfiles de Inversor
           </h4>
           <p className={`text-xs ${subText}`}>
@@ -192,13 +192,13 @@ export const AdminUsageView: React.FC<AdminUsageProps> = ({ data, isDark }) => {
             <div className="space-y-1">
               <div className="flex justify-between font-bold">
                 <span>Moderado</span>
-                <span className="font-mono text-slate-800 dark:text-slate-200">
+                <span className="font-mono text-ink-800 dark:text-ink-200">
                   {usage.profileBreakdown.moderado}%
                 </span>
               </div>
-              <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div className="w-full h-2 bg-ink-100 dark:bg-ink-800 rounded-full overflow-hidden">
                 <div 
-                  className="h-full bg-emerald-600 rounded-full" 
+                  className="h-full bg-brand-600 rounded-full"
                   style={{ width: `${usage.profileBreakdown.moderado}%` }} 
                 />
               </div>
@@ -208,13 +208,13 @@ export const AdminUsageView: React.FC<AdminUsageProps> = ({ data, isDark }) => {
             <div className="space-y-1">
               <div className="flex justify-between font-bold">
                 <span>Dinámico</span>
-                <span className="font-mono text-slate-800 dark:text-slate-200">
+                <span className="font-mono text-ink-800 dark:text-ink-200">
                   {usage.profileBreakdown.dinamico}%
                 </span>
               </div>
-              <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div className="w-full h-2 bg-ink-100 dark:bg-ink-800 rounded-full overflow-hidden">
                 <div 
-                  className="h-full bg-blue-500 rounded-full" 
+                  className="h-full bg-info-500 rounded-full"
                   style={{ width: `${usage.profileBreakdown.dinamico}%` }} 
                 />
               </div>
@@ -224,13 +224,13 @@ export const AdminUsageView: React.FC<AdminUsageProps> = ({ data, isDark }) => {
             <div className="space-y-1">
               <div className="flex justify-between font-bold">
                 <span>Conservador</span>
-                <span className="font-mono text-slate-800 dark:text-slate-200">
+                <span className="font-mono text-ink-800 dark:text-ink-200">
                   {usage.profileBreakdown.conservador}%
                 </span>
               </div>
-              <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div className="w-full h-2 bg-ink-100 dark:bg-ink-800 rounded-full overflow-hidden">
                 <div 
-                  className="h-full bg-slate-500 rounded-full" 
+                  className="h-full bg-ink-500 rounded-full"
                   style={{ width: `${usage.profileBreakdown.conservador}%` }} 
                 />
               </div>
@@ -241,7 +241,7 @@ export const AdminUsageView: React.FC<AdminUsageProps> = ({ data, isDark }) => {
 
       {/* Top 20 Most Added Tickers with Long / Short breakdown */}
       <div className={`p-6 sm:p-7 rounded-3xl border shadow-xs space-y-4 ${cardBg}`}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-ink-100 dark:border-ink-800">
           <div>
             <h4 className="font-extrabold text-base tracking-tight">
               Top 20 Activos Financieros Más Monitoreados
@@ -251,12 +251,12 @@ export const AdminUsageView: React.FC<AdminUsageProps> = ({ data, isDark }) => {
             </p>
           </div>
           <div className="flex items-center gap-3 text-xs font-bold">
-            <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
-              <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
+            <span className="flex items-center gap-1 text-info-text dark:text-info-text">
+              <span className="w-2.5 h-2.5 rounded-full bg-info-600" />
               Long
             </span>
-            <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+            <span className="flex items-center gap-1 text-warning-text dark:text-warning-text">
+              <span className="w-2.5 h-2.5 rounded-full bg-warning-400" />
               Short
             </span>
           </div>
@@ -264,7 +264,7 @@ export const AdminUsageView: React.FC<AdminUsageProps> = ({ data, isDark }) => {
 
         <div className="space-y-2.5 pt-2">
           {(!usage.topTickers || usage.topTickers.length === 0) ? (
-            <p className="text-xs text-slate-500 italic py-6 text-center">
+            <p className="text-xs text-muted italic py-6 text-center">
               Aún no hay suficientes activos registrados en carteras reales.
             </p>
           ) : (
@@ -276,13 +276,13 @@ export const AdminUsageView: React.FC<AdminUsageProps> = ({ data, isDark }) => {
               return (
                 <div key={t.symbol} className="flex items-center gap-3 text-xs">
                   {/* Rank */}
-                  <span className="w-5 text-right font-mono font-bold text-slate-400">
+                  <span className="w-5 text-right font-mono font-bold text-muted">
                     {index + 1}.
                   </span>
 
                   {/* Symbol & Name */}
                   <div className="w-32 sm:w-44 shrink-0 truncate">
-                    <span className="font-mono font-bold text-slate-900 dark:text-white mr-1.5">
+                    <span className="font-mono font-bold text-ink-900 dark:text-paper mr-1.5">
                       {t.symbol}
                     </span>
                     {t.name && (
@@ -293,21 +293,21 @@ export const AdminUsageView: React.FC<AdminUsageProps> = ({ data, isDark }) => {
                   </div>
 
                   {/* Dual Bar: Long vs Short */}
-                  <div className="flex-1 h-6 bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden flex p-0.5 border border-slate-200/80 dark:border-slate-700">
+                  <div className="flex-1 h-6 bg-ink-100 dark:bg-ink-800 rounded-lg overflow-hidden flex p-0.5 border border-ink-200/80 dark:border-ink-700">
                     <div 
                       style={{ width: `${widthPct}%` }}
                       className="h-full flex overflow-hidden rounded-md transition-all duration-500"
                     >
                       <div 
                         style={{ width: `${longPct}%` }}
-                        className="bg-blue-600 h-full flex items-center justify-start px-2 text-[10px] font-mono text-white font-bold"
+                        className="bg-info-600 h-full flex items-center justify-start px-2 text-[10px] font-mono text-paper font-bold"
                         title={`${t.symbol} Long: ${t.longCount}`}
                       >
                         {longPct > 20 && `${t.longCount} L`}
                       </div>
                       <div 
                         style={{ width: `${shortPct}%` }}
-                        className="bg-amber-400 h-full flex items-center justify-end px-2 text-[10px] font-mono text-amber-950 font-bold"
+                        className="bg-warning-400 h-full flex items-center justify-end px-2 text-[10px] font-mono text-warning-text font-bold"
                         title={`${t.symbol} Short: ${t.shortCount}`}
                       >
                         {shortPct > 20 && `${t.shortCount} S`}
@@ -316,7 +316,7 @@ export const AdminUsageView: React.FC<AdminUsageProps> = ({ data, isDark }) => {
                   </div>
 
                   {/* Total Count */}
-                  <span className="w-20 text-right font-mono font-bold text-slate-700 dark:text-slate-300 shrink-0">
+                  <span className="w-20 text-right font-mono font-bold text-muted dark:text-ink-300 shrink-0">
                     {t.count} {t.count === 1 ? 'cartera' : 'carteras'}
                   </span>
                 </div>

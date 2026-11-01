@@ -41,7 +41,8 @@ import { WelcomeScreen } from './components/WelcomeScreen';
 import { LoginForm } from './components/LoginForm';
 import { SignUpWizard } from './components/SignUpWizard';
 const InteractiveTour = lazy(() => import('./components/InteractiveTour').then(m => ({ default: m.InteractiveTour })));
-import { LighthouseLogo } from './components/LighthouseLogo';
+import { BrandLoading } from './components/BrandLoading';
+import { BrandLogo } from './components/BrandLogo';
 const AdminPanel = lazy(() => import('./components/admin/AdminPanel').then(m => ({ default: m.AdminPanel })));
 import { UserAccount } from './types';
 import { 
@@ -660,12 +661,12 @@ export default function App() {
   // Session hydration loading state
   if (isSessionLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-4 select-none">
-        <div className="w-14 h-14 rounded-2xl bg-emerald-950 border border-emerald-800/80 flex items-center justify-center mb-4 shadow-xl shadow-emerald-950/50">
-          <LighthouseLogo size="lg" showContainer={false} className="w-8 h-8 text-white" />
+      <div className="min-h-screen bg-ink-950 text-paper flex flex-col items-center justify-center p-4 select-none">
+        <div className="w-14 h-14 rounded-2xl bg-brand-950 border border-brand-800/80 flex items-center justify-center mb-4 shadow-xl shadow-brand-950/50">
+          <BrandLogo size="lg" tone="dark" showContainer={false} className="w-8 h-8 text-paper" />
         </div>
-        <div className="flex items-center gap-2 text-sm font-semibold text-emerald-300">
-          <Sparkles className="w-4 h-4 text-emerald-400 animate-spin" />
+        <div className="flex items-center gap-2 text-sm font-semibold text-brand-300">
+          <Sparkles className="w-4 h-4 text-brand-text animate-spin" />
           <span>Iniciando FAROS...</span>
         </div>
       </div>
@@ -675,7 +676,7 @@ export default function App() {
   // Admin View: If /admin URL or state is active, render AdminPanel directly
   if (isAdminView) {
     return (
-      <ScreenBoundary><Suspense fallback={<p role="status" className="p-6">Cargando administración…</p>}><AdminPanel
+      <ScreenBoundary><Suspense fallback={<BrandLoading>Cargando administración…</BrandLoading>}><AdminPanel
         onBackToApp={navigateBackToApp}
         currentUserEmail={currentUser?.email}
       /></Suspense></ScreenBoundary>
@@ -687,7 +688,7 @@ export default function App() {
     return (
       <>
         <VersionNotice />
-        {accountError && <p role="alert" className="fixed bottom-4 left-4 right-4 z-40 mx-auto max-w-xl rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{accountError}</p>}
+        {accountError && <p role="alert" className="fixed bottom-4 left-4 right-4 z-40 mx-auto max-w-xl rounded-xl border border-danger-200 bg-danger-50 p-3 text-sm text-danger-700">{accountError}</p>}
         <WelcomeScreen
           onOpenSignUp={() => setShowSignUpModal(true)}
           onOpenLogin={() => setShowLoginModal(true)}
@@ -722,7 +723,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-dvh min-w-0 bg-slate-50 text-slate-900 flex flex-col font-sans antialiased">
+    <div className="min-h-dvh min-w-0 bg-ink-50 text-ink-900 flex flex-col font-sans antialiased">
       {/* Top Header adhering to 3-zone contract with 3 tabs */}
       <Header
         currentTab={currentTab}
@@ -739,11 +740,11 @@ export default function App() {
       <VersionNotice />
       {/* Main View Area */}
       <main className="flex-1 min-w-0 max-w-5xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 pb-[calc(7rem+env(safe-area-inset-bottom))] lg:pb-16">
-        {accountError && <p role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{accountError}</p>}
-        {alerts.message && !alerts.showPrompt && <p role="status" className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{alerts.message}</p>}
-        {alerts.error && !alerts.showPrompt && <p role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{alerts.error}</p>}
-        {alerts.showPrompt && currentTab === 'feed' && <section className="mb-5 p-4 sm:p-5 rounded-2xl bg-white border border-emerald-200 shadow-sm"><NotificationControls alerts={alerts} question /></section>}
-        <ScreenBoundary key={currentTab}><Suspense fallback={<p role="status" className="p-6">Cargando pantalla…</p>}>
+        {accountError && <p role="alert" className="mb-4 rounded-xl border border-danger-200 bg-danger-50 p-3 text-sm text-danger-700">{accountError}</p>}
+        {alerts.message && !alerts.showPrompt && <p role="status" className="mb-4 rounded-xl border border-brand-200 bg-brand-50 p-3 text-sm text-brand-900">{alerts.message}</p>}
+        {alerts.error && !alerts.showPrompt && <p role="alert" className="mb-4 rounded-xl border border-danger-200 bg-danger-50 p-3 text-sm text-danger-800">{alerts.error}</p>}
+        {alerts.showPrompt && currentTab === 'feed' && <section className="mb-5 p-4 sm:p-5 rounded-2xl bg-paper border border-brand-200 shadow-sm"><NotificationControls alerts={alerts} question /></section>}
+        <ScreenBoundary key={currentTab}><Suspense fallback={<BrandLoading>Cargando pantalla…</BrandLoading>}>
         {/* PANTALLA 1: INICIO (FEED) */}
         {currentTab === 'feed' && (
           <div className="space-y-8">
@@ -769,10 +770,10 @@ export default function App() {
               {/* Natural Document Flow Header: Title, Description, Search, Saved button */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h3 data-tour="feed-title" className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                  <h3 data-tour="feed-title" className="text-xl sm:text-2xl font-bold text-ink-900 tracking-tight">
                     Noticias Clasificadas
                   </h3>
-                  <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                  <p className="text-xs sm:text-sm text-muted mt-0.5">
                     Información filtrada para tu cartera con análisis de impacto directo.
                   </p>
                 </div>
@@ -782,22 +783,22 @@ export default function App() {
                   {/* Expandable Search Input */}
                   <div className="flex items-center">
                     {isSearchExpanded ? (
-                      <div className="flex min-w-0 max-w-full items-center gap-1.5 bg-white border border-slate-300 rounded-xl px-3 py-1.5 shadow-xs animate-in fade-in duration-150">
-                        <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                      <div className="flex min-w-0 max-w-full items-center gap-1.5 bg-paper border border-ink-300 rounded-xl px-3 py-1.5 shadow-xs animate-in fade-in duration-150">
+                        <Search className="w-4 h-4 text-muted shrink-0" />
                         <input
                           type="text"
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
                           placeholder="Buscar activo o palabra clave..."
                           autoFocus
-                          className="text-xs sm:text-sm text-slate-800 focus:outline-none min-w-0 w-36 sm:w-56 bg-transparent"
+                          className="text-xs sm:text-sm text-ink-800 focus:outline-none min-w-0 w-36 sm:w-56 bg-transparent"
                         />
                         <button
                           onClick={() => {
                             setSearchQuery('');
                             setIsSearchExpanded(false);
                           }}
-                          className="p-0.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                          className="p-0.5 text-muted hover:text-muted cursor-pointer"
                           aria-label="Cerrar búsqueda"
                         >
                           <X className="w-3.5 h-3.5" />
@@ -806,7 +807,7 @@ export default function App() {
                     ) : (
                       <button
                         onClick={() => setIsSearchExpanded(true)}
-                        className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100 shadow-2xs transition-colors cursor-pointer"
+                        className="p-2 rounded-xl bg-paper border border-ink-200 text-muted hover:text-ink-900 hover:bg-ink-100 shadow-2xs transition-colors cursor-pointer"
                         title="Buscar en noticias"
                         aria-label="Buscar"
                       >
@@ -820,8 +821,8 @@ export default function App() {
                     onClick={() => setShowSavedOnly(!showSavedOnly)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer ${
                       showSavedOnly
-                        ? 'bg-emerald-950 text-white'
-                        : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs'
+                        ? 'bg-brand-950 text-paper'
+                        : 'bg-paper border border-ink-200 text-muted hover:bg-ink-50 shadow-2xs'
                     }`}
                   >
                     <Bookmark className="w-3.5 h-3.5" />
@@ -831,7 +832,7 @@ export default function App() {
               </div>
 
               {/* SLIM STICKY FILTER BAR: Minimal height (~46px) so it never obstructs reading */}
-              <div data-tour="feed-filters" className="sticky top-16 z-20 bg-white/95 backdrop-blur-md py-2 px-3 sm:px-4 rounded-2xl border border-slate-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+              <div data-tour="feed-filters" className="sticky top-16 z-20 bg-paper/95 backdrop-blur-md py-2 px-3 sm:px-4 rounded-2xl border border-ink-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-2.5">
                 {/* Category Pills (horizontal scroll on mobile) */}
                 <div className="flex min-w-0 items-center gap-1 overflow-x-auto max-w-full text-xs py-0.5 scrollbar-none">
                   {[
@@ -846,8 +847,8 @@ export default function App() {
                       onClick={() => setRelevanceTypeFilter(tab.id as any)}
                       className={`shrink-0 px-3 py-1.5 font-bold rounded-xl whitespace-nowrap transition-all cursor-pointer ${
                         relevanceTypeFilter === tab.id
-                          ? 'bg-emerald-950 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                          ? 'bg-brand-950 text-paper shadow-xs'
+                          : 'text-muted hover:text-ink-900 hover:bg-ink-100'
                       }`}
                     >
                       {tab.label}
@@ -861,7 +862,7 @@ export default function App() {
                   <select
                     value={assetFilter}
                     onChange={(e) => setAssetFilter(e.target.value)}
-                    className="text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-slate-800 focus:outline-none focus:border-emerald-800 cursor-pointer"
+                    className="text-xs font-bold bg-ink-50 border border-ink-200 rounded-xl px-2.5 py-1 text-ink-800 focus:outline-none focus:border-brand-800 cursor-pointer"
                   >
                     <option value="todos">Todos los activos</option>
                     {activePortfolio.assetIds.map(aid => (
@@ -875,26 +876,26 @@ export default function App() {
                       { 
                         id: 'todos', 
                         label: 'Todos',
-                        activeClass: 'bg-slate-900 text-white shadow-xs border border-slate-900',
-                        inactiveClass: 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                        activeClass: 'bg-ink-900 text-paper shadow-xs border border-ink-900',
+                        inactiveClass: 'text-muted hover:text-ink-900 hover:bg-ink-100'
                       },
                       { 
                         id: 'favorable', 
                         label: 'Favorables',
-                        activeClass: 'bg-emerald-600 text-white shadow-xs border border-emerald-600 ring-2 ring-emerald-500/20',
-                        inactiveClass: 'text-emerald-800 hover:text-emerald-950 hover:bg-emerald-50'
+                        activeClass: 'bg-brand-600 text-paper shadow-xs border border-brand-600 ring-2 ring-brand-500/20',
+                        inactiveClass: 'text-brand-800 hover:text-brand-950 hover:bg-brand-50'
                       },
                       { 
                         id: 'alerta', 
                         label: 'Alertas',
-                        activeClass: 'bg-rose-600 text-white shadow-xs border border-rose-600 ring-2 ring-rose-500/20',
-                        inactiveClass: 'text-rose-800 hover:text-rose-950 hover:bg-rose-50'
+                        activeClass: 'bg-danger-600 text-paper shadow-xs border border-danger-600 ring-2 ring-danger-500/20',
+                        inactiveClass: 'text-danger-800 hover:text-danger-950 hover:bg-danger-50'
                       },
                       { 
                         id: 'neutral', 
                         label: 'Neutrales',
-                        activeClass: 'bg-slate-600 text-white shadow-xs border border-slate-600 ring-2 ring-slate-400/20',
-                        inactiveClass: 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                        activeClass: 'bg-ink-600 text-paper shadow-xs border border-ink-600 ring-2 ring-ink-400/20',
+                        inactiveClass: 'text-muted hover:text-ink-900 hover:bg-ink-100'
                       },
                     ].map(imp => {
                       const isActive = 
@@ -939,23 +940,23 @@ export default function App() {
                 
                 const theme = isFav
                   ? {
-                      container: 'bg-emerald-50/95 border-emerald-300 text-emerald-950 shadow-2xs ring-1 ring-emerald-500/20',
-                      dot: 'bg-emerald-600',
-                      badge: 'bg-emerald-200/90 text-emerald-950 border border-emerald-300',
-                      button: 'text-emerald-950 hover:bg-emerald-100 border-emerald-300 bg-white/95'
+                      container: 'bg-brand-50/95 border-brand-300 text-brand-950 shadow-2xs ring-1 ring-brand-500/20',
+                      dot: 'bg-brand-600',
+                      badge: 'bg-brand-200/90 text-brand-950 border border-brand-300',
+                      button: 'text-brand-950 hover:bg-brand-100 border-brand-300 bg-paper/95'
                     }
                   : isAle
                   ? {
-                      container: 'bg-rose-50/95 border-rose-300 text-rose-950 shadow-2xs ring-1 ring-rose-500/20',
-                      dot: 'bg-rose-600',
-                      badge: 'bg-rose-200/90 text-rose-950 border border-rose-300',
-                      button: 'text-rose-950 hover:bg-rose-100 border-rose-300 bg-white/95'
+                      container: 'bg-danger-50/95 border-danger-300 text-danger-950 shadow-2xs ring-1 ring-danger-500/20',
+                      dot: 'bg-danger-600',
+                      badge: 'bg-danger-200/90 text-danger-950 border border-danger-300',
+                      button: 'text-danger-950 hover:bg-danger-100 border-danger-300 bg-paper/95'
                     }
                   : {
-                      container: 'bg-slate-100/95 border-slate-300 text-slate-900 shadow-2xs ring-1 ring-slate-400/20',
-                      dot: 'bg-slate-600',
-                      badge: 'bg-slate-200 text-slate-900 border border-slate-300',
-                      button: 'text-slate-900 hover:bg-slate-200 border-slate-300 bg-white/95'
+                      container: 'bg-ink-100/95 border-ink-300 text-ink-900 shadow-2xs ring-1 ring-ink-400/20',
+                      dot: 'bg-ink-600',
+                      badge: 'bg-ink-200 text-ink-900 border border-ink-300',
+                      button: 'text-ink-900 hover:bg-ink-200 border-ink-300 bg-paper/95'
                     };
 
                 return (
@@ -963,10 +964,10 @@ export default function App() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className={`w-2.5 h-2.5 rounded-full animate-pulse ${theme.dot}`} />
                       <span className="font-semibold">
-                        Filtrando por impacto: <strong className="font-black">{getQualitativeImpactLabel(impactFilter)}</strong>
+                        Filtrando por impacto: <strong className="font-bold">{getQualitativeImpactLabel(impactFilter)}</strong>
                       </span>
                       {assetFilter !== 'todos' && (
-                        <span className="text-[11px] font-mono bg-white border border-slate-300 px-2 py-0.5 rounded-md font-bold text-slate-800">
+                        <span className="text-[11px] font-mono bg-paper border border-ink-300 px-2 py-0.5 rounded-md font-bold text-ink-800">
                           {assetFilter}
                         </span>
                       )}
@@ -991,25 +992,25 @@ export default function App() {
                 const isFav = impactFilter === 'favorable' || impactFilter === 'positivo';
                 const isAle = impactFilter === 'alerta' || impactFilter === 'negativo';
                 const resetBtnClass = isFav 
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white' 
+                  ? 'bg-brand-600 hover:bg-brand-700 text-paper'
                   : isAle 
-                  ? 'bg-rose-600 hover:bg-rose-700 text-white' 
-                  : 'bg-slate-700 hover:bg-slate-800 text-white';
+                  ? 'bg-danger-600 hover:bg-danger-700 text-paper'
+                  : 'bg-ink-700 hover:bg-ink-800 text-paper';
                 const iconBoxClass = isFav 
-                  ? 'bg-emerald-100 text-emerald-700' 
+                  ? 'bg-brand-100 text-brand-text'
                   : isAle 
-                  ? 'bg-rose-100 text-rose-700' 
-                  : 'bg-slate-100 text-slate-600';
+                  ? 'bg-danger-100 text-danger-700'
+                  : 'bg-ink-100 text-muted';
 
                 return (
-                  <div className="bg-white rounded-3xl border border-slate-200/90 p-8 sm:p-12 text-center shadow-xs transition-all duration-300 animate-in fade-in">
+                  <div className="bg-paper rounded-3xl border border-ink-200/90 p-8 sm:p-12 text-center shadow-xs transition-all duration-300 animate-in fade-in">
                     <div className={`w-14 h-14 mx-auto rounded-2xl flex items-center justify-center mb-4 ${iconBoxClass}`}>
-                      <FilterX className="w-7 h-7 stroke-[1.75]" />
+                      <BrandLogo size="lg" />
                     </div>
-                    <h4 className="text-lg font-black text-slate-900 tracking-tight">
+                    <h4 className="text-lg font-bold text-ink-900 tracking-tight">
                       {isLoadingNews ? 'Buscando noticias…' : queryState.status === 'error' ? 'No pudimos actualizar las noticias' : newsList.length ? 'No hay noticias con estos filtros' : 'Sin novedades verificadas'}
                     </h4>
-                    <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto mt-2 leading-relaxed">
+                    <p className="text-xs sm:text-sm text-muted max-w-md mx-auto mt-2 leading-relaxed">
                       {impactFilter !== 'todos' && assetFilter !== 'todos'
                         ? `No se encontraron noticias clasificadas como "${getQualitativeImpactLabel(impactFilter)}" para el activo ${assetFilter}.`
                         : impactFilter !== 'todos'
@@ -1036,7 +1037,7 @@ export default function App() {
                             setSearchQuery('');
                             setShowSavedOnly(false);
                           }}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-bold rounded-xl transition-colors cursor-pointer active:scale-95"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-ink-100 text-muted hover:bg-ink-200 text-xs font-bold rounded-xl transition-colors cursor-pointer active:scale-95"
                         >
                           <span>Restablecer todos los filtros</span>
                         </button>
@@ -1045,7 +1046,7 @@ export default function App() {
                   </div>
                 );
               })() : (
-                <div className="space-y-4 pt-2 text-slate-700 transition-all duration-300 animate-in fade-in">
+                <div className="space-y-4 pt-2 text-muted transition-all duration-300 animate-in fade-in">
                   {filteredNews.map((news) => (
                     <NewsCard
                       key={news.id}
@@ -1070,7 +1071,7 @@ export default function App() {
           <FinancialCalendar 
             key={currentUser.id}
             accountId={currentUser.id === 'usr_demo' ? undefined : currentUser.id}
-            notificationsControl={currentUser.id === 'usr_demo' ? <p className="text-xs text-slate-600">Iniciá sesión con una cuenta personal para recibir alertas en tus dispositivos.</p> : <NotificationControls alerts={alerts} />}
+            notificationsControl={currentUser.id === 'usr_demo' ? <p className="text-xs text-muted">Iniciá sesión con una cuenta personal para recibir alertas en tus dispositivos.</p> : <NotificationControls alerts={alerts} />}
             portfolioId={activePortfolio.id}
             portfolioName={activePortfolio.name}
             userAssetSymbols={activePortfolio.assetIds}
@@ -1090,7 +1091,7 @@ export default function App() {
             onSavePreferences={handleSavePreferences}
             onOpenCreateNew={() => setShowOnboarding(true)}
             currentUser={currentUser}
-            notificationsControl={currentUser.id === 'usr_demo' ? <p className="text-xs text-slate-600">Iniciá sesión con una cuenta personal para recibir alertas en tus dispositivos.</p> : <NotificationControls alerts={alerts} />}
+            notificationsControl={currentUser.id === 'usr_demo' ? <p className="text-xs text-muted">Iniciá sesión con una cuenta personal para recibir alertas en tus dispositivos.</p> : <NotificationControls alerts={alerts} />}
             onAccountSaved={updated => setCurrentUser(previous => previous ? { ...previous, alyc: updated.alyc } : previous)}
             onRecoveryKeySaved={updated => setCurrentUser(previous => previous?.id === updated.id ? { ...previous, hasRecoveryKey: updated.hasRecoveryKey } : previous)}
             onLogout={handleLogout}
@@ -1103,45 +1104,43 @@ export default function App() {
       </main>
 
       {/* Rocket Money-Style Contrast Bottom Foundation (Deep Emerald) */}
-      <footer className="mt-auto bg-emerald-950 text-white pt-10 pb-[calc(7rem+env(safe-area-inset-bottom))] lg:pb-12 border-t border-emerald-900">
+      <footer className="mt-auto bg-brand-950 text-paper pt-10 pb-[calc(7rem+env(safe-area-inset-bottom))] lg:pb-12 border-t border-brand-900">
         <div className="max-w-5xl mx-auto px-4 sm:px-6">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6 pb-8 border-b border-emerald-900/80">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6 pb-8 border-b border-brand-900/80">
             {/* Brand in footer */}
             <div className="flex items-center gap-3">
-              <LighthouseLogo size="md" className="bg-emerald-900" />
+              <BrandLogo size="xl" tone="dark" variant="full" />
               <div>
-                <span className="text-xl font-black tracking-tight text-white font-sans">
-                  FAROS
-                </span>
-                <p className="text-xs text-emerald-300">
+                <span className="sr-only">Faros</span>
+                <p className="text-xs text-brand-300">
                   La plataforma de mercado que trabaja para tu cartera.
                 </p>
               </div>
             </div>
 
             {/* Quick footer navigation */}
-            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-sm text-emerald-200 font-semibold">
-              <button onClick={() => setCurrentTab('feed')} className="hover:text-white transition-colors cursor-pointer">
+            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-sm text-brand-200 font-semibold">
+              <button onClick={() => setCurrentTab('feed')} className="hover:text-paper transition-colors cursor-pointer">
                 Noticias
               </button>
-              <button onClick={() => setCurrentTab('calendar')} className="hover:text-white transition-colors cursor-pointer">
+              <button onClick={() => setCurrentTab('calendar')} className="hover:text-paper transition-colors cursor-pointer">
                 Calendario
               </button>
-              <button onClick={() => setCurrentTab('settings')} className="hover:text-white transition-colors cursor-pointer">
+              <button onClick={() => setCurrentTab('settings')} className="hover:text-paper transition-colors cursor-pointer">
                 Mi cartera
               </button>
-              <button onClick={() => setShowOnboarding(true)} className="hover:text-white transition-colors cursor-pointer">
+              <button onClick={() => setShowOnboarding(true)} className="hover:text-paper transition-colors cursor-pointer">
                 Nueva Cartera
               </button>
             </div>
           </div>
 
           {/* Legal Notice */}
-          <div className="pt-6 text-center text-xs text-emerald-300/80 space-y-1">
-            <p className="font-semibold text-emerald-100">
+          <div className="pt-6 text-center text-xs text-brand-300/80 space-y-1">
+            <p className="font-semibold text-brand-100">
               FAROS brinda información. No constituye asesoramiento financiero ni recomendación de inversión.
             </p>
-            <p className="text-[11px] text-emerald-400/60">
+            <p className="text-[11px] text-brand-text/60">
               © 2026 FAROS Intelligence. Todos los derechos reservados. Datos y coberturas de ejemplo con fines ilustrativos.
             </p>
           </div>
@@ -1234,16 +1233,16 @@ export default function App() {
 
       {/* 6. Initial Welcome Onboarding Modal for New Registrations */}
       {showWelcomeOnboardingModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-100 text-center space-y-6">
-            <div className="w-16 h-16 rounded-3xl bg-emerald-950 text-white flex items-center justify-center mx-auto shadow-md">
-              <Compass className="w-8 h-8 text-emerald-300 animate-pulse" />
+        <div className="fixed inset-0 z-50 bg-ink-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-paper rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-ink-100 text-center space-y-6">
+            <div className="w-16 h-16 rounded-3xl bg-brand-950 text-paper flex items-center justify-center mx-auto shadow-md">
+              <BrandLogo size="lg" tone="dark" />
             </div>
             <div className="space-y-2">
-              <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+              <h3 className="text-2xl font-bold text-ink-900 tracking-tight">
                 ¡Bienvenido a FAROS!
               </h3>
-              <p className="text-sm text-slate-600 leading-relaxed">
+              <p className="text-sm text-muted leading-relaxed">
                 Te vamos a mostrar cómo funciona la plataforma. No necesitás configurar todo ahora: podés agregar tus inversiones y personalizar tus preferencias cuando quieras.
               </p>
             </div>
@@ -1254,14 +1253,14 @@ export default function App() {
                   setShowWelcomeOnboardingModal(false);
                   setIsTourActive(true);
                 }}
-                className="w-full sm:w-auto px-6 py-3.5 bg-emerald-950 hover:bg-emerald-900 text-white font-extrabold rounded-2xl shadow-md transition-all active:scale-95 cursor-pointer text-sm"
+                className="w-full sm:w-auto px-6 py-3.5 bg-brand-950 hover:bg-brand-900 text-paper font-extrabold rounded-2xl shadow-md transition-all active:scale-95 cursor-pointer text-sm"
               >
                 Comenzar recorrido
               </button>
               <button
                 type="button"
                 onClick={() => setShowWelcomeOnboardingModal(false)}
-                className="w-full sm:w-auto px-6 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl transition-all cursor-pointer text-sm"
+                className="w-full sm:w-auto px-6 py-3.5 bg-ink-100 hover:bg-ink-200 text-muted font-bold rounded-2xl transition-all cursor-pointer text-sm"
               >
                 Explorar por mi cuenta
               </button>
@@ -1271,7 +1270,7 @@ export default function App() {
       )}
 
       {/* 7. Comprehensive 3-Stage Guided Interactive Tour (15 Steps) */}
-      {isTourActive && <ScreenBoundary><Suspense fallback={<p role="status">Cargando guía…</p>}><InteractiveTour
+      {isTourActive && <ScreenBoundary><Suspense fallback={<BrandLoading>Cargando guía…</BrandLoading>}><InteractiveTour
         isActive={isTourActive}
         onClose={() => setIsTourActive(false)}
         currentTab={currentTab}

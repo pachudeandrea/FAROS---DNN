@@ -538,41 +538,41 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
     if (isCustom) {
       return { 
         label: 'Mi Evento', 
-        dotClass: 'bg-indigo-600', 
-        textClass: 'text-indigo-950 bg-indigo-50 border border-indigo-200' 
+        dotClass: 'bg-accent-600',
+        textClass: 'text-accent-950 bg-accent-50 border border-accent-200'
       };
     }
     if (isMacro) {
       return { 
         label: 'Macro', 
-        dotClass: 'bg-purple-600', 
-        textClass: 'text-purple-950 bg-purple-50 border border-purple-200' 
+        dotClass: 'bg-accent-600',
+        textClass: 'text-accent-950 bg-accent-50 border border-accent-200'
       };
     }
     switch (cat) {
       case 'pago_cupon':
         return { 
           label: 'Pago de Renta / Bono', 
-          dotClass: 'bg-emerald-600', 
-          textClass: 'text-emerald-950 bg-emerald-50 border border-emerald-200' 
+          dotClass: 'bg-brand-600',
+          textClass: 'text-brand-950 bg-brand-50 border border-brand-200'
         };
       case 'balance':
         return { 
           label: 'Balance Corporativo', 
-          dotClass: 'bg-blue-600', 
-          textClass: 'text-blue-950 bg-blue-50 border border-blue-200' 
+          dotClass: 'bg-info-600',
+          textClass: 'text-info-text bg-info-50 border border-info-200'
         };
       case 'macro_bcra':
         return { 
           label: 'Macro INDEC / BCRA', 
-          dotClass: 'bg-amber-600', 
-          textClass: 'text-amber-950 bg-amber-50 border border-amber-200' 
+          dotClass: 'bg-warning-600',
+          textClass: 'text-warning-text bg-warning-50 border border-warning-200'
         };
       case 'elecciones_politica':
         return { 
           label: 'Política Monetaria', 
-          dotClass: 'bg-purple-600', 
-          textClass: 'text-purple-950 bg-purple-50 border border-purple-200' 
+          dotClass: 'bg-accent-600',
+          textClass: 'text-accent-950 bg-accent-50 border border-accent-200'
         };
     }
   };
@@ -581,23 +581,23 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
   const getStatusBadge = (status?: CalendarEvent['status']) => {
     if (status === 'realizado') {
       return (
-        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-300 px-2 py-0.5 rounded-full">
-          <CheckCircle2 className="w-3 h-3 text-slate-500" />
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-muted bg-ink-100 border border-ink-300 px-2 py-0.5 rounded-full">
+          <CheckCircle2 className="w-3 h-3 text-muted" />
           <span>Realizado</span>
         </span>
       );
     }
     if (status === 'estimada') {
       return (
-        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100/80 border border-amber-300 px-2 py-0.5 rounded-full">
-          <Clock className="w-3 h-3 text-amber-700" />
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-warning-text bg-warning-100/80 border border-warning-300 px-2 py-0.5 rounded-full">
+          <Clock className="w-3 h-3 text-warning-text" />
           <span>Fecha estimada</span>
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-950 bg-emerald-100/80 border border-emerald-300 px-2 py-0.5 rounded-full">
-        <ShieldCheck className="w-3 h-3 text-emerald-700" />
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-brand-950 bg-brand-100/80 border border-brand-300 px-2 py-0.5 rounded-full">
+        <ShieldCheck className="w-3 h-3 text-brand-text" />
         <span>Confirmada</span>
       </span>
     );
@@ -617,14 +617,14 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
 
   return (
     <div className="space-y-8 min-w-0 max-w-5xl mx-auto">
-      <p role="status" className="text-sm text-slate-600">{savingEvents ? 'Guardando recordatorios…' : !calendarReady ? 'Sincronizando recordatorios…' : savedMessage}</p>
-      {loadError && <p role="alert" className="p-3 rounded-xl bg-amber-50 text-amber-900 text-sm">{loadError}</p>}
-      {syncError && <p role="alert" className="p-3 rounded-xl bg-rose-50 text-rose-800 text-xs">{syncError}</p>}
-      {accountId && calendarReady && legacyEvents.length > 0 && customEvents.length === 0 && <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 space-y-2 text-xs">
+      <p role="status" className="text-sm text-muted">{savingEvents ? 'Guardando recordatorios…' : !calendarReady ? 'Sincronizando recordatorios…' : savedMessage}</p>
+      {loadError && <p role="alert" className="p-3 rounded-xl bg-warning-50 text-warning-text text-sm">{loadError}</p>}
+      {syncError && <p role="alert" className="p-3 rounded-xl bg-danger-50 text-danger-800 text-xs">{syncError}</p>}
+      {accountId && calendarReady && legacyEvents.length > 0 && customEvents.length === 0 && <div className="p-4 rounded-2xl bg-warning-50 border border-warning-200 space-y-2 text-xs">
         <p>Tenés recordatorios guardados en este dispositivo. Podés importarlos a esta cuenta para recibirlos también con FAROS cerrado.</p>
         <button type="button" disabled={savingEvents} onClick={async () => {
           if (await saveCustomEvents(legacyEvents)) { setLegacyEvents([]); try { localStorage.removeItem('faros_custom_events'); } catch {} }
-        }} className="font-bold text-emerald-900 underline cursor-pointer disabled:opacity-50">Importar recordatorios a esta cuenta</button>
+        }} className="font-bold text-brand-900 underline cursor-pointer disabled:opacity-50">Importar recordatorios a esta cuenta</button>
       </div>}
       {/* Active Reminder Toast / Banner */}
       {activeAlerts.length > 0 && (
@@ -634,21 +634,21 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
               key={alert.id}
               className={`p-4 rounded-2xl border flex items-center justify-between gap-3 text-xs shadow-sm transition-all animate-in slide-in-from-top ${
                 alert.isUrgent 
-                  ? 'bg-amber-50 border-amber-300 text-amber-950' 
-                  : 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                  ? 'bg-warning-50 border-warning-300 text-warning-text'
+                  : 'bg-brand-50 border-brand-300 text-brand-950'
               }`}
             >
               <div className="flex items-center gap-3">
                 <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                  alert.isUrgent ? 'bg-amber-200 text-amber-900' : 'bg-emerald-200 text-emerald-900'
+                  alert.isUrgent ? 'bg-warning-200 text-warning-text' : 'bg-brand-200 text-brand-900'
                 }`}>
                   <Bell className="w-4 h-4 animate-bounce" />
                 </div>
                 <div>
-                  <h4 className="font-extrabold text-slate-900 text-sm">
+                  <h4 className="font-extrabold text-ink-900 text-sm">
                     {alert.title}
                   </h4>
-                  <p className="font-medium text-slate-700">
+                  <p className="font-medium text-muted">
                     {alert.message}
                   </p>
                 </div>
@@ -657,7 +657,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   onClick={() => handleDismissAlert(alert.id)}
-                  className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 rounded-xl font-bold text-xs text-slate-700 cursor-pointer shadow-2xs"
+                  className="px-3 py-1.5 bg-paper border border-ink-300 hover:bg-ink-100 rounded-xl font-bold text-xs text-muted cursor-pointer shadow-2xs"
                 >
                   Entendido
                 </button>
@@ -668,23 +668,23 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
       )}
 
       {/* Main Calendar Header Card */}
-      <div data-tour="calendar-header" className="bg-gradient-to-br from-emerald-950 via-emerald-900 to-slate-950 text-white rounded-3xl p-6 sm:p-7 shadow-[0_4px_20px_rgba(0,0,0,0.06)] relative overflow-hidden">
-        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-48 h-48 rounded-full bg-emerald-500/10 blur-2xl pointer-events-none" />
+      <div data-tour="calendar-header" className="bg-gradient-to-br from-brand-950 via-brand-900 to-ink-950 text-paper rounded-3xl p-6 sm:p-7 shadow-brand-soft relative overflow-hidden">
+        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-48 h-48 rounded-full bg-brand-500/10 blur-2xl pointer-events-none" />
         
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5 pb-5 border-b border-emerald-800/60">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5 pb-5 border-b border-brand-800/60">
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] font-black uppercase tracking-wider text-emerald-300 bg-emerald-900/80 px-2 py-0.5 rounded-md border border-emerald-700/60">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-brand-300 bg-brand-900/80 px-2 py-0.5 rounded-md border border-brand-700/60">
                 Calendario de Cartera
               </span>
-              <span className="text-xs text-emerald-200">
+              <span className="text-xs text-brand-200">
                 · {portfolioName}
               </span>
-              <span className="text-xs text-emerald-300/80">
+              <span className="text-xs text-brand-300/80">
                 · {lastUpdatedText}
               </span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+            <h2 className="text-2xl sm:text-3xl font-bold text-paper tracking-tight">
               {MONTH_NAMES[currentMonth]} {currentYear}
             </h2>
           </div>
@@ -695,17 +695,17 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
               data-tour="calendar-refresh-btn"
               onClick={() => loadCalendarEvents(true)}
               disabled={isLoading}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-900/60 hover:bg-emerald-900 text-emerald-100 border border-emerald-700/60 text-xs font-bold transition-all cursor-pointer disabled:opacity-50 shadow-2xs"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-brand-900/60 hover:bg-brand-900 text-brand-100 border border-brand-700/60 text-xs font-bold transition-all cursor-pointer disabled:opacity-50 shadow-2xs"
               title="Consultar eventos y cronogramas oficiales"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-emerald-300' : 'text-emerald-300'}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-brand-300' : 'text-brand-300'}`} />
               <span>{isLoading ? 'Actualizando...' : 'Actualizar'}</span>
             </button>
 
             <button
               data-tour="calendar-add-event-btn"
               onClick={() => handleOpenAddEventModal()}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white text-emerald-950 hover:bg-emerald-50 text-xs font-extrabold transition-all cursor-pointer shadow-xs active:scale-95"
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-paper text-brand-950 hover:bg-brand-50 text-xs font-extrabold transition-all cursor-pointer shadow-xs active:scale-95"
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
               <span>Agregar evento</span>
@@ -715,43 +715,43 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
 
         {/* 3 Quick Highlight Cards inside Calendar Hero (Recalculated by visible month) */}
         <div data-tour="calendar-summary-metrics" className="relative z-10 hidden sm:grid grid-cols-3 gap-3.5 pt-5">
-          <div className="bg-emerald-900/40 border border-emerald-700/50 rounded-2xl p-4 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center shrink-0">
+          <div className="bg-brand-900/40 border border-brand-700/50 rounded-2xl p-4 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-brand-500/20 text-brand-300 flex items-center justify-center shrink-0">
               <DollarSign className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-lg font-black font-mono text-white block">
+              <span className="text-lg font-bold font-mono text-paper block">
                 {visibleSummary.cobros} {visibleSummary.cobros === 1 ? 'Cobro' : 'Cobros'}
               </span>
-              <span className="text-[11px] text-emerald-200 font-medium leading-tight block">
+              <span className="text-[11px] text-brand-200 font-medium leading-tight block">
                 Rentas y cupones de bonos
               </span>
             </div>
           </div>
 
-          <div className="bg-emerald-900/40 border border-emerald-700/50 rounded-2xl p-4 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-300 flex items-center justify-center shrink-0">
+          <div className="bg-brand-900/40 border border-brand-700/50 rounded-2xl p-4 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-info-500/20 text-info-300 flex items-center justify-center shrink-0">
               <TrendingUp className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-lg font-black font-mono text-white block">
+              <span className="text-lg font-bold font-mono text-paper block">
                 {visibleSummary.balances} {visibleSummary.balances === 1 ? 'Balance' : 'Balances'}
               </span>
-              <span className="text-[11px] text-emerald-200 font-medium leading-tight block">
+              <span className="text-[11px] text-brand-200 font-medium leading-tight block">
                 Estados contables en el mes
               </span>
             </div>
           </div>
 
-          <div className="bg-emerald-900/40 border border-emerald-700/50 rounded-2xl p-4 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-300 flex items-center justify-center shrink-0">
+          <div className="bg-brand-900/40 border border-brand-700/50 rounded-2xl p-4 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-warning-500/20 text-warning-300 flex items-center justify-center shrink-0">
               <Landmark className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-lg font-black font-mono text-white block">
+              <span className="text-lg font-bold font-mono text-paper block">
                 {visibleSummary.macro} IPC & Tasas
               </span>
-              <span className="text-[11px] text-emerald-200 font-medium leading-tight block">
+              <span className="text-[11px] text-brand-200 font-medium leading-tight block">
                 Publicación oficial INDEC / BCRA
               </span>
             </div>
@@ -760,22 +760,22 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
       </div>
 
       <div aria-label="Vista del calendario" className="flex gap-2">
-        <button aria-pressed={view === 'agenda'} onClick={() => setView('agenda')} className={`px-4 py-2 rounded-xl font-semibold text-sm ${view === 'agenda' ? 'bg-emerald-950 text-white' : 'bg-white text-emerald-900'}`}>Agenda próxima</button>
-        <button aria-pressed={view === 'month'} onClick={() => setView('month')} className={`px-4 py-2 rounded-xl font-semibold text-sm ${view === 'month' ? 'bg-emerald-950 text-white' : 'bg-white text-emerald-900'}`}>Vista mensual</button>
+        <button aria-pressed={view === 'agenda'} onClick={() => setView('agenda')} className={`px-4 py-2 rounded-xl font-semibold text-sm ${view === 'agenda' ? 'bg-brand-950 text-paper' : 'bg-paper text-brand-900'}`}>Agenda próxima</button>
+        <button aria-pressed={view === 'month'} onClick={() => setView('month')} className={`px-4 py-2 rounded-xl font-semibold text-sm ${view === 'month' ? 'bg-brand-950 text-paper' : 'bg-paper text-brand-900'}`}>Vista mensual</button>
       </div>
       {view === 'agenda' && <section aria-label="Agenda próxima" className="space-y-3">
-        <h3 className="text-lg font-bold text-slate-900">Próximos eventos y recordatorios</h3>
-        <p className="text-sm text-slate-600">Eventos financieros y tus recordatorios personales, ordenados por fecha.</p>
-        {combinedEvents.filter(event => event.date >= nowAR.isoDate).sort((a,b) => a.date.localeCompare(b.date)).slice(0,30).map(event => <button key={event.id} className={`w-full text-left rounded-xl p-4 space-y-2 border ${event.isCustom ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-200'}`} onClick={() => setSelectedDayEvents({ dateStr: event.date, events: [event] })}>
-          <span className="flex flex-wrap gap-2 text-sm text-slate-600"><span>{event.isCustom ? 'Recordatorio personal' : 'Evento financiero'}</span><span>{event.date} · {event.time}</span></span>
-          <span className="block text-base font-semibold text-slate-900">{event.title}</span><span className="block text-sm text-slate-600">{event.description}</span>
+        <h3 className="text-lg font-bold text-ink-900">Próximos eventos y recordatorios</h3>
+        <p className="text-sm text-muted">Eventos financieros y tus recordatorios personales, ordenados por fecha.</p>
+        {combinedEvents.filter(event => event.date >= nowAR.isoDate).sort((a,b) => a.date.localeCompare(b.date)).slice(0,30).map(event => <button key={event.id} className={`w-full text-left rounded-xl p-4 space-y-2 border ${event.isCustom ? 'bg-accent-50 border-accent-200' : 'bg-paper border-ink-200'}`} onClick={() => setSelectedDayEvents({ dateStr: event.date, events: [event] })}>
+          <span className="flex flex-wrap gap-2 text-sm text-muted"><span>{event.isCustom ? 'Recordatorio personal' : 'Evento financiero'}</span><span>{event.date} · {event.time}</span></span>
+          <span className="block text-base font-semibold text-ink-900">{event.title}</span><span className="block text-sm text-muted">{event.description}</span>
         </button>)}
-        {!combinedEvents.some(event => event.date >= nowAR.isoDate) && <p className="text-slate-600">No hay próximos eventos disponibles. Podés agregar un recordatorio personal.</p>}
+        {!combinedEvents.some(event => event.date >= nowAR.isoDate) && <p className="text-muted">No hay próximos eventos disponibles. Podés agregar un recordatorio personal.</p>}
       </section>}
-      <label className="block sm:hidden text-sm font-semibold text-slate-700">Tipo de evento<select value={selectedCategory} onChange={event => setSelectedCategory(event.target.value as typeof selectedCategory)} className="block w-full mt-2 border border-slate-300 rounded-xl bg-white p-3"><option value="todos">Todos los tipos</option><option value="pago_cupon">Pagos de bonos y renta</option><option value="balance">Balances corporativos</option><option value="macro_bcra">Datos macro y BCRA</option><option value="elecciones_politica">Política monetaria</option></select></label>
+      <label className="block sm:hidden text-sm font-semibold text-muted">Tipo de evento<select value={selectedCategory} onChange={event => setSelectedCategory(event.target.value as typeof selectedCategory)} className="block w-full mt-2 border border-ink-300 rounded-xl bg-paper p-3"><option value="todos">Todos los tipos</option><option value="pago_cupon">Pagos de bonos y renta</option><option value="balance">Balances corporativos</option><option value="macro_bcra">Datos macro y BCRA</option><option value="elecciones_politica">Política monetaria</option></select></label>
       {/* Category Filter Pills */}
       <div data-tour="calendar-filters" className="hidden sm:flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-slate-100 rounded-full overflow-x-auto text-xs border border-slate-200/80">
+        <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-ink-100 rounded-full overflow-x-auto text-xs border border-ink-200/80">
           {[
             { id: 'todos', label: 'Todos los tipos' },
             { id: 'pago_cupon', label: 'Pagos de Bonos & Renta' },
@@ -788,8 +788,8 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
               onClick={() => setSelectedCategory(cat.id as any)}
               className={`px-4 py-1.5 rounded-full font-bold transition-all whitespace-nowrap cursor-pointer ${
                 selectedCategory === cat.id
-                  ? 'bg-emerald-950 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  ? 'bg-brand-950 text-paper shadow-xs'
+                  : 'text-muted hover:text-ink-900 hover:bg-ink-200/60'
               }`}
             >
               {cat.label}
@@ -799,17 +799,17 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
 
       </div>
 
-      {notificationsControl && <details className="rounded-xl border border-slate-200 bg-white p-3"><summary className="font-semibold text-sm text-emerald-900 cursor-pointer py-2">Alertas del calendario</summary><section data-tour="calendar-browser-notifications" className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200">{notificationsControl}</section></details>}
+      {notificationsControl && <details className="rounded-xl border border-ink-200 bg-paper p-3"><summary className="font-semibold text-sm text-brand-900 cursor-pointer py-2">Alertas del calendario</summary><section data-tour="calendar-browser-notifications" className="p-4 sm:p-5 bg-paper rounded-2xl border border-ink-200">{notificationsControl}</section></details>}
 
       {/* Monthly Calendar Grid Card */}
-      <div hidden={view !== 'month'} data-tour="calendar-grid" className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_2px_16px_rgba(0,0,0,0.04)] p-6 sm:p-7 space-y-5">
+      <div hidden={view !== 'month'} data-tour="calendar-grid" className="bg-paper rounded-3xl border border-ink-200/90 shadow-brand-soft p-6 sm:p-7 space-y-5">
         {/* Month Navigation Bar */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="flex items-center justify-between pb-3 border-b border-ink-100">
           <div>
-            <h3 className="text-xl font-black text-slate-900 font-sans tracking-tight">
+            <h3 className="text-xl font-bold text-ink-900 font-sans tracking-tight">
               {MONTH_NAMES[currentMonth]} {currentYear}
             </h3>
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-muted">
               {visibleMonthEvents.length} {visibleMonthEvents.length === 1 ? 'evento registrado' : 'eventos registrados'} para tu cartera
             </span>
           </div>
@@ -818,21 +818,21 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
             <button
               onClick={prevMonth}
               disabled={!canGoPrev}
-              className="p-2 rounded-xl border border-slate-200 text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors disabled:opacity-30 cursor-pointer"
+              className="p-2 rounded-xl border border-ink-200 text-muted hover:text-ink-900 hover:bg-ink-100 transition-colors disabled:opacity-30 cursor-pointer"
               aria-label="Mes anterior"
               title={canGoPrev ? "Mes anterior" : "Límite de histórico"}
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
 
-            <span className="text-xs font-mono font-bold text-slate-500 px-2">
+            <span className="text-xs font-mono font-bold text-muted px-2">
               {currentMonth + 1}/{currentYear}
             </span>
 
             <button
               onClick={nextMonth}
               disabled={!canGoNext}
-              className="p-2 rounded-xl border border-slate-200 text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors disabled:opacity-30 cursor-pointer"
+              className="p-2 rounded-xl border border-ink-200 text-muted hover:text-ink-900 hover:bg-ink-100 transition-colors disabled:opacity-30 cursor-pointer"
               aria-label="Mes siguiente"
               title={canGoNext ? "Mes siguiente" : "Límite de proyección (+6 meses)"}
             >
@@ -842,7 +842,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
         </div>
 
         {/* Days of week header */}
-        <div className="grid grid-cols-7 gap-1 sm:gap-2 text-center text-xs font-bold text-slate-500 uppercase tracking-wider py-1">
+        <div className="grid grid-cols-7 gap-1 sm:gap-2 text-center text-xs font-bold text-muted uppercase tracking-wider py-1">
           <span>Lun</span>
           <span>Mar</span>
           <span>Mié</span>
@@ -856,7 +856,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
         <div className="grid grid-cols-7 gap-1 sm:gap-2">
           {/* Empty prefix cells */}
           {Array.from({ length: mondayOffset }).map((_, i) => (
-            <div key={`empty-${i}`} className="min-h-[64px] sm:min-h-[82px] rounded-xl bg-slate-50/50" />
+            <div key={`empty-${i}`} className="min-h-[64px] sm:min-h-[82px] rounded-xl bg-ink-50/50" />
           ))}
 
           {/* Days */}
@@ -875,20 +875,20 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                 onClick={() => handleSelectDay(dayNum)}
                 className={`min-h-[64px] sm:min-h-[82px] p-1.5 sm:p-2 rounded-2xl border text-left flex flex-col justify-between transition-all duration-150 cursor-pointer ${
                   isToday 
-                    ? 'border-emerald-700 bg-emerald-50/70 ring-2 ring-emerald-600/30 font-bold' 
+                    ? 'border-brand-700 bg-brand-50/70 ring-2 ring-brand-600/30 font-bold'
                     : hasCustom
-                      ? 'border-indigo-300 hover:border-indigo-600 bg-indigo-50/30 shadow-2xs'
+                      ? 'border-accent-300 hover:border-accent-600 bg-accent-50/30 shadow-2xs'
                       : dayEvents.length > 0 
-                        ? 'border-slate-300 hover:border-emerald-700 bg-white hover:bg-emerald-50/20 shadow-2xs' 
-                        : 'border-slate-100 bg-white hover:bg-slate-50'
+                        ? 'border-ink-300 hover:border-brand-700 bg-paper hover:bg-brand-50/20 shadow-2xs'
+                        : 'border-ink-100 bg-paper hover:bg-ink-50'
                 }`}
               >
                 <div className="flex items-center justify-between w-full">
-                  <span className={`text-xs sm:text-sm font-mono ${isToday ? 'text-emerald-950 font-black' : 'text-slate-800 font-semibold'}`}>
+                  <span className={`text-xs sm:text-sm font-mono ${isToday ? 'text-brand-950 font-bold' : 'text-ink-800 font-semibold'}`}>
                     {dayNum}
                   </span>
                   {isToday && (
-                    <span className="text-[9px] uppercase font-black tracking-wider text-emerald-900 bg-emerald-200/90 px-1.5 py-0.2 rounded-md sm:inline hidden">
+                    <span className="text-[9px] uppercase font-bold tracking-wider text-brand-900 bg-brand-200/90 px-1.5 py-0.2 rounded-md sm:inline hidden">
                       Hoy
                     </span>
                   )}
@@ -914,17 +914,17 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
 
         {/* Empty state for the month if no events for portfolio */}
         {visibleMonthEvents.length === 0 && (
-          <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200/80 space-y-1">
-            <CalendarIcon className="w-8 h-8 text-slate-400 mx-auto" />
-            <h4 className="font-extrabold text-slate-800 text-sm">
+          <div className="p-8 text-center bg-ink-50 rounded-2xl border border-ink-200/80 space-y-1">
+            <CalendarIcon className="w-8 h-8 text-muted mx-auto" />
+            <h4 className="font-extrabold text-ink-800 text-sm">
               Sin eventos este mes
             </h4>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            <p className="text-xs text-muted max-w-sm mx-auto">
               No hay pagos de cupones ni balances corporativos previstos para tus activos en {MONTH_NAMES[currentMonth]} {currentYear}.
             </p>
             <button
               onClick={() => handleOpenAddEventModal(`${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`)}
-              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 cursor-pointer"
+              className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-paper border border-ink-300 rounded-xl text-xs font-bold text-muted hover:bg-ink-100 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Programar un evento propio en este mes</span>
@@ -933,27 +933,27 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
         )}
 
         {/* Color Legend */}
-        <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+        <div className="pt-3 border-t border-ink-100 flex flex-wrap items-center justify-between gap-3 text-xs text-muted">
           <div className="flex flex-wrap items-center gap-4">
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
+              <span className="w-2.5 h-2.5 rounded-full bg-brand-600" />
               <span>Pagos de bonos</span>
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
+              <span className="w-2.5 h-2.5 rounded-full bg-info-600" />
               <span>Balances</span>
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-purple-600" />
+              <span className="w-2.5 h-2.5 rounded-full bg-accent-600" />
               <span>Macro INDEC & BCRA</span>
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-indigo-600" />
+              <span className="w-2.5 h-2.5 rounded-full bg-accent-600" />
               <span>Mis eventos</span>
             </span>
           </div>
 
-          <span className="text-[11px] text-slate-400">
+          <span className="text-[11px] text-muted">
             Tocá cualquier día para inspeccionar o agregar un evento
           </span>
         </div>
@@ -963,12 +963,12 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
       <section data-tour="calendar-reminders-info" className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Bell className="w-4 h-4 text-emerald-900" />
-            <h3 className="text-base font-extrabold text-slate-900">
+            <Bell className="w-4 h-4 text-brand-900" />
+            <h3 className="text-base font-extrabold text-ink-900">
               Mis recordatorios y alertas programadas
             </h3>
           </div>
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-muted">
             {upcomingCustomEvents.length} {upcomingCustomEvents.length === 1 ? 'evento programado' : 'eventos programados'}
           </span>
         </div>
@@ -980,34 +980,34 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
               return (
                 <div 
                   key={ce.id}
-                  className="p-4 rounded-2xl bg-white border border-indigo-200 hover:border-indigo-400 shadow-2xs space-y-2 text-xs"
+                  className="p-4 rounded-2xl bg-paper border border-accent-200 hover:border-accent-400 shadow-2xs space-y-2 text-xs"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-mono font-bold text-indigo-950 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md">
+                    <span className="font-mono font-bold text-accent-950 bg-accent-50 border border-accent-200 px-2 py-0.5 rounded-md">
                       {ce.assetSymbol}
                     </span>
                     <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
-                      ce.diff <= 1 ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-slate-100 text-slate-700'
+                      ce.diff <= 1 ? 'bg-warning-100 text-warning-text border border-warning-300' : 'bg-ink-100 text-muted'
                     }`}>
                       {countdownLabel}
                     </span>
                   </div>
 
-                  <h4 className="font-extrabold text-slate-900 text-sm capitalize">
+                  <h4 className="font-extrabold text-ink-900 text-sm capitalize">
                     {ce.action}: {ce.assetSymbol}
                   </h4>
 
                   {ce.note && (
-                    <p className="text-slate-600 text-xs italic line-clamp-2">
+                    <p className="text-muted text-xs italic line-clamp-2">
                       "{ce.note}"
                     </p>
                   )}
 
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                  <div className="pt-2 border-t border-ink-100 flex items-center justify-between text-[11px] text-muted">
                     <span>{ce.date}</span>
                     <button
                       onClick={() => handleEditCustomEvent(ce.id)}
-                      className="text-indigo-900 font-bold hover:underline cursor-pointer"
+                      className="text-accent-900 font-bold hover:underline cursor-pointer"
                     >
                       Editar
                     </button>
@@ -1017,14 +1017,14 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
             })}
           </div>
         ) : (
-          <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl flex items-center justify-between text-xs text-slate-600">
+          <div className="p-4 bg-ink-50 border border-ink-200/90 rounded-2xl flex items-center justify-between text-xs text-muted">
             <span className="flex items-center gap-2">
-              <Info className="w-4 h-4 text-emerald-800 shrink-0" />
+              <Info className="w-4 h-4 text-brand-800 shrink-0" />
               Podés agendar compras, ventas, cobros o vencimientos con recordatorios automáticos (en el día o 1 día antes).
             </span>
             <button
               onClick={() => handleOpenAddEventModal()}
-              className="text-emerald-950 font-bold hover:underline shrink-0 ml-3 cursor-pointer"
+              className="text-brand-950 font-bold hover:underline shrink-0 ml-3 cursor-pointer"
             >
               + Agregar evento
             </button>
@@ -1034,11 +1034,11 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
 
       {/* Próximos Eventos Destacados del Mes Visible */}
       <section hidden={view !== 'month'} data-tour="calendar-events-list" className="space-y-3">
-        <h3 className="text-base font-extrabold text-slate-900">
+        <h3 className="text-base font-extrabold text-ink-900">
           Próximos Eventos Destacados ({MONTH_NAMES[currentMonth]} {currentYear})
         </h3>
         {visibleMonthEvents.length === 0 ? (
-          <p className="text-xs text-slate-500 italic">No hay eventos en este mes para tu cartera.</p>
+          <p className="text-xs text-muted italic">No hay eventos en este mes para tu cartera.</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {visibleMonthEvents.slice(0, 6).map(evt => {
@@ -1054,10 +1054,10 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                       events: [evt]
                     });
                   }}
-                  className={`bg-white rounded-2xl border p-4 hover:shadow-xs transition-all cursor-pointer space-y-2 ${
+                  className={`bg-paper rounded-2xl border p-4 hover:shadow-xs transition-all cursor-pointer space-y-2 ${
                     evt.isCustom 
-                      ? 'border-indigo-300 hover:border-indigo-500 ring-1 ring-indigo-200/50' 
-                      : 'border-slate-200/90 hover:border-emerald-700'
+                      ? 'border-accent-300 hover:border-accent-500 ring-1 ring-accent-200/50'
+                      : 'border-ink-200/90 hover:border-brand-700'
                   }`}
                 >
                   <div className="flex items-center justify-between text-xs flex-wrap gap-1.5">
@@ -1067,26 +1067,26 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                       </span>
                       {getStatusBadge(evt.status)}
                     </div>
-                    <span className="font-mono text-slate-500 text-xs">
+                    <span className="font-mono text-muted text-xs">
                       {evt.date} · {evt.time}
                     </span>
                   </div>
 
-                  <h4 className="text-sm font-extrabold text-slate-900 leading-snug">
+                  <h4 className="text-sm font-extrabold text-ink-900 leading-snug">
                     {evt.title}
                   </h4>
 
-                  <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
+                  <p className="text-xs text-muted line-clamp-2 leading-relaxed">
                     {evt.description}
                   </p>
 
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 text-xs">
+                  <div className="pt-2 border-t border-ink-100 flex items-center justify-between gap-2 text-xs">
                     {evt.assetSymbol ? (
-                      <span className="font-mono font-bold text-emerald-950 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md text-[11px]">
+                      <span className="font-mono font-bold text-brand-950 bg-brand-50 border border-brand-200 px-2 py-0.5 rounded-md text-[11px]">
                         {evt.assetSymbol}
                       </span>
                     ) : (
-                      <span className="text-[11px] font-bold text-purple-900 bg-purple-50 px-2 py-0.5 rounded-md">
+                      <span className="text-[11px] font-bold text-accent-900 bg-accent-50 px-2 py-0.5 rounded-md">
                         Macro
                       </span>
                     )}
@@ -1097,7 +1097,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-900 hover:text-emerald-950 hover:underline"
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-brand-900 hover:text-brand-950 hover:underline"
                         title={evt.source}
                       >
                         <span>Fuente</span>
@@ -1115,21 +1115,21 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
       {/* Day Detail Bottom Sheet / Modal */}
       {selectedDayEvents && (
         <div 
-          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
+          className="fixed inset-0 z-50 bg-ink-950/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={() => setSelectedDayEvents(null)}
         >
           <div 
             ref={dayRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Eventos del día"
-            className="bg-white w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl border border-slate-200 shadow-2xl overflow-hidden max-h-[85dvh] flex flex-col animate-in slide-in-from-bottom duration-200"
+            className="bg-paper w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl border border-ink-200 shadow-2xl overflow-hidden max-h-[85dvh] flex flex-col animate-in slide-in-from-bottom duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Sheet Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ink-200 bg-ink-50">
               <div>
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                <span className="text-[11px] font-bold text-muted uppercase tracking-wider">
                   Eventos del Día
                 </span>
-                <h3 className="text-base font-extrabold text-slate-900 font-mono">
+                <h3 className="text-base font-extrabold text-ink-900 font-mono">
                   {selectedDayEvents.dateStr}
                 </h3>
               </div>
@@ -1141,7 +1141,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                     setSelectedDayEvents(null);
                     handleOpenAddEventModal(date);
                   }}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-950 text-white rounded-xl text-xs font-bold hover:bg-emerald-900 cursor-pointer"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-brand-950 text-paper rounded-xl text-xs font-bold hover:bg-brand-900 cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Crear evento</span>
@@ -1149,7 +1149,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
 
                 <button
                   onClick={() => setSelectedDayEvents(null)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 cursor-pointer"
+                  className="p-1.5 rounded-lg text-muted hover:text-muted hover:bg-ink-200/60 cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1159,8 +1159,8 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
             {/* Events List */}
             <div className="p-6 overflow-y-auto space-y-4">
               {selectedDayEvents.events.length === 0 ? (
-                <div className="py-8 text-center text-xs text-slate-500 space-y-2">
-                  <CalendarIcon className="w-7 h-7 text-slate-400 mx-auto" />
+                <div className="py-8 text-center text-xs text-muted space-y-2">
+                  <CalendarIcon className="w-7 h-7 text-muted mx-auto" />
                   <p>No hay eventos registrados para esta fecha.</p>
                   <button
                     onClick={() => {
@@ -1168,7 +1168,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                       setSelectedDayEvents(null);
                       handleOpenAddEventModal(date);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 text-emerald-950 border border-emerald-200 rounded-xl text-xs font-bold hover:bg-emerald-100 cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-brand-50 text-brand-950 border border-brand-200 rounded-xl text-xs font-bold hover:bg-brand-100 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Agregar un evento en este día</span>
@@ -1182,8 +1182,8 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                       key={evt.id}
                       className={`p-4 rounded-2xl border space-y-2 text-xs ${
                         evt.isCustom 
-                          ? 'border-indigo-300 bg-indigo-50/40' 
-                          : 'border-slate-200 bg-slate-50/60'
+                          ? 'border-accent-300 bg-accent-50/40'
+                          : 'border-ink-200 bg-ink-50/60'
                       }`}
                     >
                       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -1194,22 +1194,22 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                           {getStatusBadge(evt.status)}
                         </div>
 
-                        <span className="font-mono text-slate-600 font-semibold">
+                        <span className="font-mono text-muted font-semibold">
                           {evt.time}
                         </span>
                       </div>
 
-                      <h4 className="text-sm font-extrabold text-slate-900 leading-snug">
+                      <h4 className="text-sm font-extrabold text-ink-900 leading-snug">
                         {evt.title}
                       </h4>
 
-                      <p className="text-xs text-slate-600 leading-relaxed">
+                      <p className="text-xs text-muted leading-relaxed">
                         {evt.description}
                       </p>
 
-                      <div className="pt-2 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
+                      <div className="pt-2 border-t border-ink-200/80 flex flex-wrap items-center justify-between gap-2">
                         {evt.assetSymbol && (
-                          <span className="font-mono font-bold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200">
+                          <span className="font-mono font-bold text-ink-800 bg-paper px-2 py-0.5 rounded border border-ink-200">
                             Activo: {evt.assetSymbol}
                           </span>
                         )}
@@ -1221,28 +1221,28 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                                 setSelectedDayEvents(null);
                                 handleEditCustomEvent(evt.id);
                               }}
-                              className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-900 hover:underline cursor-pointer"
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-accent-900 hover:underline cursor-pointer"
                             >
                               <Edit2 className="w-3 h-3" />
                               <span>Editar</span>
                             </button>
                             <button
                               onClick={() => setDeletingEventId(evt.id)}
-                              className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 hover:underline cursor-pointer"
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-danger-700 hover:underline cursor-pointer"
                             >
                               <Trash2 className="w-3 h-3" />
                               <span>Eliminar</span>
                             </button>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                          <div className="flex items-center gap-1.5 text-[11px] text-muted">
                             <span>Fuente: {evt.source}</span>
                             {evt.sourceUrl && (
                               <a
                                 href={evt.sourceUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 font-bold text-emerald-900 hover:underline"
+                                className="inline-flex items-center gap-1 font-bold text-brand-900 hover:underline"
                               >
                                 <ExternalLink className="w-3 h-3" />
                               </a>
@@ -1256,10 +1256,10 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
               )}
             </div>
 
-            <div className="p-4 border-t border-slate-200 bg-slate-50 text-right">
+            <div className="p-4 border-t border-ink-200 bg-ink-50 text-right">
               <button
                 onClick={() => setSelectedDayEvents(null)}
-                className="px-4 py-2 bg-slate-900 text-white font-bold text-xs rounded-xl hover:bg-slate-800 cursor-pointer"
+                className="px-4 py-2 bg-ink-900 text-paper font-bold text-xs rounded-xl hover:bg-ink-800 cursor-pointer"
               >
                 Cerrar
               </button>
@@ -1271,7 +1271,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
       {/* Add / Edit Custom Event Modal */}
       {showEventModal && (
         <div 
-          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-ink-950/60 backdrop-blur-xs flex items-center justify-center p-4"
           onClick={() => setShowEventModal(false)}
         >
           <div 
@@ -1280,44 +1280,44 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
             role="dialog"
             aria-modal="true"
             aria-labelledby="calendar-event-title"
-            className="bg-white w-full max-w-lg max-h-[calc(100dvh-2rem)] flex flex-col rounded-3xl border border-slate-200 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
+            className="bg-paper w-full max-w-lg max-h-[calc(100dvh-2rem)] flex flex-col rounded-3xl border border-ink-200 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex shrink-0 items-center justify-between gap-2 px-4 sm:px-6 py-4 border-b border-slate-200 bg-slate-50">
-              <h3 id="calendar-event-title" className="text-base font-extrabold text-slate-900">
+            <div className="flex shrink-0 items-center justify-between gap-2 px-4 sm:px-6 py-4 border-b border-ink-200 bg-ink-50">
+              <h3 id="calendar-event-title" className="text-base font-extrabold text-ink-900">
                 {editingEventId ? 'Editar Evento de Cartera' : 'Nuevo Evento de Cartera'}
               </h3>
               <button
                 onClick={() => setShowEventModal(false)}
                 aria-label="Cerrar evento"
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 cursor-pointer"
+                className="p-1 rounded-lg text-muted hover:text-muted hover:bg-ink-200/60 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSaveCustomEvent} className="min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4 text-xs">
-              {syncError && <p role="alert" className="p-3 rounded-xl bg-rose-50 text-rose-800">{syncError}</p>}
+              {syncError && <p role="alert" className="p-3 rounded-xl bg-danger-50 text-danger-800">{syncError}</p>}
               {/* Fecha */}
               <div className="space-y-1">
-                <label htmlFor="event-date" className="font-bold text-slate-700">Fecha del evento</label>
+                <label htmlFor="event-date" className="font-bold text-muted">Fecha del evento</label>
                 <input
  id="event-date"                  type="date"
                   required
                   value={formDate}
                   onChange={(e) => setFormDate(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-emerald-700"
+                  className="w-full bg-ink-50 border border-ink-300 rounded-xl p-2.5 text-xs font-mono font-bold text-ink-800 focus:outline-none focus:border-brand-700"
                 />
               </div>
 
               {/* Activo */}
               <div className="space-y-1">
-                <label htmlFor="event-asset" className="font-bold text-slate-700">Activo financiero</label>
+                <label htmlFor="event-asset" className="font-bold text-muted">Activo financiero</label>
                 <div className="grid grid-cols-2 gap-2">
                   <select
  id="event-asset"                    value={formAsset}
                     onChange={(e) => setFormAsset(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-emerald-700"
+                    className="w-full bg-ink-50 border border-ink-300 rounded-xl p-2.5 text-xs font-mono font-bold text-ink-800 focus:outline-none focus:border-brand-700"
                   >
                     {userAssetSymbols.map(sym => (
                       <option key={sym} value={sym}>{sym}</option>
@@ -1332,7 +1332,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                       value={customAssetInput}
                       onChange={(e) => setCustomAssetInput(e.target.value)}
                       required={formAsset === 'otro'}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-mono font-bold text-slate-800 uppercase focus:outline-none focus:border-emerald-700"
+                      className="w-full bg-ink-50 border border-ink-300 rounded-xl p-2.5 text-xs font-mono font-bold text-ink-800 uppercase focus:outline-none focus:border-brand-700"
                     />
                   )}
                 </div>
@@ -1340,7 +1340,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
 
               {/* Acción */}
               <div className="space-y-1">
-                <label className="font-bold text-slate-700">Acción prevista</label>
+                <label className="font-bold text-muted">Acción prevista</label>
                 <div className="grid grid-cols-4 gap-1.5">
                   {(['comprar', 'vender', 'cobro', 'otro'] as const).map(act => (
                     <button
@@ -1349,8 +1349,8 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                       onClick={() => setFormAction(act)}
                       className={`p-2 rounded-xl font-bold uppercase text-[11px] transition-all cursor-pointer border ${
                         formAction === act
-                          ? 'bg-emerald-950 text-white border-emerald-950 shadow-xs'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                          ? 'bg-brand-950 text-paper border-brand-950 shadow-xs'
+                          : 'bg-ink-50 text-muted border-ink-200 hover:bg-ink-100'
                       }`}
                     >
                       {act === 'cobro' ? 'Cobro Renta' : act}
@@ -1361,19 +1361,19 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
 
               {/* Nota opcional */}
               <div className="space-y-1">
-                <label htmlFor="event-note" className="font-bold text-slate-700">Nota u observación (opcional)</label>
+                <label htmlFor="event-note" className="font-bold text-muted">Nota u observación (opcional)</label>
                 <textarea
  id="event-note"                  rows={2}
                   value={formNote}
                   onChange={(e) => setFormNote(e.target.value)}
                   placeholder="Ej: Cobro de renta semestral para reinversión en GD30..."
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs text-slate-800 focus:outline-none focus:border-emerald-700"
+                  className="w-full bg-ink-50 border border-ink-300 rounded-xl p-2.5 text-xs text-ink-800 focus:outline-none focus:border-brand-700"
                 />
               </div>
 
               {/* Recordatorios multi-select */}
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <label className="font-bold text-slate-700 block">Recordatorios programados</label>
+              <div className="space-y-2 pt-2 border-t border-ink-100">
+                <label className="font-bold text-muted block">Recordatorios programados</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { id: 'same_day' as ReminderTiming, label: 'El mismo día' },
@@ -1387,8 +1387,8 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                         key={rem.id}
                         className={`flex items-center gap-2 p-2 rounded-xl border cursor-pointer select-none text-xs transition-colors ${
                           isChecked 
-                            ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-bold' 
-                            : 'bg-slate-50 border-slate-200 text-slate-700'
+                            ? 'bg-brand-50 border-brand-300 text-brand-950 font-bold'
+                            : 'bg-ink-50 border-ink-200 text-muted'
                         }`}
                       >
                         <input
@@ -1401,7 +1401,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                               setFormReminders(formReminders.filter(r => r !== rem.id));
                             }
                           }}
-                          className="rounded text-emerald-700 focus:ring-emerald-700 accent-emerald-700 w-3.5 h-3.5"
+                          className="rounded text-brand-text focus:ring-brand-700 accent-brand-700 w-3.5 h-3.5"
                         />
                         <span>{rem.label}</span>
                       </label>
@@ -1411,18 +1411,18 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
               </div>
 
               {/* Footer */}
-              <div className="pt-4 flex items-center justify-end gap-2 border-t border-slate-100">
+              <div className="pt-4 flex items-center justify-end gap-2 border-t border-ink-100">
                 <button
                   type="button"
                   onClick={() => setShowEventModal(false)}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-100 cursor-pointer"
+                  className="px-4 py-2 border border-ink-300 text-muted font-bold text-xs rounded-xl hover:bg-ink-100 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={savingEvents || !calendarReady}
-                  className="px-5 py-2 disabled:opacity-50 bg-emerald-950 text-white font-extrabold text-xs rounded-xl hover:bg-emerald-900 cursor-pointer shadow-xs"
+                  className="px-5 py-2 disabled:opacity-50 bg-brand-950 text-paper font-extrabold text-xs rounded-xl hover:bg-brand-900 cursor-pointer shadow-xs"
                 >
                   {editingEventId ? 'Guardar Cambios' : 'Crear Evento'}
                 </button>
@@ -1435,39 +1435,39 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
       {/* Delete Confirmation Modal */}
       {deletingEventId && (
         <div 
-          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-ink-950/60 backdrop-blur-xs flex items-center justify-center p-4"
           onClick={() => setDeletingEventId(null)}
         >
           <div 
             ref={deleteRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Eliminar evento"
-            className="bg-white w-full max-w-sm rounded-3xl border border-slate-200 p-6 space-y-4 shadow-xl"
+            className="bg-paper w-full max-w-sm rounded-3xl border border-ink-200 p-6 space-y-4 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-2xl bg-danger-100 text-danger-700 flex items-center justify-center">
               <AlertCircle className="w-5 h-5" />
             </div>
 
             <div>
-              <h4 className="text-base font-extrabold text-slate-900">
+              <h4 className="text-base font-extrabold text-ink-900">
                 ¿Eliminar este evento propio?
               </h4>
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-xs text-muted mt-1">
                 Esta acción borrará el evento y sus recordatorios asociados.
               </p>
             </div>
 
-            {syncError && <p role="alert" className="p-3 rounded-xl bg-rose-50 text-rose-800 text-xs">{syncError}</p>}
+            {syncError && <p role="alert" className="p-3 rounded-xl bg-danger-50 text-danger-800 text-xs">{syncError}</p>}
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 onClick={() => setDeletingEventId(null)}
-                className="px-4 py-2 border border-slate-300 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-100 cursor-pointer"
+                className="px-4 py-2 border border-ink-300 text-muted font-bold text-xs rounded-xl hover:bg-ink-100 cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 disabled={savingEvents}
                 onClick={() => void handleDeleteCustomEvent(deletingEventId)}
-                className="px-4 py-2 bg-rose-600 text-white font-bold text-xs rounded-xl hover:bg-rose-700 cursor-pointer shadow-xs"
+                className="px-4 py-2 bg-danger-600 text-paper font-bold text-xs rounded-xl hover:bg-danger-700 cursor-pointer shadow-xs"
               >
                 Eliminar
               </button>
@@ -1477,14 +1477,14 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
       )}
 
       {/* Day Simulation Test Bar (Discreet footer tool to verify day rollover and cache invalidation) */}
-      <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 bg-slate-50/80 p-4 rounded-2xl">
+      <div className="pt-4 border-t border-ink-200 flex flex-wrap items-center justify-between gap-3 text-xs text-muted bg-ink-50/80 p-4 rounded-2xl">
         <div className="flex items-center gap-2">
-          <Clock className="w-4 h-4 text-emerald-800" />
+          <Clock className="w-4 h-4 text-brand-800" />
           <span>
             Simulación de fecha AR: <strong>{nowAR.formattedSpanish}</strong> ({nowAR.isoDate})
           </span>
           {simulatedOffset !== 0 && (
-            <span className="font-mono text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+            <span className="font-mono text-[10px] font-bold text-warning-text bg-warning-100 px-2 py-0.5 rounded-full border border-warning-300">
               +{simulatedOffset} día(s)
             </span>
           )}
@@ -1502,7 +1502,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
               setCurrentMonth(fresh.month);
               loadCalendarEvents(true);
             }}
-            className="px-3 py-1 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg text-xs font-bold text-slate-700 cursor-pointer shadow-2xs"
+            className="px-3 py-1 bg-paper border border-ink-300 hover:bg-ink-100 rounded-lg text-xs font-bold text-muted cursor-pointer shadow-2xs"
             title="Avanzar 1 día para simular el paso de medianoche y el recálculo de recordatorios"
           >
             Avanzar +1 día (probar rollover)
@@ -1519,7 +1519,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                 setCurrentMonth(fresh.month);
                 loadCalendarEvents(true);
               }}
-              className="px-2.5 py-1 text-slate-500 hover:text-slate-800 text-xs font-bold underline cursor-pointer"
+              className="px-2.5 py-1 text-muted hover:text-ink-800 text-xs font-bold underline cursor-pointer"
             >
               Restablecer fecha real
             </button>

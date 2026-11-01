@@ -11,14 +11,14 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   onSelectTab,
 }) => {
   return (
-    <nav aria-label="Navegación principal" className="lg:hidden fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] left-3 right-3 z-40 bg-white/95 backdrop-blur-lg border border-slate-200/90 py-1.5 px-1.5 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
+    <nav aria-label="Navegación principal" className="lg:hidden fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] left-3 right-3 z-40 bg-paper/95 backdrop-blur-lg border border-ink-200/90 py-1.5 px-1.5 rounded-full shadow-brand-soft">
       <div className="grid grid-cols-3 min-w-0 max-w-md mx-auto">
         <button
           onClick={() => onSelectTab('feed')}
           className={`flex min-w-0 items-center justify-center gap-1.5 py-2.5 px-1 sm:px-4 rounded-full text-xs transition-all ${
             currentTab === 'feed'
-              ? 'bg-emerald-950 text-white font-extrabold shadow-sm'
-              : 'text-slate-500 hover:text-slate-900 font-semibold'
+              ? 'bg-brand-950 text-paper font-extrabold shadow-sm'
+              : 'text-muted hover:text-ink-900 font-semibold'
           }`}
         >
           <Newspaper className="w-4 h-4 shrink-0" />
@@ -29,8 +29,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           onClick={() => onSelectTab('calendar')}
           className={`flex min-w-0 items-center justify-center gap-1.5 py-2.5 px-1 sm:px-4 rounded-full text-xs transition-all ${
             currentTab === 'calendar'
-              ? 'bg-emerald-950 text-white font-extrabold shadow-sm'
-              : 'text-slate-500 hover:text-slate-900 font-semibold'
+              ? 'bg-brand-950 text-paper font-extrabold shadow-sm'
+              : 'text-muted hover:text-ink-900 font-semibold'
           }`}
         >
           <Calendar className="w-4 h-4 shrink-0" />
@@ -41,8 +41,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           onClick={() => onSelectTab('settings')}
           className={`flex min-w-0 items-center justify-center gap-1.5 py-2.5 px-1 sm:px-4 rounded-full text-xs transition-all ${
             currentTab === 'settings'
-              ? 'bg-emerald-950 text-white font-extrabold shadow-sm'
-              : 'text-slate-500 hover:text-slate-900 font-semibold'
+              ? 'bg-brand-950 text-paper font-extrabold shadow-sm'
+              : 'text-muted hover:text-ink-900 font-semibold'
           }`}
         >
           <Settings className="w-4 h-4 shrink-0" />

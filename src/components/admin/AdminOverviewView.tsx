@@ -21,7 +21,7 @@ interface AdminOverviewProps {
 export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }) => {
   if (!data || !data.kpis) {
     return (
-      <div className="p-8 text-center text-slate-500">
+      <div className="p-8 text-center text-muted">
         Cargando indicadores de resumen...
       </div>
     );
@@ -29,8 +29,8 @@ export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }
 
   const { kpis, registrationProviders, dailySeries = [] } = data;
 
-  const cardBg = isDark ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200/90 text-slate-900';
-  const subText = isDark ? 'text-slate-400' : 'text-slate-500';
+  const cardBg = isDark ? 'bg-ink-900 border-ink-800 text-ink-100' : 'bg-paper border-ink-200/90 text-ink-900';
+  const subText = isDark ? 'text-muted' : 'text-muted';
 
   // Calculate maximum values for the SVG chart
   const maxSignups = Math.max(...dailySeries.map((d: any) => d.signups), 10);
@@ -39,33 +39,33 @@ export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }
   return (
     <div className="space-y-6">
       {/* Top Banner: Breakeven & Target Progress (Tesis Goals) */}
-      <div className="bg-gradient-to-br from-emerald-950 via-emerald-900 to-slate-950 text-white rounded-3xl p-6 sm:p-7 shadow-lg border border-emerald-800/60 relative overflow-hidden">
-        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-52 h-52 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none" />
+      <div className="bg-gradient-to-br from-brand-950 via-brand-900 to-ink-950 text-paper rounded-3xl p-6 sm:p-7 shadow-lg border border-brand-800/60 relative overflow-hidden">
+        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-52 h-52 rounded-full bg-brand-500/10 blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-emerald-800/60">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-brand-800/60">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-black uppercase tracking-wider text-emerald-300 bg-emerald-900/80 px-2 py-0.5 rounded-md border border-emerald-700/60 flex items-center gap-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-brand-300 bg-brand-900/80 px-2 py-0.5 rounded-md border border-brand-700/60 flex items-center gap-1.5">
                 <Target className="w-3.5 h-3.5" />
                 Metas del Plan de Negocio
               </span>
-              <span className="text-xs text-emerald-200">
+              <span className="text-xs text-brand-200">
                 · Tesis de Grado
               </span>
             </div>
-            <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight mt-1">
+            <h3 className="text-2xl sm:text-3xl font-bold text-paper tracking-tight mt-1">
               Progreso hacia Breakeven (1.000 usuarios)
             </h3>
-            <p className="text-xs sm:text-sm text-emerald-200/90 max-w-2xl mt-1">
+            <p className="text-xs sm:text-sm text-brand-200/90 max-w-2xl mt-1">
               Punto de equilibrio proyectado con 1.000 suscriptores pagos (mix 92% Retail @ $11.500 / 8% Asesores @ $16.500). Target de escala: 10.000 usuarios.
             </p>
           </div>
 
           <div className="text-right shrink-0">
-            <span className="text-3xl sm:text-4xl font-mono font-black text-white block">
-              {kpis.totalUsers} <span className="text-sm font-normal text-emerald-300">/ 1.000</span>
+            <span className="text-3xl sm:text-4xl font-mono font-bold text-paper block">
+              {kpis.totalUsers} <span className="text-sm font-normal text-brand-300">/ 1.000</span>
             </span>
-            <span className="text-xs font-semibold text-emerald-300">
+            <span className="text-xs font-semibold text-brand-300">
               {kpis.breakevenProgressPct}% del umbral operativo
             </span>
           </div>
@@ -76,15 +76,15 @@ export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }
           {/* Bar 1: Breakeven */}
           <div className="space-y-2">
             <div className="flex justify-between text-xs font-semibold">
-              <span className="text-emerald-200 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span className="text-brand-200 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-brand-400" />
                 Hito 1: Breakeven Financiero (1.000 u.)
               </span>
-              <span className="font-mono text-white font-bold">{kpis.breakevenProgressPct}%</span>
+              <span className="font-mono text-paper font-bold">{kpis.breakevenProgressPct}%</span>
             </div>
-            <div className="w-full h-3 bg-emerald-950/80 rounded-full overflow-hidden p-0.5 border border-emerald-800">
+            <div className="w-full h-3 bg-brand-950/80 rounded-full overflow-hidden p-0.5 border border-brand-800">
               <div 
-                className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-700 shadow-xs"
+                className="h-full bg-gradient-to-r from-brand-500 to-brand-400 rounded-full transition-all duration-700 shadow-xs"
                 style={{ width: `${Math.min(kpis.breakevenProgressPct, 100)}%` }}
               />
             </div>
@@ -93,15 +93,15 @@ export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }
           {/* Bar 2: Target 10,000 */}
           <div className="space-y-2">
             <div className="flex justify-between text-xs font-semibold">
-              <span className="text-emerald-200 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-blue-400" />
+              <span className="text-brand-200 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-info-400" />
                 Hito 2: Target de Escala (10.000 u.)
               </span>
-              <span className="font-mono text-white font-bold">{kpis.scaleProgressPct}%</span>
+              <span className="font-mono text-paper font-bold">{kpis.scaleProgressPct}%</span>
             </div>
-            <div className="w-full h-3 bg-emerald-950/80 rounded-full overflow-hidden p-0.5 border border-emerald-800">
+            <div className="w-full h-3 bg-brand-950/80 rounded-full overflow-hidden p-0.5 border border-brand-800">
               <div 
-                className="h-full bg-gradient-to-r from-blue-500 to-indigo-400 rounded-full transition-all duration-700 shadow-xs"
+                className="h-full bg-gradient-to-r from-info-500 to-accent-400 rounded-full transition-all duration-700 shadow-xs"
                 style={{ width: `${Math.min(kpis.scaleProgressPct, 100)}%` }}
               />
             </div>
@@ -117,16 +117,16 @@ export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }
             <span className={`text-xs font-bold uppercase tracking-wider ${subText}`}>
               Usuarios Registrados
             </span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-brand-100 dark:bg-brand-950 text-brand-800 dark:text-brand-300 flex items-center justify-center">
               <Users className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-3xl font-black font-mono tracking-tight block">
+            <span className="text-3xl font-bold font-mono tracking-tight block">
               {kpis.totalUsers}
             </span>
             <div className="flex items-center gap-2 mt-1.5 text-xs">
-              <span className="inline-flex items-center gap-0.5 font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800 px-1.5 py-0.2 rounded-md">
+              <span className="inline-flex items-center gap-0.5 font-bold text-brand-text dark:text-brand-text bg-brand-50 dark:bg-brand-950/80 border border-brand-200 dark:border-brand-800 px-1.5 py-0.2 rounded-md">
                 <ArrowUpRight className="w-3 h-3" />
                 +{kpis.todaySignups} hoy
               </span>
@@ -141,16 +141,16 @@ export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }
             <span className={`text-xs font-bold uppercase tracking-wider ${subText}`}>
               Actividad (DAU / MAU)
             </span>
-            <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-info-100 dark:bg-info-950 text-info-text dark:text-info-300 flex items-center justify-center">
               <Activity className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-3xl font-black font-mono tracking-tight block">
-              {kpis.dau} <span className="text-sm font-sans font-semibold text-slate-500">DAU</span>
+            <span className="text-3xl font-bold font-mono tracking-tight block">
+              {kpis.dau} <span className="text-sm font-sans font-semibold text-muted">DAU</span>
             </span>
             <div className="flex items-center gap-2 mt-1.5 text-xs">
-              <span className="font-bold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/80 border border-blue-200 dark:border-blue-800 px-1.5 py-0.2 rounded-md">
+              <span className="font-bold text-info-text dark:text-info-text bg-info-50 dark:bg-info-950/80 border border-info-200 dark:border-info-800 px-1.5 py-0.2 rounded-md">
                 {kpis.stickinessRatio}% Stickiness
               </span>
               <span className={subText}>{kpis.wau} WAU · {kpis.mau} MAU</span>
@@ -164,12 +164,12 @@ export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }
             <span className={`text-xs font-bold uppercase tracking-wider ${subText}`}>
               Activación de Cartera
             </span>
-            <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-warning-100 dark:bg-warning-950 text-warning-text dark:text-warning-300 flex items-center justify-center">
               <Briefcase className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-3xl font-black font-mono tracking-tight block">
+            <span className="text-3xl font-bold font-mono tracking-tight block">
               {kpis.usersWithAssetsPct}%
             </span>
             <p className={`text-xs mt-1.5 ${subText}`}>
@@ -184,16 +184,16 @@ export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }
             <span className={`text-xs font-bold uppercase tracking-wider ${subText}`}>
               Pulsos Consultados / Día
             </span>
-            <div className="w-8 h-8 rounded-xl bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-accent-100 dark:bg-accent-950 text-accent-800 dark:text-accent-300 flex items-center justify-center">
               <Radio className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-3xl font-black font-mono tracking-tight block">
+            <span className="text-3xl font-bold font-mono tracking-tight block">
               ~{kpis.pulseRequestsPerDay}
             </span>
             <div className="flex items-center gap-2 mt-1.5 text-xs">
-              <span className="font-bold text-purple-700 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/80 border border-purple-200 dark:border-purple-800 px-1.5 py-0.2 rounded-md">
+              <span className="font-bold text-accent-700 dark:text-accent-400 bg-accent-50 dark:bg-accent-950/80 border border-accent-200 dark:border-accent-800 px-1.5 py-0.2 rounded-md">
                 {kpis.notificationsOptInPct}% Notificaciones
               </span>
             </div>
@@ -203,7 +203,7 @@ export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }
 
       {/* SVG Time Series Chart: Signups & Active Users Evolution */}
       <div className={`p-6 sm:p-7 rounded-3xl border shadow-xs space-y-4 ${cardBg}`}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-ink-100 dark:border-ink-800">
           <div>
             <h4 className="font-extrabold text-base tracking-tight">
               Evolución Diaria: Registros y Usuarios Activos
@@ -215,11 +215,11 @@ export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }
 
           <div className="flex items-center gap-4 text-xs font-bold">
             <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-md bg-emerald-600" />
+              <span className="w-3 h-3 rounded-md bg-brand-600" />
               <span>Nuevos Registros</span>
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-md bg-blue-500" />
+              <span className="w-3 h-3 rounded-md bg-info-500" />
               <span>Usuarios Activos (DAU)</span>
             </span>
           </div>
@@ -229,7 +229,7 @@ export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }
         <div className="w-full overflow-x-auto pt-2">
           <div className="min-w-[620px] h-60 flex flex-col justify-between">
             {/* Bars container */}
-            <div className="h-48 flex items-end justify-between gap-2 px-2 border-b border-slate-200 dark:border-slate-800">
+            <div className="h-48 flex items-end justify-between gap-2 px-2 border-b border-ink-200 dark:border-ink-800">
               {dailySeries.map((day: any, i: number) => {
                 const signupHeight = Math.round((day.signups / maxSignups) * 100);
                 const activeHeight = Math.round((day.activeUsers / maxActive) * 100);
@@ -238,23 +238,23 @@ export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }
                   <div key={day.date || i} className="flex-1 flex flex-col items-center justify-end h-full group relative">
                     {/* Tooltip on hover */}
                     <div className="absolute -top-14 hidden group-hover:flex flex-col items-center z-30 pointer-events-none animate-in fade-in">
-                      <div className="bg-slate-900 text-white text-[11px] font-mono px-2 py-1 rounded shadow-lg whitespace-nowrap">
+                      <div className="bg-ink-900 text-paper text-[11px] font-mono px-2 py-1 rounded shadow-lg whitespace-nowrap">
                         <span className="font-bold">{day.date}</span>: {day.signups} altas · {day.activeUsers} activos
                       </div>
-                      <div className="w-2 h-2 bg-slate-900 rotate-45 -mt-1" />
+                      <div className="w-2 h-2 bg-ink-900 rotate-45 -mt-1" />
                     </div>
 
                     <div className="w-full flex items-end justify-center gap-1">
                       {/* Signups bar */}
                       <div 
                         style={{ height: `${Math.max(signupHeight, 4)}%` }}
-                        className="w-2.5 sm:w-3.5 bg-emerald-600 hover:bg-emerald-500 rounded-t transition-all cursor-pointer"
+                        className="w-2.5 sm:w-3.5 bg-brand-600 hover:bg-brand-500 rounded-t transition-all cursor-pointer"
                         title={`${day.date} - ${day.signups} registros`}
                       />
                       {/* Active users bar */}
                       <div 
                         style={{ height: `${Math.max(activeHeight, 6)}%` }}
-                        className="w-2.5 sm:w-3.5 bg-blue-500/80 hover:bg-blue-400 rounded-t transition-all cursor-pointer"
+                        className="w-2.5 sm:w-3.5 bg-info-500/80 hover:bg-info-400 rounded-t transition-all cursor-pointer"
                         title={`${day.date} - ${day.activeUsers} activos`}
                       />
                     </div>
@@ -264,7 +264,7 @@ export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }
             </div>
 
             {/* X-axis labels */}
-            <div className="flex justify-between px-2 text-[11px] font-mono text-slate-400 pt-2">
+            <div className="flex justify-between px-2 text-[11px] font-mono text-muted pt-2">
               <span>{dailySeries[0]?.date || 'Inicio'}</span>
               <span>{dailySeries[Math.floor(dailySeries.length / 2)]?.date || 'Mitad'}</span>
               <span>{dailySeries[dailySeries.length - 1]?.date || 'Hoy'}</span>
@@ -278,7 +278,7 @@ export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }
         {/* Registration Providers */}
         <div className={`p-5 rounded-3xl border shadow-xs space-y-3 ${cardBg}`}>
           <h4 className="font-extrabold text-sm tracking-tight flex items-center gap-2">
-            <Layers className="w-4 h-4 text-emerald-700" />
+            <Layers className="w-4 h-4 text-brand-text" />
             Método de Registro
           </h4>
           <p className={`text-xs ${subText}`}>
@@ -295,12 +295,12 @@ export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }
                 <div key={prov} className="space-y-1 text-xs">
                   <div className="flex justify-between font-semibold">
                     <span>{label}</span>
-                    <span className="font-mono text-slate-500">{count} ({pct}%)</span>
+                    <span className="font-mono text-muted">{count} ({pct}%)</span>
                   </div>
-                  <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div className="w-full h-2 bg-ink-100 dark:bg-ink-800 rounded-full overflow-hidden">
                     <div 
                       className={`h-full rounded-full ${
-                        prov === 'google' ? 'bg-red-500' : prov === 'microsoft' ? 'bg-blue-500' : 'bg-emerald-600'
+                        prov === 'google' ? 'bg-danger-500' : prov === 'microsoft' ? 'bg-info-500' : 'bg-brand-600'
                       }`}
                       style={{ width: `${pct}%` }}
                     />
@@ -314,7 +314,7 @@ export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }
         {/* Retail vs Partner Ratio */}
         <div className={`p-5 rounded-3xl border shadow-xs space-y-3 ${cardBg}`}>
           <h4 className="font-extrabold text-sm tracking-tight flex items-center gap-2">
-            <Briefcase className="w-4 h-4 text-blue-600" />
+            <Briefcase className="w-4 h-4 text-info-text" />
             Mix de Clientes
           </h4>
           <p className={`text-xs ${subText}`}>
@@ -322,18 +322,18 @@ export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }
           </p>
 
           <div className="space-y-3 pt-2 text-xs">
-            <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 space-y-1">
+            <div className="p-3 rounded-2xl bg-ink-50 dark:bg-ink-800/60 border border-ink-200/80 dark:border-ink-700 space-y-1">
               <div className="flex justify-between font-bold">
                 <span>Plan Market (Retail)</span>
-                <span className="text-emerald-700 dark:text-emerald-400 font-mono">$11.500/mes</span>
+                <span className="text-brand-text dark:text-brand-text font-mono">$11.500/mes</span>
               </div>
               <p className={subText}>1 cartera monitoreada · Target 92% del mix</p>
             </div>
 
-            <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 space-y-1">
+            <div className="p-3 rounded-2xl bg-ink-50 dark:bg-ink-800/60 border border-ink-200/80 dark:border-ink-700 space-y-1">
               <div className="flex justify-between font-bold">
                 <span>Plan Partner (Brokers/Asesores)</span>
-                <span className="text-blue-700 dark:text-blue-400 font-mono">$16.500/mes</span>
+                <span className="text-info-text dark:text-info-text font-mono">$16.500/mes</span>
               </div>
               <p className={subText}>Carteras ilimitadas · Target 8% del mix</p>
             </div>
@@ -343,14 +343,14 @@ export const AdminOverviewView: React.FC<AdminOverviewProps> = ({ data, isDark }
         {/* Free Trial Conversion Window */}
         <div className={`p-5 rounded-3xl border shadow-xs space-y-3 ${cardBg}`}>
           <h4 className="font-extrabold text-sm tracking-tight flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-amber-500" />
+            <Sparkles className="w-4 h-4 text-warning-text" />
             Trial de 1 Mes Gratuito
           </h4>
           <p className={`text-xs ${subText}`}>
             Ventana de adopción sin fricción de cobro inicial.
           </p>
 
-          <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-950 dark:text-amber-200 space-y-1.5">
+          <div className="p-3.5 rounded-2xl bg-warning-50 dark:bg-warning-950/40 border border-warning-200 dark:border-warning-800 text-xs text-warning-text dark:text-warning-200 space-y-1.5">
             <p className="font-bold">Política del Modelo de Negocio:</p>
             <p className="leading-relaxed font-normal">
               Todos los usuarios nuevos inician con 30 días de prueba sin cargo. El administrador puede asignar y cambiar el plan desde la pestaña <strong>Usuarios</strong>.

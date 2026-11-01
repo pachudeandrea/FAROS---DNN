@@ -207,23 +207,23 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
   const getImpactBadge = () => {
     if (isFavorable) {
       return (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold text-emerald-950 bg-emerald-100 border border-emerald-300">
-          <TrendingUp className="w-4 h-4 text-emerald-700" />
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold text-brand-950 bg-brand-100 border border-brand-300">
+          <TrendingUp className="w-4 h-4 text-brand-text" />
           Favorable
         </span>
       );
     }
     if (isAlert) {
       return (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold text-rose-950 bg-rose-100 border border-rose-300">
-          <TrendingDown className="w-4 h-4 text-rose-700" />
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold text-danger-950 bg-danger-100 border border-danger-300">
+          <TrendingDown className="w-4 h-4 text-danger-700" />
           Desfavorable
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold text-slate-800 bg-slate-100 border border-slate-300">
-        <Minus className="w-4 h-4 text-slate-500" />
+      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold text-ink-800 bg-ink-100 border border-ink-300">
+        <Minus className="w-4 h-4 text-muted" />
         Neutral
       </span>
     );
@@ -290,7 +290,7 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6"
+      className="fixed inset-0 z-50 overflow-y-auto bg-ink-950/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6"
       onClick={handleCloseModal}
     >
       <div 
@@ -299,19 +299,19 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="news-detail-title"
-        className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90dvh] animate-in fade-in zoom-in-95 duration-150"
+        className="bg-paper rounded-3xl max-w-2xl w-full border border-ink-200 shadow-2xl overflow-hidden flex flex-col max-h-[90dvh] animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* BLOQUE 1: Encabezado (impacto en precio, tiempo, cantidad de medios, compartir y cerrar) */}
-        <div className="flex shrink-0 items-center justify-between gap-2 px-4 sm:px-6 py-4 border-b border-slate-200 bg-slate-50">
-          <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap">
-            <span className="font-bold text-emerald-950">
+        <div className="flex shrink-0 items-center justify-between gap-2 px-4 sm:px-6 py-4 border-b border-ink-200 bg-ink-50">
+          <div className="flex items-center gap-2 text-xs text-muted flex-wrap">
+            <span className="font-bold text-brand-950">
               {getRelevanceLabel(news.relevanceType)}
             </span>
             <span>·</span>
             <span>{news.publishedAgo}</span>
             <span>·</span>
-            <span className="font-medium text-slate-600">
+            <span className="font-medium text-muted">
               {validSourcesCount === 1 ? '1 medio verificado' : `${validSourcesCount} medios verificados`}
             </span>
           </div>
@@ -319,7 +319,7 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={handleShare}
-              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer"
+              className="p-1.5 text-muted hover:text-ink-800 hover:bg-ink-200/60 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer"
               title="Copiar síntesis"
             >
               <Share2 className="w-4 h-4" />
@@ -327,7 +327,7 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
             </button>
             <button
               onClick={handleCloseModal}
-              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer"
+              className="p-1.5 text-muted hover:text-muted hover:bg-ink-200/60 rounded-lg transition-colors cursor-pointer"
               aria-label="Cerrar detalle y detener audio"
             >
               <X className="w-5 h-5" />
@@ -336,32 +336,32 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className={`min-h-0 p-4 sm:p-6 overflow-y-auto space-y-6 text-slate-800 transition-all ${isAudioActive ? 'pb-48 sm:pb-52' : 'pb-6'}`}>
+        <div className={`min-h-0 p-4 sm:p-6 overflow-y-auto space-y-6 text-ink-800 transition-all ${isAudioActive ? 'pb-48 sm:pb-52' : 'pb-6'}`}>
           
           {/* BLOQUE 2: Etiqueta de efecto (Favorable / Desfavorable / Neutral) y título de la noticia */}
           <div>
             <div className="mb-2.5">
               {getImpactBadge()}
             </div>
-            <h2 id="news-detail-title" className="text-xl sm:text-2xl font-extrabold text-slate-900 leading-snug">
+            <h2 id="news-detail-title" className="text-xl sm:text-2xl font-extrabold text-ink-900 leading-snug">
               {news.headline}
             </h2>
-            {validSourcesCount > 1 && <button type="button" onClick={() => coverageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="mt-3 min-h-11 inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-950 font-bold text-xs cursor-pointer">
+            {validSourcesCount > 1 && <button type="button" onClick={() => coverageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="mt-3 min-h-11 inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-brand-200 bg-brand-50 text-brand-950 font-bold text-xs cursor-pointer">
               <Layers className="w-4 h-4 shrink-0" /> Comparar titulares de {validSourcesCount} medios
             </button>}
           </div>
 
           {/* BLOQUE 3: Referencia oficial */}
           {news.factCheck && news.factCheck.detail && (
-            <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-800 shadow-2xs">
-              <div className="p-1.5 rounded-lg bg-slate-200 text-slate-700 shrink-0 mt-0.5">
-                <Landmark className="w-4 h-4 text-slate-700" />
+            <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-ink-50 border border-ink-200 text-xs text-ink-800 shadow-2xs">
+              <div className="p-1.5 rounded-lg bg-ink-200 text-muted shrink-0 mt-0.5">
+                <Landmark className="w-4 h-4 text-muted" />
               </div>
               <div className="space-y-0.5 flex-1">
-                <span className="font-bold text-slate-900 block">
+                <span className="font-bold text-ink-900 block">
                   Referencia oficial: {news.factCheck.officialSource}
                 </span>
-                <p className="text-slate-600 leading-relaxed text-xs">
+                <p className="text-muted leading-relaxed text-xs">
                   {news.factCheck.detail}
                 </p>
               </div>
@@ -370,16 +370,16 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
 
           {/* BLOQUE 4: "Puntos Clave del Resumen Unificado" (lista con bullets) */}
           <section className="space-y-3">
-            <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
-              <FileText className="w-4 h-4 text-emerald-900" />
-              <h3 className="text-sm font-bold text-slate-900">
+            <div className="flex items-center gap-2 border-b border-ink-200 pb-2">
+              <FileText className="w-4 h-4 text-brand-900" />
+              <h3 className="text-sm font-bold text-ink-900">
                 Puntos Clave del Resumen Unificado
               </h3>
             </div>
             <ul className="space-y-2.5">
               {news.fullSynthesis.map((point, idx) => (
-                <li key={idx} className="flex items-start gap-2.5 text-xs sm:text-sm text-slate-700 leading-relaxed">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-900 mt-2 shrink-0" />
+                <li key={idx} className="flex items-start gap-2.5 text-xs sm:text-sm text-muted leading-relaxed">
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand-900 mt-2 shrink-0" />
                   <span>{point}</span>
                 </li>
               ))}
@@ -393,14 +393,14 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
             const durationEst = calculateEstimatedDuration(news.audioScript || news.briefSummary, 1.0);
 
             return (
-              <div className="flex items-center justify-between p-3.5 bg-slate-900 text-white rounded-2xl shadow-sm border border-emerald-900/40">
+              <div className="flex items-center justify-between p-3.5 bg-ink-900 text-paper rounded-2xl shadow-sm border border-brand-900/40">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-emerald-800 text-white shadow-xs">
-                    <Volume2 className="w-4 h-4 text-emerald-200" />
+                  <div className="p-2 rounded-xl bg-brand-800 text-paper shadow-xs">
+                    <Volume2 className="w-4 h-4 text-brand-200" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-emerald-300">Resumen en Audio</p>
-                    <p className="text-[11px] text-slate-300">
+                    <p className="text-xs font-bold text-brand-300">Resumen en Audio</p>
+                    <p className="text-[11px] text-ink-300">
                       Escuchá la síntesis en audio ({durationEst.formatted} min)
                     </p>
                   </div>
@@ -418,8 +418,8 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
                   }}
                   className={`px-3.5 py-1.5 font-bold text-xs rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                     isPlayingThisNews
-                      ? 'bg-emerald-400 text-slate-950 shadow-sm hover:bg-emerald-300'
-                      : 'bg-white text-slate-950 hover:bg-slate-100 shadow-2xs'
+                      ? 'bg-brand-400 text-ink-950 shadow-sm hover:bg-brand-300'
+                      : 'bg-paper text-ink-950 hover:bg-ink-100 shadow-2xs'
                   }`}
                   aria-label={isPlayingThisNews ? "Pausar audio" : "Reproducir audio"}
                 >
@@ -441,51 +441,51 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
 
           {/* BLOQUE 6: "Desglose de Noticias & Impacto en tu Cartera" 
               ALTA LEGIBILIDAD: Fondo claro sofisticado, tipografía nítida y CERO RECOMENDACIONES FINANCIERAS */}
-          <section className="bg-slate-50/90 border border-emerald-200/90 rounded-3xl p-5 sm:p-6 space-y-4.5 shadow-xs">
+          <section className="bg-ink-50/90 border border-brand-200/90 rounded-3xl p-5 sm:p-6 space-y-4.5 shadow-xs">
             {/* Header del bloque de análisis */}
-            <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-200">
+            <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-ink-200">
               <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-900">
+                <div className="p-1.5 rounded-lg bg-brand-100 text-brand-900">
                   <Compass className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                  <h3 className="text-sm sm:text-base font-bold text-ink-900 tracking-tight">
                     Desglose de Impacto en tu Cartera
                   </h3>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-muted">
                     Análisis de variables y mecanismos de mercado según posición
                   </p>
                 </div>
               </div>
 
               {news.portfolioImpactAnalysis.horizon && (
-                <span className="text-[11px] font-semibold text-emerald-950 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full">
+                <span className="text-[11px] font-semibold text-brand-950 bg-brand-100 border border-brand-300 px-2.5 py-0.5 rounded-full">
                   Horizonte: {news.portfolioImpactAnalysis.horizon}
                 </span>
               )}
             </div>
 
             {/* Aviso legal explícito (Cero recomendaciones financieras / No investment advice) */}
-            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50/90 border border-amber-200 text-xs text-amber-950">
-              <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-warning-50/90 border border-warning-200 text-xs text-warning-text">
+              <ShieldAlert className="w-4 h-4 text-warning-text shrink-0 mt-0.5" />
               <p className="leading-relaxed text-[11px]">
                 <strong className="font-bold">Aviso legal:</strong> Este desglose es estrictamente periodístico e informativo para el análisis de variables de mercado. FAROS no provee asesoramiento financiero ni recomendaciones de compra o venta de instrumentos.
               </p>
             </div>
 
             {/* Párrafo introductorio de contexto y desglose */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 text-xs sm:text-sm text-slate-700 leading-relaxed shadow-2xs">
+            <div className="bg-paper p-4 rounded-2xl border border-ink-200 text-xs sm:text-sm text-muted leading-relaxed shadow-2xs">
               {introParagraph}
             </div>
 
             {/* Caso A: No hay ningún activo de la cartera relacionado con la noticia */}
             {matchingAssetIds.length === 0 ? (
-              <div className="p-4 rounded-2xl bg-white border border-slate-200 text-xs text-slate-700 space-y-1.5 shadow-2xs">
-                <div className="flex items-center gap-2 text-slate-900 font-bold">
-                  <AlertCircle className="w-4 h-4 text-slate-500 shrink-0" />
+              <div className="p-4 rounded-2xl bg-paper border border-ink-200 text-xs text-muted space-y-1.5 shadow-2xs">
+                <div className="flex items-center gap-2 text-ink-900 font-bold">
+                  <AlertCircle className="w-4 h-4 text-muted shrink-0" />
                   <span>Esta noticia no tiene impacto directo sobre los activos de tu cartera actual</span>
                 </div>
-                <p className="text-slate-600 leading-relaxed pl-6">
+                <p className="text-muted leading-relaxed pl-6">
                   Los activos involucrados en este reporte ({news.affectedAssetIds.join(', ')}) no forman parte de las posiciones activas en tu cartera. Podés utilizar la noticia como referencia macroeconómica.
                 </p>
               </div>
@@ -493,10 +493,10 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
               /* Caso B: Desglose activo por activo para los tickers de la cartera relacionados */
               <div className="space-y-3.5 pt-1">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-950 block">
+                  <span className="text-xs font-bold uppercase tracking-wider text-brand-950 block">
                     Desglose activo por activo ({matchingAssetIds.length})
                   </span>
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-[11px] text-muted">
                     Comportamiento de mercado según posición Long / Short
                   </span>
                 </div>
@@ -545,10 +545,10 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
 
                     const effectBadgeClass = 
                       userEffect === 'favorable'
-                        ? 'bg-emerald-50 text-emerald-950 border-emerald-300'
+                        ? 'bg-brand-50 text-brand-950 border-brand-300'
                         : userEffect === 'desfavorable'
-                        ? 'bg-rose-50 text-rose-950 border-rose-300'
-                        : 'bg-slate-100 text-slate-800 border-slate-300';
+                        ? 'bg-danger-50 text-danger-950 border-danger-300'
+                        : 'bg-ink-100 text-ink-800 border-ink-300';
 
                     const analysisDetail = getAssetAnalysisDetail(
                       symbol,
@@ -560,30 +560,30 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
                     return (
                       <div 
                         key={symbol}
-                        className="bg-white border border-slate-200 hover:border-emerald-300 p-4 sm:p-5 rounded-2xl space-y-3.5 shadow-2xs transition-colors"
+                        className="bg-paper border border-ink-200 hover:border-brand-300 p-4 sm:p-5 rounded-2xl space-y-3.5 shadow-2xs transition-colors"
                       >
                         {/* Asset Header Row */}
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-100 pb-2.5">
                           <div className="flex items-center gap-2">
                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-mono font-bold ${
                               position === 'long'
-                                ? 'bg-blue-50 border-blue-300 text-blue-950'
-                                : 'bg-amber-50 border-amber-300 text-amber-950'
+                                ? 'bg-info-50 border-info-300 text-info-text'
+                                : 'bg-warning-50 border-warning-300 text-warning-text'
                             }`}>
                               <span>{symbol}</span>
-                              <span className={`text-[9px] font-black px-1.5 py-0.2 rounded uppercase tracking-wider ${
+                              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase tracking-wider ${
                                 position === 'long'
-                                  ? 'bg-blue-600 text-white'
-                                  : 'bg-amber-400 text-amber-950 border border-amber-500/60'
+                                  ? 'bg-info-600 text-paper'
+                                  : 'bg-warning-400 text-warning-text border border-warning-500/60'
                               }`}>
                                 {position.toUpperCase()}
                               </span>
                             </span>
-                            <span className="text-slate-900 font-bold text-xs sm:text-sm">
+                            <span className="text-ink-900 font-bold text-xs sm:text-sm">
                               {asset?.name || symbol}
                             </span>
                             {asset?.sector && (
-                              <span className="hidden sm:inline text-[11px] text-slate-500">
+                              <span className="hidden sm:inline text-[11px] text-muted">
                                 · {asset.sector}
                               </span>
                             )}
@@ -592,40 +592,40 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
                           <div className="flex items-center gap-1.5 flex-wrap">
                             {/* Effect Badge */}
                             <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${effectBadgeClass}`}>
-                              {userEffect === 'favorable' && <TrendingUp className="w-3 h-3 text-emerald-700" />}
-                              {userEffect === 'desfavorable' && <TrendingDown className="w-3 h-3 text-rose-700" />}
-                              {userEffect === 'neutral' && <Minus className="w-3 h-3 text-slate-500" />}
+                              {userEffect === 'favorable' && <TrendingUp className="w-3 h-3 text-brand-text" />}
+                              {userEffect === 'desfavorable' && <TrendingDown className="w-3 h-3 text-danger-700" />}
+                              {userEffect === 'neutral' && <Minus className="w-3 h-3 text-muted" />}
                               <span>{userEffectLabel}</span>
                             </span>
                           </div>
                         </div>
 
                         {/* Market context according to user position (strictly informative, zero advice) */}
-                        <div className="text-xs text-slate-700 bg-slate-50/80 p-3 rounded-xl border border-slate-200 leading-relaxed">
-                          <span className="font-bold text-slate-900">Comportamiento según tu posición: </span>
+                        <div className="text-xs text-muted bg-ink-50/80 p-3 rounded-xl border border-ink-200 leading-relaxed">
+                          <span className="font-bold text-ink-900">Comportamiento según tu posición: </span>
                           <span>{positionMarketContext}</span>
                         </div>
 
                         {/* Mechanism of transmission */}
                         <div className="space-y-1">
-                          <span className="text-[11px] font-bold text-emerald-950 uppercase tracking-wider block">
+                          <span className="text-[11px] font-bold text-brand-950 uppercase tracking-wider block">
                             Mecanismo de transmisión de la noticia
                           </span>
-                          <p className="text-slate-700 leading-relaxed text-xs sm:text-[13px]">
+                          <p className="text-muted leading-relaxed text-xs sm:text-[13px]">
                             {analysisDetail.mecanismo}
                           </p>
                         </div>
 
                         {/* Key factors to monitor */}
-                        <div className="space-y-1.5 bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200/70">
-                          <span className="text-[11px] font-bold text-emerald-950 flex items-center gap-1.5 uppercase tracking-wider">
-                            <Eye className="w-3.5 h-3.5 text-emerald-800" />
+                        <div className="space-y-1.5 bg-brand-50/60 p-3.5 rounded-xl border border-brand-200/70">
+                          <span className="text-[11px] font-bold text-brand-950 flex items-center gap-1.5 uppercase tracking-wider">
+                            <Eye className="w-3.5 h-3.5 text-brand-800" />
                             Factores clave a monitorear
                           </span>
                           <ul className="space-y-1.5 pl-1 pt-1">
                             {analysisDetail.factores.map((factor, fIdx) => (
-                              <li key={fIdx} className="flex items-start gap-2 text-xs text-slate-700 leading-relaxed">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-700 mt-1.5 shrink-0" />
+                              <li key={fIdx} className="flex items-start gap-2 text-xs text-muted leading-relaxed">
+                                <span className="w-1.5 h-1.5 rounded-full bg-brand-700 mt-1.5 shrink-0" />
                                 <span>{factor}</span>
                               </li>
                             ))}
@@ -647,10 +647,10 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end">
+        <div className="px-6 py-3 border-t border-ink-200 bg-ink-50 flex items-center justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-slate-900 text-white font-medium text-xs rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+            className="px-4 py-2 bg-ink-900 text-paper font-medium text-xs rounded-xl hover:bg-ink-800 transition-colors cursor-pointer"
           >
             Cerrar detalle
           </button>

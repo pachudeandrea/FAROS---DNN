@@ -1,4 +1,4 @@
-/* FAROS only handles push here. It never caches account or API responses. */
+/* Faros official identity. Push only; account and API responses are never cached. */
 const database = () => new Promise((resolve, reject) => {
   const request = indexedDB.open('faros-alerts', 1);
   request.onupgradeneeded = () => request.result.createObjectStore('meta');
@@ -43,8 +43,8 @@ self.addEventListener('push', event => {
       body: typeof payload.body === 'string' ? payload.body.slice(0, 240) : '',
       tag: String(payload.tag || payload.id || 'faros').slice(0, 128),
       renotify: false,
-      icon: '/icons/faros-192.png',
-      badge: '/icons/faros-192.png',
+      icon: '/brand/faros-push-192.png',
+      badge: '/brand/faros-badge.png',
       data: { url, userId: payload.userId }
     });
     for (const client of await self.clients.matchAll({ type: 'window', includeUncontrolled: true })) client.postMessage({ type: 'FAROS_NOTIFICATION' });

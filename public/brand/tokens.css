@@ -1,0 +1,70 @@
+/* FAROS official palette from Faros.pdf pages 5–8.
+   Original logo artwork is never recolored. Complete web fonts supplied by the user. */
+@font-face { font-family: 'Basis Grotesque Arabic Pro'; src: url('/fonts/BasisGrotesqueArabicPro-Light.woff2') format('woff2'); font-style: normal; font-weight: 300; font-display: swap; }
+@font-face { font-family: 'Basis Grotesque Arabic Pro'; src: url('/fonts/BasisGrotesqueArabicPro-Regular.woff2') format('woff2'); font-style: normal; font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Basis Grotesque Arabic Pro'; src: url('/fonts/BasisGrotesqueArabicPro-Bold.woff2') format('woff2'); font-style: normal; font-weight: 700; font-display: swap; }
+:root {
+  --brand-primary: #002C22;
+  --brand-accent: #00D391;
+  --brand-mint: #D9FBEA;
+  --brand-paper: #FCFCFC;
+  --brand-cloud: #E6E7E8;
+  --brand-gray: #A3A3A3;
+  --brand-night: #00110D;
+  --brand-success: #006045;
+  --brand-success-soft: #E0FCED;
+  --brand-danger: #BC1B1B;
+  --brand-danger-soft: #FCDEDE;
+  --brand-danger-pale: #FEF5F5;
+  --brand-info: #0B6CCE;
+  --brand-info-soft: #E1EFFF;
+  --brand-warning: #C17200;
+  --brand-warning-soft: #FEF5D2;
+  --brand-violet: #6023B7;
+  --brand-violet-soft: #EFE1FF;
+  --brand-gradient-glow: #49E9B5;
+  --brand-gradient-ink: #02121E;
+  --brand-gradient-deep: #020B1B;
+  --type-xs: .75rem;
+  --type-sm: .875rem;
+  --type-base: 1rem;
+  --type-lg: 1.125rem;
+  --type-xl: 1.25rem;
+  --type-2xl: 1.5rem;
+  --type-3xl: 1.875rem;
+  --type-4xl: 2.25rem;
+  --type-5xl: 3rem;
+  --type-6xl: 3.75rem;
+  --type-leading: 1.5;
+  --type-tracking-heading: -.025em;
+  --font-brand: 'Basis Grotesque Arabic Pro', system-ui, -apple-system, sans-serif;
+  --font-heading: var(--font-brand);
+  --font-body: var(--font-brand);
+  --font-data: var(--font-brand);
+  --content-primary: var(--brand-night);
+  --content-muted: var(--brand-primary);
+  --content-accent: var(--brand-success);
+  --content-info: var(--brand-primary);
+  --content-warning: var(--brand-primary);
+  --focus-color: var(--brand-primary);
+  --surface-page: var(--brand-paper);
+  --surface-card: var(--brand-paper);
+  --border-default: var(--brand-cloud);
+  --radius-control: 1rem;
+  --radius-card: 1.5rem;
+  --radius-dialog: 1.75rem;
+  --brand-radius-device: 44px;
+  --brand-radius-device-screen: 34px;
+  --radius-pill: 9999px;
+  --logo-clearspace: 12%;
+  --logo-symbol-min: 28px;
+  --logo-full-min-height: 48px;
+  --shadow-soft: 0 2px 12px color-mix(in srgb, var(--brand-primary) 6%, transparent);
+  --shadow-card: 0 6px 24px color-mix(in srgb, var(--brand-primary) 9%, transparent);
+  --shadow-overlay: 0 16px 48px color-mix(in srgb, var(--brand-night) 24%, transparent);
+  --shadow-focus: 0 0 0 4px color-mix(in srgb, var(--brand-accent) 30%, transparent);
+  --gradient-brand: linear-gradient(135deg, var(--brand-primary), var(--brand-gradient-ink));
+  --gradient-mint: linear-gradient(135deg, var(--brand-mint), var(--brand-paper));
+  --motion-fast: 150ms;
+  --motion-standard: 200ms;
+}

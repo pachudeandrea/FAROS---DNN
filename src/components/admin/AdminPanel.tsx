@@ -16,7 +16,7 @@ import {
   CheckCircle2,
   Lock
 } from 'lucide-react';
-import { LighthouseLogo } from '../LighthouseLogo';
+import { BrandLogo } from '../BrandLogo';
 import { AdminOverviewView } from './AdminOverviewView';
 import { AdminUsersView } from './AdminUsersView';
 import { AdminFunnelView } from './AdminFunnelView';
@@ -179,27 +179,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToApp, currentUser
     { id: 'thesis', label: 'Plan vs. Real (Tesis)', icon: Calculator },
   ];
 
-  const mainBg = isDark ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900';
-  const sidebarBg = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/90';
+  const mainBg = isDark ? 'dark bg-ink-950 text-ink-100' : 'bg-ink-50 text-ink-900';
+  const sidebarBg = isDark ? 'bg-ink-900 border-ink-800' : 'bg-paper border-ink-200/90';
 
   if (unauthorizedError) {
     return (
       <div className={`min-h-screen flex items-center justify-center p-6 ${mainBg}`}>
-        <div className="max-w-md w-full bg-white dark:bg-slate-900 p-8 rounded-3xl border border-rose-300 dark:border-rose-900 shadow-2xl text-center space-y-4">
-          <div className="w-14 h-14 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-600 flex items-center justify-center mx-auto">
+        <div className="max-w-md w-full bg-paper dark:bg-ink-900 p-8 rounded-3xl border border-danger-300 dark:border-danger-900 shadow-2xl text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-danger-100 dark:bg-danger-950 text-danger-600 flex items-center justify-center mx-auto">
             <Lock className="w-7 h-7" />
           </div>
-          <h3 className="text-xl font-black text-slate-900 dark:text-white">Acceso Restringido</h3>
-          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+          <BrandLogo size="lg" variant="full" tone={isDark ? 'dark' : 'light'} />
+          <h3 className="text-xl font-bold text-ink-900 dark:text-paper">Acceso Restringido</h3>
+          <p className="text-xs text-muted dark:text-muted leading-relaxed">
             {unauthorizedError}
           </p>
-          <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-left text-[11px] text-slate-600 dark:text-slate-400 space-y-1">
+          <div className="p-3 bg-ink-50 dark:bg-ink-800 rounded-xl text-left text-[11px] text-muted dark:text-muted space-y-1">
             <p><strong>Email actual:</strong> {currentUserEmail || 'No detectado'}</p>
             <p><strong>Configuración requerida:</strong> Este correo debe figurar en la variable <code>ADMIN_EMAILS</code> de Vercel/entorno.</p>
           </div>
           <button
             onClick={onBackToApp}
-            className="w-full py-2.5 bg-emerald-950 text-white rounded-xl text-xs font-bold cursor-pointer hover:bg-emerald-900"
+            className="w-full py-2.5 bg-brand-950 text-paper rounded-xl text-xs font-bold cursor-pointer hover:bg-brand-900"
           >
             Volver a la aplicación FAROS
           </button>
@@ -212,28 +213,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToApp, currentUser
     <div className={`min-h-screen flex flex-col font-sans transition-colors duration-200 ${mainBg}`}>
       {/* Top Navbar */}
       <header className={`sticky top-0 z-40 border-b backdrop-blur-md px-4 sm:px-8 py-3 flex flex-wrap items-center justify-between gap-3 shadow-xs ${
-        isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white/95 border-slate-200'
+        isDark ? 'bg-ink-900/90 border-ink-800' : 'bg-paper/95 border-ink-200'
       }`}>
         {/* Brand & Title */}
         <div className="flex items-center gap-3">
           <button
             onClick={onBackToApp}
-            className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+            className="p-2 rounded-xl border border-ink-200 dark:border-ink-700 hover:bg-ink-100 dark:hover:bg-ink-800 text-muted dark:text-ink-300 transition-colors cursor-pointer"
             title="Regresar a FAROS"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
 
           <div className="flex items-center gap-2.5">
-            <LighthouseLogo size="sm" />
+            <BrandLogo size="sm" variant="full" tone={isDark ? 'dark' : 'light'} />
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-mono font-black text-sm tracking-tight">FAROS</span>
-                <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-950 text-white px-2 py-0.5 rounded-md">
+                <span className="sr-only">Faros</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-brand-950 text-paper px-2 py-0.5 rounded-md">
                   Panel Administrador
                 </span>
               </div>
-              <span className="text-[11px] text-slate-500 hidden sm:inline">
+              <span className="text-[11px] text-muted hidden sm:inline">
                 Monitoreo de negocio, producto y salud del pipeline
               </span>
             </div>
@@ -244,15 +245,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToApp, currentUser
         <div className="flex flex-wrap items-center gap-2.5 text-xs">
           {/* Timeframe selector (for overview) */}
           {activeSection === 'overview' && (
-            <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800 font-bold border border-slate-200 dark:border-slate-700">
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-ink-100 dark:bg-ink-800 font-bold border border-ink-200 dark:border-ink-700">
               {([7, 30, 90] as TimeframeOption[]).map((days) => (
                 <button
                   key={days}
                   onClick={() => setTimeframeDays(days)}
                   className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                     timeframeDays === days
-                      ? 'bg-emerald-950 text-white shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      ? 'bg-brand-950 text-paper shadow-xs'
+                      : 'text-muted dark:text-muted hover:text-ink-900'
                   }`}
                 >
                   {days}d
@@ -266,8 +267,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToApp, currentUser
             onClick={() => setIsDemoMode(!isDemoMode)}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-2xs ${
               isDemoMode
-                ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-700'
-                : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                ? 'bg-warning-100 dark:bg-warning-950/80 text-warning-text dark:text-warning-300 border-warning-300 dark:border-warning-700'
+                : 'bg-brand-100 dark:bg-brand-950/80 text-brand-950 dark:text-brand-300 border-brand-300 dark:border-brand-700'
             }`}
             title="Alternar entre datos de simulación completos de tesis y datos reales registrados"
           >
@@ -278,22 +279,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToApp, currentUser
           {/* Dark / Light Mode Toggle */}
           <button
             onClick={() => setIsDark(!isDark)}
-            className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            className="p-2 rounded-xl border border-ink-200 dark:border-ink-700 text-muted dark:text-ink-300 hover:bg-ink-100 dark:hover:bg-ink-800 transition-colors cursor-pointer"
             title={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
           >
-            {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-600" />}
+            {isDark ? <Sun className="w-4 h-4 text-warning-text" /> : <Moon className="w-4 h-4 text-muted" />}
           </button>
 
           {/* Refresh Button */}
           <button
             onClick={loadSectionData}
             disabled={isLoading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 text-slate-700 dark:text-slate-300 text-xs font-bold transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-paper dark:bg-ink-800 border border-ink-200 dark:border-ink-700 hover:bg-ink-50 text-muted dark:text-ink-300 text-xs font-bold transition-all shadow-2xs cursor-pointer disabled:opacity-50"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-emerald-600' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-brand-text' : ''}`} />
             <span className="hidden sm:inline">Actualizar</span>
             {lastUpdatedTime && (
-              <span className="font-mono text-[10px] text-slate-400">
+              <span className="font-mono text-[10px] text-muted">
                 ({lastUpdatedTime} hs)
               </span>
             )}
@@ -305,7 +306,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToApp, currentUser
       <div className="flex-1 flex flex-col md:flex-row max-w-7xl w-full mx-auto p-4 sm:p-6 gap-6">
         {/* Navigation Sidebar */}
         <aside className={`w-full md:w-64 shrink-0 rounded-3xl border p-4 h-fit space-y-1 shadow-xs ${sidebarBg}`}>
-          <div className="px-3 py-2 text-[11px] font-black uppercase tracking-wider text-slate-400">
+          <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-muted">
             Secciones del Panel
           </div>
 
@@ -321,22 +322,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToApp, currentUser
                 }}
                 className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-xs font-bold text-left transition-all cursor-pointer ${
                   isActive
-                    ? 'bg-emerald-950 text-white shadow-xs'
+                    ? 'bg-brand-950 text-paper shadow-xs'
                     : isDark
-                    ? 'text-slate-400 hover:text-white hover:bg-slate-800'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    ? 'text-muted hover:text-paper hover:bg-ink-800'
+                    : 'text-muted hover:text-ink-900 hover:bg-ink-100'
                 }`}
               >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-emerald-300' : 'text-slate-400'}`} />
+                <Icon className={`w-4 h-4 ${isActive ? 'text-brand-300' : 'text-muted'}`} />
                 <span>{item.label}</span>
               </button>
             );
           })}
 
           {/* Quick info box at bottom of sidebar */}
-          <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800 text-[11px] space-y-2 text-slate-500">
-            <div className="flex items-center gap-1.5 font-semibold text-slate-700 dark:text-slate-300">
-              <Database className="w-3.5 h-3.5 text-emerald-600" />
+          <div className="pt-4 mt-4 border-t border-ink-100 dark:border-ink-800 text-[11px] space-y-2 text-muted">
+            <div className="flex items-center gap-1.5 font-semibold text-muted dark:text-ink-300">
+              <Database className="w-3.5 h-3.5 text-brand-text" />
               <span>Persistencia Activa</span>
             </div>
             <p className="leading-snug">
