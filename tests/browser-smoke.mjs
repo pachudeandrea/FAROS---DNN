@@ -595,6 +595,35 @@ try {
     const failures = report.flatMap(item => item.failures.map(failure => ({ screen: item.label, ...failure })));
     assert.deepEqual(failures, [], 'Contraste AA en textos visibles sobre superficies planas');
   });
+  await check('Landing con slogan y explicación visual; encabezado Faros PRO sin etiquetas redundantes', async () => {
+    const anonymous = await setup({ anonymous: true });
+    const { page } = anonymous;
+    await page.getByRole('heading', { level: 1, name: 'No inviertas a ciegas, invertí con Faros.', exact: true }).waitFor();
+    assert.equal(await page.getByText('Periodismo financiero consolidado en tiempo real', { exact: true }).count(), 0);
+    const how = page.getByRole('region', { name: 'Cómo funciona Faros', exact: true });
+    assert.equal(await how.getByRole('listitem').count(), 3);
+    for (const title of ['Elegí tus activos','Entendé qué cambia','Seguí lo importante']) await how.getByRole('heading', { name: title, exact: true }).waitFor();
+    for (const width of [320,390,768,1024,1440]) {
+      await page.setViewportSize({ width, height: 900 }); await page.evaluate(() => scrollTo(0,0));
+      await fits(page, `Landing ${width}`);
+      await page.screenshot({ path: path.join(artifacts, `landing-slogan-${width}.png`), fullPage: true });
+    }
+    await clickVisible(page, 'Crear cuenta'); await dialogFits(page); await clickVisible(page, 'Cerrar registro');
+    await clickVisible(page, 'Iniciar sesión'); await dialogFits(page); await clickVisible(page, 'Cerrar inicio de sesión');
+    await anonymous.context.close();
+    const authenticated = await setup(); await clickVisible(authenticated.page, 'Ahora no');
+    assert.equal(await authenticated.page.getByText('Tu pulso financiero', { exact: true }).count(), 0);
+    assert.equal(await authenticated.page.getByText('Filtro de Ruido Financiero', { exact: true }).count(), 0);
+    for (const width of [320,390,768,1024,1440]) {
+      await authenticated.page.setViewportSize({ width, height: 900 });
+      await fits(authenticated.page, `Header Faros PRO ${width}`);
+      const header = authenticated.page.locator('header').first();
+      const logo = await header.locator('.brand-logo').boundingBox(); const pro = await header.getByText('PRO', { exact: true }).boundingBox();
+      assert.ok(logo && pro && logo.x + logo.width <= pro.x, 'Logo y PRO quedan juntos, sin superposición');
+      await authenticated.page.screenshot({ path: path.join(artifacts, `header-pro-${width}.png`) });
+    }
+    await authenticated.context.close();
+  });
   await check('Worker real muestra avisos con la página cerrada y filtra otras cuentas', async () => {
     const context = await browser.newContext({ permissions: ['notifications'] });
     await context.route('**/api/**', route => route.fulfill({ contentType: 'application/json', body: '{"authenticated":false}' }));

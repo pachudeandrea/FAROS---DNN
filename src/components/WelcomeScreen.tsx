@@ -1,15 +1,6 @@
 import React from 'react';
 import { BrandLogo } from './BrandLogo';
-import { 
-  ArrowRight, 
-  ShieldCheck, 
-  TrendingUp, 
-  Calendar, 
-  Sparkles,
-  Lock,
-  Compass,
-  CheckCircle2
-} from 'lucide-react';
+import { ArrowRight, Wallet, Newspaper, Layers, Volume2, Bell, Calendar, Lock, Compass } from 'lucide-react';
 
 interface WelcomeScreenProps {
   onOpenSignUp: () => void;
@@ -49,24 +40,16 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       </header>
 
       {/* Hero Body */}
-      <main className="relative z-10 w-full max-w-4xl mx-auto px-4 sm:px-6 py-10 sm:py-16 flex flex-col items-center text-center my-auto">
-        {/* Status Pill */}
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-900/40 border border-brand-700/50 text-brand-300 text-xs font-semibold mb-6 animate-in fade-in duration-300">
-          <Sparkles className="w-3.5 h-3.5 text-brand-text" />
-          <span>Periodismo financiero consolidado en tiempo real</span>
-        </div>
-
-        {/* Main Title */}
-        <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold text-paper tracking-tight leading-[1.1] max-w-3xl">
-          Las noticias financieras que{' '}
-          <span className="bg-gradient-to-r from-brand-400 via-brand-300 to-brand-200 bg-clip-text text-transparent">
-            importan para tu cartera
+      <main className="relative z-10 w-full max-w-5xl mx-auto px-4 sm:px-6 py-10 sm:py-16 flex flex-col items-center text-center my-auto">
+        <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold text-paper tracking-tight leading-[1.1] max-w-4xl">
+          No inviertas a ciegas,{' '}
+          <span className="block bg-gradient-to-r from-brand-400 via-brand-300 to-brand-200 bg-clip-text text-transparent">
+            invertí con Faros.
           </span>
         </h1>
-
-        {/* Subtitle */}
-        <p className="mt-5 text-sm sm:text-base md:text-lg text-ink-300 max-w-2xl font-normal leading-relaxed">
-          Monitoreo unificado de medios argentinos especializados, cruces de impacto patrimonial en bonos soberanos, acciones y CEDEARs, y calendario automático de vencimientos.
+        <p className="mt-5 text-base md:text-lg text-ink-300 max-w-2xl font-normal leading-relaxed">
+          Faros conecta las noticias financieras con tu cartera. Entendé su impacto,
+          compará medios y seguí lo importante con audio, calendario y alertas.
         </p>
 
         {/* Main CTA Actions */}
@@ -87,38 +70,59 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           </button>
         </div>
 
-        {/* Value Highlights Grid */}
-        <div className="mt-14 sm:mt-16 grid grid-cols-1 sm:grid-cols-3 gap-4 w-full text-left">
-          <div className="p-4 sm:p-5 rounded-2xl bg-paper/5 border border-paper/10 backdrop-blur-xs">
-            <div className="w-9 h-9 rounded-xl bg-brand-900/60 text-brand-text flex items-center justify-center mb-3">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <h3 className="text-sm font-bold text-paper mb-1">Múltiples Fuentes</h3>
-            <p className="text-xs text-muted leading-relaxed">
-              Cruce exhaustivo de Ámbito, El Cronista, Infobae, Bloomberg y regulaciones oficiales del BCRA.
-            </p>
+        <section aria-labelledby="how-faros-works" className="mt-14 sm:mt-16 w-full text-left">
+          <div className="text-center mb-6 sm:mb-8">
+            <h2 id="how-faros-works" className="text-2xl sm:text-3xl font-bold text-paper">Cómo funciona Faros</h2>
+            <p className="mt-2 text-base text-ink-300">De tu cartera a las noticias que te importan, en tres pasos.</p>
           </div>
-
-          <div className="p-4 sm:p-5 rounded-2xl bg-paper/5 border border-paper/10 backdrop-blur-xs">
-            <div className="w-9 h-9 rounded-xl bg-brand-900/60 text-brand-text flex items-center justify-center mb-3">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-            <h3 className="text-sm font-bold text-paper mb-1">Impacto en Cartera</h3>
-            <p className="text-xs text-muted leading-relaxed">
-              Análisis técnico sin recomendaciones de compra o venta: solo la relación directa entre el hecho y tus activos.
-            </p>
-          </div>
-
-          <div className="p-4 sm:p-5 rounded-2xl bg-paper/5 border border-paper/10 backdrop-blur-xs">
-            <div className="w-9 h-9 rounded-xl bg-brand-900/60 text-brand-text flex items-center justify-center mb-3">
-              <Calendar className="w-5 h-5" />
-            </div>
-            <h3 className="text-sm font-bold text-paper mb-1">Calendario de Cartera</h3>
-            <p className="text-xs text-muted leading-relaxed">
-              Fechas exactas de cobro de cupones (AL30, GD30), reportes de balances y publicación de IPC en hora argentina.
-            </p>
-          </div>
-        </div>
+          <ol className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
+            <li className="min-w-0 p-5 rounded-2xl bg-paper/5 border border-paper/10 flex flex-col">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm font-bold text-brand-300">01 · Tu cartera</span>
+                <Wallet aria-hidden="true" className="w-6 h-6 text-brand-400" />
+              </div>
+              <h3 className="text-lg font-bold text-paper">Elegí tus activos</h3>
+              <p className="mt-2 text-base text-ink-300 leading-relaxed">Agregá bonos, acciones o CEDEARs e indicá tus posiciones LONG o SHORT.</p>
+              <div aria-hidden="true" className="mt-5 rounded-xl bg-brand-950 p-3 space-y-2">
+                <p className="text-xs text-brand-300">Ejemplo de cartera</p>
+                {[['AL30', 'LONG'], ['YPFD', 'LONG'], ['NVDA', 'SHORT']].map(([symbol, position]) => <div key={symbol} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="font-bold text-paper">{symbol}</span><span className="text-brand-300 font-mono">{position}</span>
+                </div>)}
+              </div>
+            </li>
+            <li className="min-w-0 p-5 rounded-2xl bg-paper/5 border border-paper/10 flex flex-col">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm font-bold text-brand-300">02 · Tus noticias</span>
+                <Newspaper aria-hidden="true" className="w-6 h-6 text-brand-400" />
+              </div>
+              <h3 className="text-lg font-bold text-paper">Entendé qué cambia</h3>
+              <p className="mt-2 text-base text-ink-300 leading-relaxed">Recibí noticias relacionadas con tus activos, entendé su impacto y compará las publicaciones de distintos medios.</p>
+              <div aria-hidden="true" className="mt-5 rounded-xl bg-brand-950 p-3 space-y-3">
+                <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
+                  <span className="px-2 py-1 rounded-lg bg-brand-100 text-brand-950">Favorable</span>
+                  <span className="px-2 py-1 rounded-lg bg-danger-100 text-danger-900">Alerta</span>
+                  <span className="px-2 py-1 rounded-lg bg-ink-100 text-ink-900">Neutral</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-brand-300"><Layers className="w-4 h-4" />Un mismo hecho, distintos medios</div>
+                <div className="grid grid-cols-2 gap-2 text-xs text-ink-300"><span className="border border-paper/20 rounded-lg p-2">Publicación 1</span><span className="border border-paper/20 rounded-lg p-2">Publicación 2</span></div>
+              </div>
+            </li>
+            <li className="min-w-0 p-5 rounded-2xl bg-paper/5 border border-paper/10 flex flex-col">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm font-bold text-brand-300">03 · Tu seguimiento</span>
+                <Bell aria-hidden="true" className="w-6 h-6 text-brand-400" />
+              </div>
+              <h3 className="text-lg font-bold text-paper">Seguí lo importante</h3>
+              <p className="mt-2 text-base text-ink-300 leading-relaxed">Escuchá el resumen, guardá noticias y organizá tus recordatorios. Activá las alertas si querés recibir avisos.</p>
+              <div aria-hidden="true" className="mt-5 rounded-xl bg-brand-950 p-3 space-y-3 text-sm text-brand-300">
+                <div className="flex items-center gap-2"><Volume2 className="w-4 h-4" />Resumen de audio</div>
+                <div className="flex items-center gap-2"><Calendar className="w-4 h-4" />Calendario y recordatorios</div>
+                <div className="flex items-center gap-2"><Bell className="w-4 h-4" />Alertas opcionales</div>
+              </div>
+            </li>
+          </ol>
+          <p className="mt-5 text-sm text-ink-300 text-center">Información para entender tu cartera, sin recomendaciones de compra o venta.</p>
+        </section>
 
         {/* Optional Explore Demo Link */}
         {onExploreDemo && (

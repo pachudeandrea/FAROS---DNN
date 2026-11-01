@@ -29,7 +29,6 @@ export const FeedSummaryHero: React.FC<FeedSummaryHeroProps> = ({ portfolio, new
     <div className="min-w-0 space-y-3">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-brand-800">Tu pulso financiero</p>
         <h2 className="text-xl sm:text-2xl font-bold text-ink-900 break-words">{portfolio.name}</h2>
         <p role="status" className={`text-sm mt-1 ${query.status === 'error' ? 'text-danger-800' : 'text-muted'}`}>{describeNewsQuery(query, newsList.length)}</p>
       </div>

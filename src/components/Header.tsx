@@ -28,27 +28,15 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="sticky top-0 z-30 bg-paper/95 backdrop-blur-md border-b border-ink-200/80 shadow-brand-soft">
       <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 min-w-0 flex items-center justify-between gap-2 lg:gap-4">
-        {/* Zone 1: Brand Wordmark with sleek Lighthouse Logo */}
-        <div 
+        {/* Brand and product tier form one compact lockup. */}
+        <div
           onClick={() => onSelectTab('feed')}
           role="button" tabIndex={0} aria-label="FAROS, ir a noticias"
           onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectTab('feed'); } }}
-          className="flex items-center gap-2 sm:gap-3 cursor-pointer select-none shrink-0 group"
+          className="flex items-end gap-1.5 shrink-0 cursor-pointer select-none"
         >
-          <div className="transition-transform group-hover:scale-105">
-            <BrandLogo size="md" variant="full" />
-          </div>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1.5">
-              <span className="sr-only">Faros</span>
-              <span className="hidden sm:inline text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded-md bg-brand-100 text-brand-900 tracking-wider">
-                PRO
-              </span>
-            </div>
-            <span className="text-[10px] font-semibold text-muted hidden sm:block -mt-1">
-              Filtro de Ruido Financiero
-            </span>
-          </div>
+          <BrandLogo size="nav" variant="full" />
+          <span className="mb-1.5 rounded-full bg-brand-100 text-brand-950 px-2 py-1 text-[10px] leading-none font-bold tracking-wide">PRO</span>
         </div>
 
         {/* Zone 2: Rocket Money Segmented Pill Navigation on Desktop */}
