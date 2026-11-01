@@ -479,6 +479,32 @@ try {
     }
     await context.close();
   });
+  await check('Activos del resumen filtran, bajan a las noticias y sincronizan la selección', async () => {
+    const { context, page, state } = await setup();
+    await clickVisible(page, 'Ahora no');
+    state.newsData = news.map((item, index) => ({ ...item, affectedAssetIds: index === 0 ? ['AL30'] : index === 1 ? ['MEP'] : ['AL30', 'MEP'], impact: 'favorable' }));
+    await clickVisible(page, 'Actualizar pulso');
+    const hero = page.getByRole('region', { name: 'Resumen de tu cartera' });
+    await hero.locator('summary').click();
+    const al30 = hero.getByRole('button', { name: 'Filtrar noticias de AL30: 2', exact: true });
+    const mep = hero.getByRole('button', { name: 'Filtrar noticias de MEP: 2', exact: true });
+    await al30.click();
+    await page.waitForFunction(() => document.querySelectorAll('#news-feed-section article').length === 2);
+    assert.deepEqual((await page.locator('#news-feed-section article h3').allInnerTexts()).sort(), [news[0].headline, news[2].headline].sort());
+    assert.equal(await al30.getAttribute('aria-pressed'), 'true');
+    assert.equal(await page.locator('[data-tour="feed-filters"] select').inputValue(), 'AL30');
+    await page.waitForFunction(() => window.scrollY > 0);
+    await mep.click();
+    await page.waitForFunction(() => document.querySelector('[data-tour="feed-filters"] select')?.value === 'MEP');
+    assert.deepEqual((await page.locator('#news-feed-section article h3').allInnerTexts()).sort(), [news[1].headline, news[2].headline].sort());
+    assert.equal(await al30.getAttribute('aria-pressed'), 'false');
+    assert.equal(await mep.getAttribute('aria-pressed'), 'true');
+    await mep.click();
+    await page.waitForFunction(() => document.querySelectorAll('#news-feed-section article').length === 3);
+    assert.equal(await mep.getAttribute('aria-pressed'), 'false');
+    assert.equal(await page.locator('[data-tour="feed-filters"] select').inputValue(), 'todos');
+    await context.close();
+  });
   await check('Worker real muestra avisos con la página cerrada y filtra otras cuentas', async () => {
     const context = await browser.newContext({ permissions: ['notifications'] });
     await context.route('**/api/**', route => route.fulfill({ contentType: 'application/json', body: '{"authenticated":false}' }));

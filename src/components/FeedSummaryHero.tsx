@@ -7,12 +7,13 @@ import { describeNewsQuery } from '../utils/newsQuery';
 interface FeedSummaryHeroProps {
   portfolio: Portfolio; newsList: NewsItem[]; assetsMap: Record<string, Asset>;
   onPlayAudioBrief: () => void; onFilterByAsset?: (symbol: string) => void;
+  activeAssetFilter?: string;
   activeImpactFilter?: string; onToggleImpactFilter?: (impact: 'favorable' | 'alerta' | 'neutral') => void;
   isLoadingNews?: boolean; onRefreshNews?: () => void; dailySummaryDurationText?: string;
   isPlayingDailySummary?: boolean; query: NewsQueryState;
 }
 export const FeedSummaryHero: React.FC<FeedSummaryHeroProps> = ({ portfolio, newsList, assetsMap, onPlayAudioBrief,
-  onFilterByAsset, activeImpactFilter = 'todos', onToggleImpactFilter, isLoadingNews, onRefreshNews,
+  onFilterByAsset, activeAssetFilter = 'todos', activeImpactFilter = 'todos', onToggleImpactFilter, isLoadingNews, onRefreshNews,
   dailySummaryDurationText, isPlayingDailySummary, query }) => {
   const items = portfolio.assetIds.length ? newsList.filter(n => n.affectedAssetIds.some(id => portfolio.assetIds.includes(id))) : newsList;
   const counts = { favorable: 0, alerta: 0, neutral: 0 };
@@ -66,7 +67,7 @@ export const FeedSummaryHero: React.FC<FeedSummaryHeroProps> = ({ portfolio, new
       <div className="space-y-3 pt-2">
 
         <p className="text-sm text-slate-600">El impacto refleja las noticias disponibles y tus posiciones LONG/SHORT. Una consulta vacía no permite concluir que no haya riesgos.</p>
-        <div className="flex flex-wrap gap-2">{Object.entries(assets).sort((a,b) => b[1]-a[1]).slice(0,5).map(([id, count]) => <button key={id} onClick={() => onFilterByAsset?.(id)} className="rounded-xl px-3 py-2 bg-slate-50 text-sm text-slate-800" title={assetsMap[id]?.name}>{id} · {count}</button>)}</div>
+        <div className="flex flex-wrap gap-2">{Object.entries(assets).sort((a,b) => b[1]-a[1]).slice(0,5).map(([id, count]) => <button key={id} type="button" aria-pressed={activeAssetFilter === id} aria-label={`Filtrar noticias de ${id}: ${count}`} onClick={() => onFilterByAsset?.(id)} className={`rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${activeAssetFilter === id ? 'bg-emerald-950 text-white' : 'bg-slate-50 text-slate-800 hover:bg-emerald-50'}`} title={assetsMap[id]?.name}>{id} · {count}</button>)}</div>
         {sources.length > 0 && <p className="text-sm text-slate-600">Publicaciones incluidas: {sources.join(', ')}.</p>}
       </div>
     </details>

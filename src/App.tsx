@@ -652,6 +652,11 @@ export default function App() {
     }
   };
 
+  const handleToggleAssetFilter = (symbol: string) => {
+    setAssetFilter(previous => previous === symbol ? 'todos' : symbol);
+    document.getElementById('news-feed-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   // Session hydration loading state
   if (isSessionLoading) {
     return (
@@ -749,7 +754,8 @@ export default function App() {
               newsList={newsList}
               assetsMap={assetsMap}
               onPlayAudioBrief={handlePlayDailySummary}
-              onFilterByAsset={(sym) => setAssetFilter(sym)}
+              activeAssetFilter={assetFilter}
+              onFilterByAsset={handleToggleAssetFilter}
               activeImpactFilter={impactFilter}
               onToggleImpactFilter={handleToggleImpactFilter}
               isLoadingNews={isLoadingNews}
