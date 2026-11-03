@@ -1,3 +1,5 @@
+import { searchAssets, ASSET_CATALOG } from '../data/assetCatalog';
+import type { Asset } from '../types';
 import { useModalFocus } from '../hooks/useModalFocus';
 import { usePendingChanges } from '../hooks/usePendingChanges';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
@@ -32,6 +34,7 @@ interface FinancialCalendarProps {
   portfolioId?: string;
   portfolioName?: string;
   userAssetSymbols: string[];
+  assetsMap?: Record<string, Asset>;
   onPendingRemindersChange?: (count: number) => void;
   accountId?: string;
   notificationsControl?: React.ReactNode;
@@ -46,6 +49,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
   portfolioId = 'default',
   portfolioName = 'Mi Cartera',
   userAssetSymbols,
+  assetsMap = {},
   onPendingRemindersChange,
   accountId,
   notificationsControl
@@ -1320,7 +1324,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                     className="w-full bg-ink-50 border border-ink-300 rounded-xl p-2.5 text-xs font-mono font-bold text-ink-800 focus:outline-none focus:border-brand-700"
                   >
                     {userAssetSymbols.map(sym => (
-                      <option key={sym} value={sym}>{sym}</option>
+                      <option key={sym} value={sym}>{assetsMap[sym] ? `${assetsMap[sym].symbol} · ${assetsMap[sym].name} · ${assetsMap[sym].currency}` : sym}</option>
                     ))}
                     <option value="otro">Otro activo...</option>
                   </select>
@@ -1329,6 +1333,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                     <input
                       type="text"
                       placeholder="Escribí ticker (ej: BMA)"
+                      list="calendar-asset-catalog"
                       value={customAssetInput}
                       onChange={(e) => setCustomAssetInput(e.target.value)}
                       required={formAsset === 'otro'}
@@ -1338,6 +1343,7 @@ export const FinancialCalendar: React.FC<FinancialCalendarProps> = ({
                 </div>
               </div>
 
+              <datalist id="calendar-asset-catalog">{searchAssets(customAssetInput, Object.keys(assetsMap).length ? Array.from(new Map(Object.values(assetsMap).map(asset => [asset.id, asset])).values()) : ASSET_CATALOG).slice(0, 40).map(asset => <option key={asset.id} value={asset.id}>{asset.name} · {asset.market} · {asset.currency}</option>)}</datalist>
               {/* Acción */}
               <div className="space-y-1">
                 <label className="font-bold text-muted">Acción prevista</label>

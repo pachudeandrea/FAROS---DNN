@@ -126,3 +126,34 @@ test('la alternativa RSS conserva la cobertura de tres medios y las fechas verif
   assert.ok(result.news.some((item: NewsItem) => item.headline.includes('naftas')), 'Mantener un hecho distinto como noticia independiente');
   assert.equal((await server.stats()).searches, 0);
 });
+
+
+test('Gemini usa los metadatos del catálogo y valida relaciones aunque el modelo proponga otro ticker; caché se renueva al modificar cartera', async () => {
+  const server = await api();
+  const args = { portfolioId: 'same-portfolio', tickers: ['MSFT'], profile: 'moderado' };
+  const microsoft = await server.pulse(args);
+  assert.deepEqual(microsoft.news[0].affectedAssetIds, ['MSFT']);
+  assert.equal(microsoft.news[0].impact, 'favorable');
+  assert.equal((await server.pulse(args)).cached, true);
+  const before = (await server.stats()).searches;
+  for (const ticker of ['CO29', 'YMCJO', 'TX28']) {
+    const changed = await server.pulse({ ...args, tickers: [ticker] });
+    assert.equal(changed.cached, false);
+    assert.deepEqual(changed.news[0].affectedAssetIds, [ticker]);
+    assert.ok(changed.news[0].sources.every((source: MediaCoverage) => articles.some(article => article.url === source.sourceUrl)));
+  }
+  assert.equal((await server.stats()).searches, before + 3);
+  const prompts = (await server.stats()).prompts.join('\n');
+  assert.match(prompts, /Microsoft.*emisor: Microsoft/); assert.match(prompts, /Provincia de Córdoba/); assert.match(prompts, /Obligación negociable/);
+});
+
+test('RSS incorpora nuevos emisores y prioriza la selección conservando publicaciones verificadas', async () => {
+  const server = await api(false);
+  for (const [ticker, headline] of [['MSFT', 'Microsoft'], ['CO29', 'Provincia de Córdoba'], ['YMCJO', 'obligaciones negociables'], ['TX28', 'TX28']]) {
+    const result = await server.pulse({ portfolioId: 'rss-changing-assets', tickers: [ticker] });
+    assert.equal(result.cached, false);
+    const item = result.news.find((item: NewsItem) => item.headline.includes(headline));
+    assert.ok(item, headline); assert.ok(item.affectedAssetIds.includes(ticker));
+    assert.ok(item.sources.every((source: MediaCoverage) => source.publishedTimestamp && articles.some(article => article.url === source.sourceUrl)));
+  }
+});

@@ -1,3 +1,4 @@
+import { portfolioNewsScope } from './utils/newsCache';
 import React, { useState, useMemo, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { 
   Asset, 
@@ -210,17 +211,21 @@ export default function App() {
   // Assets Map lookup
   const assetsMap = useMemo(() => {
     const map: Record<string, Asset> = {};
-    MOCK_ASSETS.forEach(a => {
+    [...MOCK_ASSETS, ...(portfolios.find(p => p.id === activePortfolioId)?.customAssets || [])].forEach(a => {
       map[a.id] = a;
-      map[a.symbol] = a;
+      if (!map[a.symbol]) map[a.symbol] = a;
     });
     return map;
-  }, []);
+  }, [portfolios, activePortfolioId]);
 
   // Active Portfolio
   const activePortfolio = useMemo(() => {
     return portfolios.find(p => p.id === activePortfolioId) || portfolios[0];
   }, [portfolios, activePortfolioId]);
+
+  useEffect(() => {
+    if (assetFilter !== 'todos' && !activePortfolio.assetIds.includes(assetFilter)) setAssetFilter('todos');
+  }, [activePortfolio.assetIds, assetFilter]);
 
   // Central audio controller subscription
   useEffect(() => {
@@ -291,13 +296,14 @@ export default function App() {
       hourKey = `${todayKey}_${hourStr}`;
     } catch {}
 
-    const cacheKey = newsClientCacheKey(activePortfolio.id, hourKey);
+    const scope = `${activePortfolio.id}_${portfolioNewsScope(activePortfolio.assetIds, activePortfolio.profile, activePortfolio.assetPositions, activePortfolio.customAssets)}`;
+    const cacheKey = newsClientCacheKey(scope, hourKey);
 
     newsRequest.current?.abort();
     const controller = new AbortController();
     newsRequest.current = controller;
-    if (newsPortfolio.current !== activePortfolio.id) {
-      newsPortfolio.current = activePortfolio.id;
+    if (newsPortfolio.current !== scope) {
+      newsPortfolio.current = scope;
       setNewsList([]);
       setQueryState({ status: 'idle', checkedAt: null });
     }
@@ -319,7 +325,7 @@ export default function App() {
       const response = await fetch('/api/news/pulse', {
         method: 'POST', signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ portfolioId: activePortfolio.id, tickers: activePortfolio.assetIds, profile: activePortfolio.profile, forceRefresh: isManualRefresh })
+        body: JSON.stringify({ portfolioId: activePortfolio.id, tickers: activePortfolio.assetIds, customAssets: activePortfolio.customAssets, assetPositions: activePortfolio.assetPositions, profile: activePortfolio.profile, forceRefresh: isManualRefresh })
       });
       if (!response.ok) throw new Error('No se pudo completar la consulta.');
       const data = await response.json();
@@ -335,7 +341,7 @@ export default function App() {
       clearTimeout(timeout);
       if (newsRequest.current === controller) setIsLoadingNews(false);
     }
-  }, [activePortfolio.id, activePortfolio.assetIds, activePortfolio.profile, getArgentinaTodayKey, purgeOldClientCache]);
+  }, [activePortfolio.id, activePortfolio.assetIds, activePortfolio.profile, activePortfolio.assetPositions, activePortfolio.customAssets, getArgentinaTodayKey, purgeOldClientCache]);
 
   useEffect(() => {
     fetchPulseNews(false);
@@ -1075,6 +1081,7 @@ export default function App() {
             portfolioId={activePortfolio.id}
             portfolioName={activePortfolio.name}
             userAssetSymbols={activePortfolio.assetIds}
+            assetsMap={assetsMap}
             onPendingRemindersChange={setPendingRemindersCount}
           />
         )}

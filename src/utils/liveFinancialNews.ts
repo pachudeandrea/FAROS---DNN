@@ -1,4 +1,7 @@
 import * as cheerio from 'cheerio';
+import { recognizeAssetIds, isMacroAssetContext } from './assetNews.js';
+import { ASSET_CATALOG } from '../data/assetCatalog.js';
+import type { Asset } from '../types/index.js';
 import { NewsItem, MediaCoverage } from '../types/index.js';
 import { verifySourceUrl, filterByFreshness, getArgentinaDateInfo, DISALLOWED_PATH_PATTERNS } from './urlResolver.js';
 import { getPublisherKey } from './sourceGrounding.js';
@@ -30,7 +33,7 @@ const FINANCIAL_KEYWORDS = [
 
 const NON_FINANCIAL_REJECT_REGEX = /(^|[^\p{L}\p{N}])(botargas?|carrera de|maratón|maraton|desfile|recital|concierto|farándula|farandula|espectáculos?|espectaculos?|fútbol|futbol|partido de|champions league|copa libertadores|asesinato|homicidio|femicidio|detenido por|accidente vial|choque fatal|clima para hoy|pronóstico del tiempo|horóscopo|horoscopo|signos del zodíaco)([^\\p{L}\\p{N}]|$)/iu;
 
-function isFinancialCandidate(title: string, link: string): boolean {
+export function isFinancialCandidate(title: string, link: string, assets: Asset[] = ASSET_CATALOG): boolean {
   if (!title || !link) return false;
   const lowerLink = link.toLowerCase();
 
@@ -49,6 +52,8 @@ function isFinancialCandidate(title: string, link: string): boolean {
     return false;
   }
 
+  if (recognizeAssetIds(title, assets).length) return true;
+
   // 4. Must match at least one genuine financial keyword with word-boundaries
   const lowerTitle = title.toLowerCase();
   for (const kw of FINANCIAL_KEYWORDS) {
@@ -64,7 +69,7 @@ function isFinancialCandidate(title: string, link: string): boolean {
 /**
  * Fetches real candidate articles directly from Argentine financial RSS feeds.
  */
-async function fetchRssCandidates(maxPerFeed = 15, diagnostics = createCollectionDiagnostics()): Promise<RawFeedItem[]> {
+async function fetchRssCandidates(maxPerFeed = 15, diagnostics = createCollectionDiagnostics(), assets: Asset[] = ASSET_CATALOG): Promise<RawFeedItem[]> {
   const candidates: RawFeedItem[] = [];
 
   for (const feed of RSS_FEEDS) {
@@ -93,7 +98,7 @@ async function fetchRssCandidates(maxPerFeed = 15, diagnostics = createCollectio
         const pubDate = $(el).find('pubDate').first().text().trim();
 
         if (title && link && link.startsWith('http')) {
-          if (isFinancialCandidate(title, link)) {
+          if (isFinancialCandidate(title, link, assets)) {
             candidates.push({
               title,
               link,
@@ -134,7 +139,7 @@ interface EventCluster {
  *
  * NOTE: Category is used solely for metadata and filtering, NEVER to force-group unrelated events!
  */
-function analyzeArticleContext(headline: string): {
+export function analyzeArticleContext(headline: string, assets: Asset[] = ASSET_CATALOG): {
   category: 'deuda_soberana' | 'balances' | 'regulaciones_bcra' | 'macro_tasas' | 'energia';
   tickers: string[];
   impact: 'favorable' | 'alerta' | 'neutral';
@@ -146,27 +151,13 @@ function analyzeArticleContext(headline: string): {
   const isFavorable = /sube|trepa|compras netas|compr[oó]|super[aá]vit|r[eé]cord|ganancia|baja el riesgo|comprime|inversi[oó]n|acuerdo|duplica|ampl[ií]a|lanzan|mejoran/i.test(lower);
   const impact = isAdverse ? 'alerta' : isFavorable ? 'favorable' : 'neutral';
 
-  // Specific financial category & tickers
-  if (/bono|deuda|soberan|riesgo pa[ií]s|al30|gd30|canje|amortizaci[oó]n/i.test(lower)) {
-    return { category: 'deuda_soberana', tickers: ['AL30', 'GD30'], impact };
-  }
-  if (/ypf|petr[oó]le|vaca muerta|gasoducto|oleoducto|pampa|hidrocarburo|crudo|barril|gnc/i.test(lower)) {
-    return { category: 'energia', tickers: ['YPFD', 'PAMP'], impact };
-  }
-  if (/d[oó]lar|mep|ccl|blue|brecha|cambiari|divisas|parking/i.test(lower)) {
-    return { category: 'regulaciones_bcra', tickers: ['MEP', 'CCL'], impact };
-  }
-  if (/banco|galicia|ggal|bbva|macro|cr[eé]dito|hipotecari|uva|bopreal/i.test(lower)) {
-    return { category: 'balances', tickers: ['GGAL', 'BMA'], impact };
-  }
-  if (/tasa|inflaci[oó]n|ipc|bcra|reservas|lecap|boncap|fmi|indec|lefi/i.test(lower)) {
-    return { category: 'macro_tasas', tickers: ['AL30', 'MEP'], impact };
-  }
-  if (/dow jones|s&p|nasdaq|cedear|wall street|apple|nvidia/i.test(lower)) {
-    return { category: 'balances', tickers: ['SPY', 'NVDA'], impact };
-  }
-
-  return { category: 'macro_tasas', tickers: ['AL30', 'MEP'], impact };
+  const tickers = recognizeAssetIds(headline, assets);
+  const affected = assets.filter(asset => tickers.includes(asset.id));
+  const category = affected.some(a => ['bonos', 'provinciales', 'corporativos', 'tesoro'].includes(a.category)) ? 'deuda_soberana'
+    : affected.some(a => a.category === 'divisas') ? 'regulaciones_bcra'
+    : /ypf|petroleo|energía|energia|crudo/i.test(lower) ? 'energia'
+    : affected.length ? 'balances' : 'macro_tasas';
+  return { category, tickers, impact };
 }
 
 /**
@@ -179,8 +170,8 @@ export function createCollectionDiagnostics() {
   return { feeds: [] as { name: string; status: string; found: number }[], candidates: 0, verified: 0,
     discarded: { notFinancial: 0, invalidFeedItem: 0, connection: 0, missingMetadata: 0, invalidArticle: 0, duplicate: 0, stale: 0 }, news: 0, multiMedia: 0 };
 }
-export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], diagnostics = createCollectionDiagnostics()): Promise<NewsItem[]> {
-  const candidates = await fetchRssCandidates(15, diagnostics);
+export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], diagnostics = createCollectionDiagnostics(), assets: Asset[] = ASSET_CATALOG): Promise<NewsItem[]> {
+  const candidates = await fetchRssCandidates(15, diagnostics, assets);
   const argInfo = getArgentinaDateInfo();
 
   console.log(`[LIVE VERIFIER] ${candidates.length} filtered financial RSS articles found. Validating URLs and extracting metadata...`);
@@ -230,7 +221,7 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], d
       }
     } else {
       // Independent concrete event!
-      const ctx = analyzeArticleContext(src.originalHeadline);
+      const ctx = analyzeArticleContext(src.originalHeadline, assets);
       clusters.push({
         id: `live-event-${Date.now()}-${clusters.length}`,
         headline: src.originalHeadline, // The authentic, real headline of the event
@@ -246,6 +237,7 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], d
   const newsItems: NewsItem[] = [];
   let itemCounter = 1;
 
+  clusters.sort((a, b) => Number(b.tickers.some(id => userTickers.includes(id))) - Number(a.tickers.some(id => userTickers.includes(id))));
   for (const cluster of clusters) {
     // Check ticker intersection if user provided tickers
     const matchesUserTickers = userTickers.length === 0 || cluster.tickers.some(t => userTickers.includes(t));
@@ -267,7 +259,7 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], d
       briefSummary,
       fullSynthesis: [
         `Hecho concreto informado en ${mediaNames} (${displayTimestamp}).`,
-        `Monitoreo de cotización e impacto evaluado en activos vinculados (${cluster.tickers.join(', ')}).`,
+        `Instrumentos relacionados por identificación o emisor: ${cluster.tickers.join(', ') || 'contexto general'}.`,
         `Información respaldada directamente por las publicaciones originales de los medios consultados.`
       ],
       publishedAgo: primarySource.publishedTime || 'Reciente',
@@ -284,7 +276,7 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], d
       })),
       affectedAssetIds: cluster.tickers,
       impact: cluster.impact,
-      relevanceType: 'impacto_precio',
+      relevanceType: isMacroAssetContext(cluster.headline) ? 'contexto_macro' : 'impacto_precio',
       portfolioImpactAnalysis: {
         directExplanation: `Hecho respaldado por ${mediaNames} con incidencia sobre las cotizaciones y el flujo de fondos de tus tenencias.`,
         affectedHoldings: cluster.tickers.map(sym => ({

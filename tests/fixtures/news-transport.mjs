@@ -8,7 +8,12 @@ export const articles = [
   { media: 'Ámbito', url: 'https://www.ambito.com/economia/otra-nota-bcra-reservas-prueba', title: 'El BCRA compró divisas y aumentó sus reservas en USD 125 millones' },
   { media: 'Ámbito', url: 'https://www.ambito.com/energia/ypf-oleoducto-prueba', title: 'YPF inauguró el oleoducto Vaca Muerta Sur para exportar petróleo' },
   { media: 'El Cronista', url: 'https://www.cronista.com/negocios/ypf-combustibles-prueba/', title: 'YPF anunció un aumento de naftas y gasoil en estaciones de servicio' },
-  { media: 'Infobae', url: 'https://www.infobae.com/economia/2030/01/01/vaca-muerta-sur-prueba/', title: 'La petrolera YPF inauguró Vaca Muerta Sur y amplió el transporte de crudo' }
+  { media: 'Infobae', url: 'https://www.infobae.com/economia/2030/01/01/vaca-muerta-sur-prueba/', title: 'La petrolera YPF inauguró Vaca Muerta Sur y amplió el transporte de crudo' },
+  { media: 'Ámbito', url: 'https://www.ambito.com/finanzas/microsoft-balance-prueba', title: 'Microsoft presentó ganancias récord en su balance trimestral' },
+  { media: 'El Cronista', url: 'https://www.cronista.com/finanzas-mercados/cordoba-deuda-prueba/', title: 'Los bonos de la Provincia de Córdoba suben tras mejorar su calificación crediticia' },
+  { media: 'Ámbito', url: 'https://www.ambito.com/finanzas/ypf-on-prueba', title: 'YPF confirma el pago del cupón de sus obligaciones negociables' },
+  { media: 'Ámbito', url: 'https://www.ambito.com/finanzas/tesoro-tx28-prueba', title: 'TX28: sube el bono del Tesoro ajustado por CER' }
+
 ];
 
 export function installNewsTransport() {
@@ -23,7 +28,8 @@ export function installNewsTransport() {
       if (payload.generationConfig?.responseMimeType === 'application/json') {
         stats.extractions++;
         const energy = text.includes('Activos bajo monitoreo: YPFD');
-        candidate = { content: { parts: [{ text: JSON.stringify({ items: [{ sourceId: energy ? 5 : 1, headline: energy ? articles[4].title : articles[0].title, summary: 'Síntesis de prueba sin cambios.', economicAnalysis: 'Análisis personalizado de prueba sin cambios.', affectedHoldings: energy ? ['YPFD'] : ['AL30'], audioScript: 'Audio de prueba sin cambios.', impact: 'medio' }] }) }] } };
+        const selected = text.includes('Activos bajo monitoreo: MSFT') ? 7 : text.includes('Activos bajo monitoreo: CO29') ? 8 : text.includes('Activos bajo monitoreo: YMCJO') ? 9 : text.includes('Activos bajo monitoreo: TX28') ? 10 : energy ? 4 : 0;
+        candidate = { content: { parts: [{ text: JSON.stringify({ items: [{ sourceId: selected + 1, headline: articles[selected].title, summary: 'Síntesis de prueba sin cambios.', economicAnalysis: 'Análisis personalizado de prueba sin cambios.', affectedHoldings: energy ? ['YPFD'] : ['AL30'], audioScript: 'Audio de prueba sin cambios.', sentiment: 'favorable', impact: 'medio' }] }) }] } };
       } else {
         stats.searches++;
         candidate = { content: { parts: [{ text: 'Publicaciones de prueba sobre reservas y acciones de YPF.' }] }, groundingMetadata: { groundingChunks: articles.map(article => ({ web: { uri: article.url, title: article.title } })) } };

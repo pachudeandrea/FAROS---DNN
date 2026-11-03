@@ -1,3 +1,4 @@
+import { createManualAsset } from '../src/utils/manualAssets';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { fork, spawn, type ChildProcess } from 'node:child_process';
@@ -244,6 +245,17 @@ test('autenticación PostgreSQL entre instancias y reinicios', { timeout: 60000 
     const login = await request(first.url, '/api/auth/login', 'POST', { email: payload.email, password: payload.password });
     assert.equal(login.status, 200);
     assert.equal((await request(first.url, '/api/admin/overview', 'GET', undefined, created.data.token)).status, 403);
+  });
+
+  await t.test('nuevos instrumentos y ficha manual persisten entre instancias sin perder LONG/SHORT ni cartera anterior', async () => {
+    const manual = createManualAsset({ symbol: 'TEST01', name: 'Instrumento exclusivo de prueba', issuer: 'Emisor exclusivo de prueba', category: 'fondos', currency: 'ARS', market: 'BYMA', sourceUrl: 'https://example.test/fondo' });
+    const portfolio = { ...created.data.user.portfolio, assetIds: ['AL30', 'MSFT', 'CO29', 'YMCJO', 'TX28', manual.id], customAssets: [manual], assetPositions: { AL30: 'long', MSFT: 'short', CO29: 'long', YMCJO: 'long', TX28: 'long', [manual.id]: 'short' } };
+    assert.equal((await request(first.url, '/api/auth/user', 'PUT', { portfolio }, created.data.token)).status, 200);
+    const restored = (await request(second.url, '/api/auth/me', 'GET', undefined, created.data.token)).data.user.portfolio;
+    assert.deepEqual(restored.assetIds, portfolio.assetIds);
+    assert.deepEqual(restored.customAssets, [manual]); assert.deepEqual(restored.assetPositions, portfolio.assetPositions);
+    assert.equal((await request(first.url, '/api/auth/user', 'PUT', { portfolio: { ...portfolio, customAssets: [manual, manual] } }, created.data.token)).status, 400);
+    assert.equal((await request(first.url, '/api/auth/user', 'PUT', { portfolio: { ...portfolio, customAssets: [{ ...manual, id: 'AL30' }] } }, created.data.token)).status, 400);
   });
 
   await t.test('logout revoca la sesión también en la otra instancia', async () => {

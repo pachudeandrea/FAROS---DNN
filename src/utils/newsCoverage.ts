@@ -1,3 +1,4 @@
+import { recognizeAssetIds } from './assetNews.js';
 import type { MediaCoverage, NewsItem } from '../types/index.js';
 import { areSourcesReportingSameEvent, cleanHeadlineText, distinctMediaSources, getPublisherKey } from './sourceGrounding.js';
 
@@ -42,6 +43,7 @@ export function sourcesCoverSameEvent(primary: MediaCoverage, candidate: MediaCo
   // Same sector/ticker is insufficient. Separate different releases, currency
   // markets and corporate actions even when their wording is very similar.
   if (disjoint(a.match(months) || [], b.match(months) || []) || disjoint(a.match(currencies) || [], b.match(currencies) || []) || disjoint(a.match(companies) || [], b.match(companies) || [])) return false;
+  if (disjoint(recognizeAssetIds(primary.originalHeadline), recognizeAssetIds(candidate.originalHeadline))) return false;
   const kindsA = kindsFor(a); const kindsB = kindsFor(b);
   if (disjoint(kindsA, kindsB)) return false;
   const timeA = publishedAt(primary); const timeB = publishedAt(candidate);

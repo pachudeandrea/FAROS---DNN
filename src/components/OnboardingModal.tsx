@@ -1,8 +1,10 @@
+import { searchAssets, CATEGORY_LABELS } from '../data/assetCatalog';
+import type { AssetCategory } from '../types';
 import { useModalFocus } from '../hooks/useModalFocus';
 import { usePendingChanges } from '../hooks/usePendingChanges';
 import React, { useState } from 'react';
 import { Asset, Portfolio, RiskProfile, AssetPosition } from '../types';
-import { MOCK_ASSETS, MOCK_PORTFOLIOS } from '../data/mockData';
+import { MOCK_PORTFOLIOS } from '../data/mockData';
 import { BrandLogo } from './BrandLogo';
 import { ProfileSelector } from './ProfileCard';
 import { 
@@ -41,7 +43,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     MEP: 'long',
   });
 
-  const [activeCategory, setActiveCategory] = useState<'todos' | 'bonos' | 'acciones' | 'cedears' | 'divisas'>('todos');
+  const [activeCategory, setActiveCategory] = useState<'todos' | AssetCategory>('todos');
   const [searchTerm, setSearchTerm] = useState<string>('');
   usePendingChanges(isOpen);
 
@@ -94,27 +96,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     onComplete(newPortfolio, all);
   };
 
-  // Accent- and case-insensitive string normalizer
-  const normalizeText = (text: string) =>
-    text
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .trim();
-
-  const normalizedQuery = normalizeText(searchTerm);
-
-  const filteredAssets = MOCK_ASSETS.filter(asset => {
-    // 1. Filter by category
-    const matchesCategory = activeCategory === 'todos' || asset.category === activeCategory;
-    if (!matchesCategory) return false;
-
-    // 2. Real-time search by ticker or name
-    if (!normalizedQuery) return true;
-    const matchesSymbol = normalizeText(asset.symbol).includes(normalizedQuery);
-    const matchesName = normalizeText(asset.name).includes(normalizedQuery);
-    return matchesSymbol || matchesName;
-  });
+  const filteredAssets = searchAssets(searchTerm).filter(asset => activeCategory === 'todos' || asset.category === activeCategory);
 
   if (!isOpen) return null;
 
@@ -209,7 +191,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
               {/* Category tabs */}
               <div className="flex items-center gap-1 p-1 bg-ink-100 rounded-xl overflow-x-auto text-xs">
-                {(['todos', 'bonos', 'acciones', 'cedears', 'divisas'] as const).map(cat => (
+                {(['todos', ...Object.keys(CATEGORY_LABELS)] as ('todos' | AssetCategory)[]).map(cat => (
                   <button
                     key={cat}
                     onClick={() => setActiveCategory(cat)}
@@ -219,7 +201,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                         : 'text-muted hover:text-ink-900'
                     }`}
                   >
-                    {cat}
+                    {cat === 'todos' ? 'Todos' : CATEGORY_LABELS[cat]}
                   </button>
                 ))}
               </div>

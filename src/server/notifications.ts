@@ -1,3 +1,6 @@
+import { recognizeAssetIds } from '../utils/assetNews.js';
+import { portfolioAssets } from '../data/assetCatalog.js';
+import { getEffectiveImpactForPortfolio } from '../types/index.js';
 import crypto from 'node:crypto';
 import webPush from 'web-push';
 import { waitUntil } from '@vercel/functions';
@@ -141,10 +144,14 @@ export async function enqueueNews(user: StoredUser, news: NewsItem[]): Promise<v
   const holdings = user.portfolio?.assetIds || [];
   for (const item of news.slice(0, 30)) {
     const key = articleKey(item);
-    const affected = item.affectedAssetIds?.filter(id => holdings.includes(id)) || [];
+    const manual = user.portfolio?.customAssets || [];
+    const manualIds = new Set(manual.map(asset => asset.id));
+    const ownManualRelations = recognizeAssetIds(item.sources.map(source => source.originalHeadline).join(' '), manual);
+    const affected = [...new Set([...(item.affectedAssetIds || []).filter(id => !manualIds.has(id)), ...ownManualRelations])].filter(id => holdings.includes(id));
     if (!key || !affected.length || !user.preferences?.enabledRelevanceTypes.includes(item.relevanceType)) continue;
-    if (user.preferences.alertOnHighImpactOnly && (item.relevanceType !== 'impacto_precio' || item.impact === 'neutral')) continue;
-    await enqueue(user.id, `news:${key}`, 'news', { title: item.headline.slice(0, 500), newsId: item.id, impact: item.impact, affectedHoldings: affected.join(' · '), reason: item.briefSummary.slice(0, 1500), mediaName: item.sources[0].mediaName, sourceUrl: item.sources[0].sourceUrl, publishedTime: item.sources[0].publishedTime });
+    const impact = getEffectiveImpactForPortfolio(item.impact, affected, Object.fromEntries(holdings.map(id => [id, user.portfolio?.assetPositions?.[id] || 'long'])));
+    if (user.preferences.alertOnHighImpactOnly && (item.relevanceType !== 'impacto_precio' || impact === 'neutral')) continue;
+    await enqueue(user.id, `news:${key}`, 'news', { title: item.headline.slice(0, 500), newsId: item.id, impact, affectedHoldings: affected.join(' · '), reason: item.briefSummary.slice(0, 1500), mediaName: item.sources[0].mediaName, sourceUrl: item.sources[0].sourceUrl, publishedTime: item.sources[0].publishedTime });
   }
 }
 
@@ -257,7 +264,7 @@ export async function runDailyNotifications(at = new Date(), loadFresh = getLive
       const tickers = [...new Set(accounts.rows.flatMap(row => row.data.portfolio?.assetIds || []))].slice(0, 100) as string[];
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        const fresh = await Promise.race([loadFresh(tickers).catch(() => []), new Promise<NewsItem[]>(resolve => { timer = setTimeout(() => resolve([]), 12000); })]);
+        const fresh = await Promise.race([loadFresh(tickers, undefined, portfolioAssets({ customAssets: accounts.rows.flatMap(row => row.data.portfolio?.customAssets || []) })).catch(() => []), new Promise<NewsItem[]>(resolve => { timer = setTimeout(() => resolve([]), 12000); })]);
         await storeVerifiedArticles(fresh);
       } finally { clearTimeout(timer); }
       const articles = (await query('SELECT data FROM faros_notification_articles WHERE reviewed_at > $1 ORDER BY reviewed_at DESC LIMIT 40', [now - 48 * 3600000])).rows.map(row => row.data as NewsItem);

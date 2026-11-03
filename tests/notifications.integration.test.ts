@@ -150,6 +150,19 @@ test('alertas Web Push persistentes, privadas y con consentimiento, sin enviar a
     await one.command('publish', { userId, news: [{ ...fixtureNews, id: 'rotating-id', sources: [{ ...fixtureNews.sources[0], sourceUrl: 'https://example.test/article-1?utm_source=other' }] }] });
     assert.equal((await state()).data.notifications.length, before);
   });
+  await t.test('nuevos activos respetan SHORT y dejan de generar alertas al quitarse de la cartera', async () => {
+    const current = (await request(one.url, '/api/auth/me', 'GET', undefined, token)).data.user.portfolio;
+    const portfolio = { ...current, assetIds: [...current.assetIds, 'MSFT'], assetPositions: { ...current.assetPositions, MSFT: 'short' } };
+    assert.equal((await request(one.url, '/api/auth/user', 'PUT', { portfolio }, token)).status, 200);
+    const article = { ...fixtureNews, id: 'new-msft', headline: 'Microsoft presentó ganancias récord en su balance', affectedAssetIds: ['MSFT'], impact: 'favorable', sources: [{ ...fixtureNews.sources[0], sourceUrl: 'https://example.test/new-msft' }] };
+    await one.command('publish', { userId, news: [article] });
+    const records = (await state()).data.notifications;
+    const alert = records.find((item: any) => item.newsId === article.id);
+    assert.ok(alert); assert.equal(alert.impact, 'alerta'); assert.equal(alert.affectedHoldings, 'MSFT');
+    assert.equal((await request(one.url, '/api/auth/user', 'PUT', { portfolio: current }, token)).status, 200);
+    await one.command('publish', { userId, news: [{ ...article, id: 'removed-msft', sources: [{ ...article.sources[0], sourceUrl: 'https://example.test/removed-msft' }] }] });
+    assert.equal((await state()).data.notifications.length, records.length);
+  });
   await t.test('los dispositivos expirados se eliminan sin simular una activación', async () => {
     await releaseLimits(); const expired = subscription('expired');
     const result = await request(one.url, '/api/notifications/subscription', 'POST', { consent: true, subscription: expired }, token);

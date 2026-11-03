@@ -1,4 +1,4 @@
-export type AssetCategory = 'bonos' | 'acciones' | 'cedears' | 'divisas';
+export type AssetCategory = 'bonos' | 'acciones' | 'cedears' | 'divisas' | 'provinciales' | 'corporativos' | 'tesoro' | 'fondos';
 
 export interface Asset {
   id: string;
@@ -10,6 +10,12 @@ export interface Asset {
   dayChange: string;
   dayChangePositive: boolean;
   sector?: string;
+  issuer?: string;
+  aliases?: string[];
+  market?: string;
+  instrumentType?: string;
+  sourceUrl?: string;
+  manual?: boolean;
 }
 
 export type RiskProfile = 'conservador' | 'moderado' | 'dinamico';
@@ -22,6 +28,7 @@ export interface Portfolio {
   description: string;
   profile: RiskProfile;
   assetIds: string[];
+  customAssets?: Asset[];
   assetPositions?: Record<string, AssetPosition>; // e.g. { 'AL30': 'long', 'AAPL': 'short' }
 }
 

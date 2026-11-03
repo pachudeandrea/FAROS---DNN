@@ -1,3 +1,4 @@
+import { validateCustomAssets } from '../utils/manualAssets.js';
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
@@ -425,10 +426,13 @@ export async function handleUpdateUser(req: Request, res: Response) {
         (portfolio.assetPositions && (typeof portfolio.assetPositions !== 'object' || Object.values(portfolio.assetPositions).some(p => p !== 'long' && p !== 'short')))) {
       return res.status(400).json({ error: 'Los datos de la cartera no son válidos.' });
     }
+    let customAssets;
+    try { customAssets = validateCustomAssets(portfolio.customAssets === undefined ? target.portfolio?.customAssets : portfolio.customAssets); }
+    catch { return res.status(400).json({ error: 'La identificación manual contiene errores o duplicados.' }); }
     updates.portfolio = {
       id: target.portfolio?.id || `port_${crypto.randomUUID()}`,
       name: portfolio.name, description: typeof portfolio.description === 'string' ? portfolio.description.slice(0, 2000) : '',
-      profile: portfolio.profile, assetIds: portfolio.assetIds,
+      profile: portfolio.profile, assetIds: Array.from(new Set<string>(portfolio.assetIds)), customAssets,
       assetPositions: Object.fromEntries(portfolio.assetIds.map((id: string) => [id, portfolio.assetPositions?.[id] === 'short' ? 'short' : 'long']))
     };
   }

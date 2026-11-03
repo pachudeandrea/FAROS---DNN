@@ -1,3 +1,8 @@
+import { portfolioAssets } from '../data/assetCatalog.js';
+import { validateCustomAssets } from '../utils/manualAssets.js';
+import { describeAssets, recognizeAssetIds, isMacroAssetContext } from '../utils/assetNews.js';
+import { portfolioNewsScope } from '../utils/newsCache.js';
+import type { Asset } from '../types/index.js';
 import express, { type RequestHandler } from 'express';
 import { DatabaseError, query } from './database.js';
 import { RequestError } from './requestError.js';
@@ -19,7 +24,7 @@ import {
   purgeUrlVerificationCache,
   getArgentinaDateInfo
 } from '../utils/urlResolver.js';
-import { getLiveVerifiedArgentineNews, createCollectionDiagnostics } from '../utils/liveFinancialNews.js';
+import { getLiveVerifiedArgentineNews, createCollectionDiagnostics, analyzeArticleContext } from '../utils/liveFinancialNews.js';
 import { enrichNewsCoverage } from '../utils/newsCoverage.js';
 import { NEWS_CACHE_VERSION } from '../utils/newsCache.js';
 import {
@@ -169,7 +174,7 @@ let rateLimitCooldownUntil = 0;
 /**
  * 2-Step Gemini Search Grounding Pipeline for News
  */
-async function fetchGroundedNewsFromGemini(tickers: string[], portfolioProfile: string): Promise<NewsItem[] | null> {
+async function fetchGroundedNewsFromGemini(tickers: string[], portfolioProfile: string, assets: Asset[]): Promise<NewsItem[] | null> {
   const ai = getAiClient();
   if (!ai || !process.env.GEMINI_API_KEY) {
     return null;
@@ -181,7 +186,7 @@ async function fetchGroundedNewsFromGemini(tickers: string[], portfolioProfile: 
 
   try {
     const argDate = getNowAR();
-    const tickersStr = tickers.length > 0 ? tickers.join(', ') : 'AL30, GD30, YPFD, GGAL, MEP, CCL';
+    const tickersStr = describeAssets(tickers.length ? tickers : ['AL30', 'GD30', 'YPFD', 'GGAL', 'MEP', 'CCL'], assets);
     const searchPrompt = `Hoy es ${argDate.formattedSpanish} (fecha ISO: ${argDate.isoDate}, zona horaria America/Argentina/Buenos_Aires).
 Buscá con rigor simétrico las noticias financieras, cambiarias, regulatorias y de mercado más importantes publicadas hoy o en las últimas 24 a 48 horas en Argentina relacionadas con estos activos y su contexto: ${tickersStr}.
 Incluí tanto catalizadores favorables como factores de RIESGO e impacto adverso:
@@ -325,15 +330,17 @@ Respondé ÚNICAMENTE con un JSON con el siguiente esquema:
 
     for (let idx = 0; idx < rawItems.length; idx++) {
       const item = rawItems[idx];
-      const assignedSource = validSourcesMap.get(item.sourceId) || validSourcesMap.get(idx + 1) || Array.from(validSourcesMap.values())[0];
+      const assignedSource = validSourcesMap.get(item.sourceId);
       if (!assignedSource) continue;
 
       const mediaDomain = assignedSource.domain || (new URL(assignedSource.sourceUrl)).hostname;
       const mediaName = assignedSource.mediaName || mediaDomain;
 
+      const relatedIds = recognizeAssetIds(assignedSource.originalHeadline, assets).filter(id => !tickers.length || tickers.includes(id));
+      if (tickers.length && !relatedIds.some(id => tickers.includes(id))) continue;
       finalNewsItems.push({
         id: `gemini_${argDate.isoDate}_${idx}_${Date.now()}`,
-        headline: item.headline || assignedSource.originalHeadline,
+        headline: assignedSource.originalHeadline,
         briefSummary: item.summary || 'Resumen de mercado elaborado por FAROS.',
         fullSynthesis: [
           item.summary || '',
@@ -352,10 +359,10 @@ Respondé ÚNICAMENTE con un JSON con el siguiente esquema:
           publishedTimestamp: assignedSource.publishedTimestamp,
           domain: mediaDomain
         }],
-        affectedAssetIds: Array.isArray(item.affectedHoldings) && item.affectedHoldings.length > 0 ? item.affectedHoldings : tickers.slice(0, 3),
-        impact: (['alto', 'medio', 'bajo'].includes(item.impact) ? item.impact : 'medio') as any,
-        relevanceType: 'impacto_precio',
-        topicCategory: 'deuda_soberana',
+        affectedAssetIds: relatedIds,
+        impact: item.sentiment === 'favorable' ? 'favorable' : item.sentiment === 'adverso' ? 'alerta' : 'neutral',
+        relevanceType: isMacroAssetContext(assignedSource.originalHeadline) ? 'contexto_macro' : 'impacto_precio',
+        topicCategory: analyzeArticleContext(assignedSource.originalHeadline, assets).category,
         audioDuration: '1:00 min',
         audioScript: item.audioScript || `${item.headline}. ${item.summary}`,
         factCheck: {
@@ -365,9 +372,9 @@ Respondé ÚNICAMENTE con un JSON con el siguiente esquema:
         },
         portfolioImpactAnalysis: {
           directExplanation: item.economicAnalysis || item.summary || 'Análisis de cartera FAROS.',
-          affectedHoldings: (Array.isArray(item.affectedHoldings) ? item.affectedHoldings : []).map((ticker: string) => ({
+          affectedHoldings: relatedIds.map((ticker: string) => ({
             symbol: ticker,
-            impactDirection: (['alto', 'medio', 'bajo'].includes(item.impact) ? item.impact : 'medio') as any,
+            impactDirection: item.sentiment === 'favorable' ? 'favorable' : item.sentiment === 'adverso' ? 'alerta' : 'neutral',
             relationshipDetail: 'Transmisión vía variables de mercado y cotización.'
           })),
           horizon: 'Corto plazo'
@@ -434,8 +441,19 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor reintentá en un momento.' });
   }
 
-  const { portfolioId, tickers = [], profile = 'moderado', forceRefresh = false } = req.body;
-  const { cacheKey, dateKey, hourKey } = buildCacheKey(portfolioId);
+  const { portfolioId = 'default', tickers = [], profile = 'moderado', forceRefresh = false, assetPositions = {} } = req.body;
+  if (typeof portfolioId !== 'string' || portfolioId.length > 200 || !Array.isArray(tickers) || tickers.length > 500 ||
+      tickers.some((id: unknown) => typeof id !== 'string' || id.length > 64) ||
+      !['conservador', 'moderado', 'dinamico'].includes(profile) || !assetPositions || typeof assetPositions !== 'object' ||
+      Object.values(assetPositions).some(position => position !== 'long' && position !== 'short')) {
+    return res.status(400).json({ error: 'La selección de activos no es válida.' });
+  }
+  let customAssets;
+  try { customAssets = validateCustomAssets(req.body.customAssets); }
+  catch { return res.status(400).json({ error: 'La identificación de los activos no es válida.' }); }
+  const assets = portfolioAssets({ customAssets });
+  const scope = `${portfolioId}_${portfolioNewsScope(tickers, profile, assetPositions, customAssets)}`;
+  const { cacheKey, dateKey, hourKey } = buildCacheKey(scope);
 
   if (lastProcessedDay && lastProcessedDay !== dateKey) {
     for (const k in newsCache) {
@@ -464,7 +482,7 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
     });
   }
 
-  const liveNews = await fetchGroundedNewsFromGemini(tickers, profile);
+  const liveNews = await fetchGroundedNewsFromGemini(tickers, profile, assets);
   if (liveNews && liveNews.length > 0) {
     newsCache[cacheKey] = {
       timestamp: Date.now(),
@@ -489,7 +507,7 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
 
   const diagnostics = createCollectionDiagnostics();
   let liveVerifiedNews: NewsItem[];
-  try { liveVerifiedNews = await getLiveVerifiedArgentineNews(tickers, diagnostics); }
+  try { liveVerifiedNews = await getLiveVerifiedArgentineNews(tickers, diagnostics, assets); }
   catch {
     return res.status(503).json({ code: 'NEWS_SOURCES_UNAVAILABLE', error: 'No se pudieron consultar las fuentes. Intentá actualizar nuevamente.' });
   }

@@ -126,7 +126,7 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
 }
 async function clickVisible(page, name) {
   const matches = page.getByRole('button', { name, exact: true });
-  await matches.first().waitFor({ state: 'visible', timeout: 10000 });
+  try { await matches.first().waitFor({ state: 'visible', timeout: 10000 }); } catch (error) { console.error({ name, pageErrors, text: (await page.locator('body').innerText()).slice(0, 5000) }); throw error; }
   for (const match of await matches.all()) if (await match.isVisible()) { await match.click(); return; }
   throw new Error(`No se encontró el botón visible: ${name}`);
 }
@@ -146,6 +146,56 @@ async function dialogFits(page) {
 }
 
 try {
+  await check('Catálogo ampliado: selección, LONG/SHORT, guardado y feed al cambiar la cartera en tres tamaños', async () => {
+    for (const size of [{ width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1440, height: 1000 }]) {
+      const { context, page, state } = await setup({ viewport: size });
+      await clickVisible(page, 'Ahora no'); await clickVisible(page, 'Mi cartera');
+      const search = page.getByPlaceholder('Escribí el símbolo o nombre del activo...');
+      for (const [query, id] of [['microsoft', 'MSFT'], ['cordoba', 'CO29'], ['YPF obligaciones', 'YMCJO'], ['tesoro cer', 'TX28'], ['nasdaq 100', 'QQQ']]) {
+        await search.fill(query);
+        const result = page.getByRole('button').filter({ has: page.getByText(id, { exact: true }) });
+        await result.first().waitFor(); await fits(page, `Resultados ${id} a ${size.width}`);
+        await result.first().click();
+        if (id === 'MSFT') await page.getByRole('button', { name: /SHORT.*baja/i }).click();
+        const before = state.calls.filter(call => call.path === '/api/news/pulse').length;
+        await clickVisible(page, `Agregar a mi cartera (${id === 'MSFT' ? 'SHORT' : 'LONG'})`);
+        await page.waitForFunction(() => !document.querySelector('input[placeholder="Escribí el símbolo o nombre del activo..."]')?.value);
+        assert.ok(state.user.portfolio.assetIds.includes(id));
+        assert.equal(state.user.portfolio.assetPositions[id], id === 'MSFT' ? 'short' : 'long');
+        for (let attempt = 0; attempt < 30 && state.calls.filter(call => call.path === '/api/news/pulse').length <= before; attempt++) await page.waitForTimeout(50);
+        assert.ok(state.calls.filter(call => call.path === '/api/news/pulse').length > before, 'Debe consultar aunque exista caché para el mismo ID de cartera');
+        assert.ok(state.calls.filter(call => call.path === '/api/news/pulse').at(-1).body.tickers.includes(id));
+      }
+      await fits(page, `Cartera ampliada a ${size.width}`);
+      const before = state.calls.filter(call => call.path === '/api/news/pulse').length;
+      await clickVisible(page, 'Quitar MSFT');
+      for (let attempt = 0; attempt < 30 && state.calls.filter(call => call.path === '/api/news/pulse').length <= before; attempt++) await page.waitForTimeout(50);
+      assert.ok(!state.user.portfolio.assetIds.includes('MSFT'));
+      assert.ok(!state.calls.filter(call => call.path === '/api/news/pulse').at(-1).body.tickers.includes('MSFT'));
+      await page.reload(); await clickVisible(page, 'Mi cartera');
+      await page.getByRole('button', { name: 'Quitar CO29', exact: true }).waitFor();
+      await fits(page, `Cartera recuperada a ${size.width}`);
+      await context.close();
+    }
+  });
+  await check('Carga manual documentada conserva identidad y no desborda en celular', async () => {
+    const { context, page, state } = await setup({ viewport: { width: 390, height: 844 } });
+    await clickVisible(page, 'Ahora no'); await clickVisible(page, 'Mi cartera');
+    await page.getByText('¿No encontrás tu instrumento? Cargar identificación', { exact: true }).click();
+    await page.getByLabel('Identificador o especie', { exact: true }).fill('TEST01');
+    await page.getByLabel('Nombre completo', { exact: true }).fill('Instrumento exclusivo de prueba');
+    await page.getByLabel('Emisor', { exact: true }).fill('Emisor exclusivo de prueba');
+    await page.getByLabel('Categoría', { exact: true }).selectOption('fondos');
+    await page.getByLabel('Enlace a ficha o prospecto', { exact: true }).fill('https://example.test/ficha');
+    await fits(page, 'Formulario manual');
+    await clickVisible(page, 'Revisar LONG / SHORT'); await clickVisible(page, 'Agregar a mi cartera (LONG)');
+    await page.getByRole('button', { name: 'Quitar BYMA:ARS:TEST01', exact: true }).waitFor();
+    assert.equal(state.user.portfolio.customAssets[0].id, 'BYMA:ARS:TEST01');
+    await page.reload(); await clickVisible(page, 'Mi cartera');
+    await page.getByRole('button', { name: 'Quitar BYMA:ARS:TEST01', exact: true }).waitFor();
+    await fits(page, 'Ficha manual recuperada');
+    await context.close();
+  });
   await check('Renueva noticias de la versión anterior sin tocar la sesión ni el calendario', async () => {
     const { context, page, state } = await setup({ legacyNews: true });
     assert.ok(state.calls.some(call => call.path === '/api/news/pulse'), 'El caché anterior oculta la comparación e impide consultar la versión nueva');

@@ -1,3 +1,5 @@
+import { portfolioAssets, searchAssets, CATEGORY_LABELS } from '../data/assetCatalog';
+import { ManualAssetForm } from './ManualAssetForm';
 import { usePendingChanges } from '../hooks/usePendingChanges';
 import React, { useState, useEffect } from 'react';
 import { 
@@ -9,7 +11,6 @@ import {
   AssetPosition,
   Asset
 } from '../types';
-import { MOCK_ASSETS } from '../data/mockData';
 import { ProfileSelector } from './ProfileCard';
 import { AccountDetails } from './AccountDetails';
 import { RecoveryKeySettings } from './RecoveryKeySettings';
@@ -92,18 +93,15 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
     return () => window.removeEventListener('faros-tour-target', reveal);
   }, []);
   // Available assets to add
-  const unownedAssets = MOCK_ASSETS.filter(a => 
-    !portfolio.assetIds.includes(a.id) &&
-    (assetSearch.trim() === '' || 
-     a.symbol.toLowerCase().includes(assetSearch.toLowerCase()) || 
-     a.name.toLowerCase().includes(assetSearch.toLowerCase()))
-  );
+  const catalog = portfolioAssets(portfolio);
+  const unownedAssets = searchAssets(assetSearch, catalog).filter(a => !portfolio.assetIds.includes(a.id));
 
   const handleConfirmAddAsset = async (assetId: string, position: AssetPosition = 'long') => {
     if (!portfolio.assetIds.includes(assetId)) {
       const updated: Portfolio = {
         ...portfolio,
         assetIds: [...portfolio.assetIds, assetId],
+        customAssets: selectedCandidate?.manual && !portfolio.customAssets?.some(a => a.id === assetId) ? [...(portfolio.customAssets || []), selectedCandidate] : portfolio.customAssets,
         assetPositions: {
           ...(portfolio.assetPositions || {}),
           [assetId]: position
@@ -304,7 +302,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
               Buscar e incorporar activos a tu cartera:
             </label>
             <p className="text-[11px] text-muted">
-              Buscá por ticker o nombre (ej: AL30, GD30, YPFD, GGAL, AAPL, MEP). Podés agregar todos los que desees.
+              Buscá por ticker, nombre, emisor o alias (ej: AL30, Microsoft, Córdoba, QQQ). Podés agregar todos los que desees.
             </p>
           </div>
 
@@ -327,14 +325,14 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                   No se encontraron activos disponibles o ya están en tu cartera.
                 </p>
               ) : (
-                unownedAssets.map(a => (
+                unownedAssets.slice(0, 60).map(a => (
                   <div
                     key={a.id}
                     onClick={() => {
                       setSelectedCandidate(a);
                       setPendingPosition('long');
                     }}
-                    className="p-2.5 rounded-xl hover:bg-brand-50/60 flex items-center justify-between text-xs border border-transparent hover:border-brand-200 transition-colors cursor-pointer group"
+                    role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedCandidate(a); setPendingPosition('long'); } }} className="p-2.5 rounded-xl hover:bg-brand-50/60 flex items-center justify-between text-xs border border-transparent hover:border-brand-200 transition-colors cursor-pointer group"
                   >
                     <div className="flex items-center gap-2">
                       <span className="w-7 h-7 rounded-lg bg-brand-950 text-paper font-mono font-bold text-xs flex items-center justify-center">
@@ -342,7 +340,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                       </span>
                       <div>
                         <span className="font-mono font-bold text-ink-900 mr-2 group-hover:text-brand-950">{a.symbol}</span>
-                        <span className="text-muted text-[11px]">{a.name}</span>
+                        <span className="text-muted text-[11px]">{a.name} · {a.market} · {a.currency} · {CATEGORY_LABELS[a.category]}{a.manual ? " · Manual" : ""}</span>
                       </div>
                     </div>
                     <span className="text-xs font-bold text-brand-900 bg-brand-100/70 px-2.5 py-1 rounded-lg">
@@ -354,6 +352,11 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
             </div>
           )}
 
+          {!selectedCandidate && <ManualAssetForm onSelect={asset => {
+            if (portfolio.assetIds.includes(asset.id)) { setAssetSearch(asset.symbol); return; }
+            setSelectedCandidate(asset); setPendingPosition('long');
+          }} />}
+          {unownedAssets.length > 60 && assetSearch.trim() && <p className="text-xs text-muted">Mostrando 60 de {unownedAssets.length}. Refiná la búsqueda por emisor o categoría.</p>}
           {/* Step 3: NUEVA FUNCIONALIDAD LONG / SHORT Selector Card */}
           {selectedCandidate && (
             <div 
@@ -493,7 +496,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
           ) : (
             <div className="flex flex-wrap gap-2">
               {portfolio.assetIds.map(assetId => {
-                const asset = MOCK_ASSETS.find(a => a.id === assetId || a.symbol === assetId);
+                const asset = catalog.find(a => a.id === assetId || a.symbol === assetId);
                 const position = portfolio.assetPositions?.[assetId] || 'long';
                 const isLong = position === 'long';
 
@@ -506,11 +509,11 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                         : 'bg-warning-50/90 border-warning-300 text-warning-text shadow-2xs'
                     }`}
                   >
-                    <span className="font-mono font-bold">
+                    <span className="font-mono font-bold" title={asset ? `${asset.market} · ${asset.currency}${asset.manual ? ' · Manual' : ''}` : assetId}>
                       {asset?.symbol || assetId}
                     </span>
                     <span className={`text-sm min-w-0 truncate max-w-[110px] ${isLong ? 'text-info-text/80' : 'text-warning-text/80'}`}>
-                      {asset?.name || ''}
+                      {asset ? `${asset.name} · ${asset.market} · ${asset.currency}${asset.manual ? ' · Manual' : ''}` : ''}
                     </span>
 
                     {/* Position Toggle Badge */}
