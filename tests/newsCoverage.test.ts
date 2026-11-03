@@ -103,7 +103,7 @@ test('la API Gemini agrupa fuentes verificadas y conserva caché, actualización
   assert.deepEqual(item.sources.map((s: MediaCoverage) => s.mediaName).sort(), ['El Cronista', 'Infobae', 'Ámbito'].sort(), server.output);
   assert.equal(item.coverageCount, 3); assert.equal(item.sources[0].sourceUrl, articles[0].url);
   assert.equal(item.briefSummary, 'Síntesis de prueba sin cambios.');
-  assert.equal(item.audioScript, 'Audio de prueba sin cambios.'); assert.deepEqual(item.affectedAssetIds, ['AL30']);
+  assert.ok(item.audioScript.includes(articles[0].title)); assert.match(item.audioScript, /macroeconómica/); assert.equal(item.impact, 'neutral'); assert.equal(item.relevanceType, 'contexto_macro'); assert.deepEqual(item.affectedAssetIds, ['AL30']);
   assert.equal((await server.stats()).searches, 1);
   const cached = await server.pulse(args); assert.equal(cached.cached, true);
   assert.equal(cached.checkedAt, fresh.checkedAt, 'Leer el caché no inventa una consulta nueva'); assert.deepEqual(cached.news, fresh.news);
@@ -133,7 +133,10 @@ test('Gemini usa los metadatos del catálogo y valida relaciones aunque el model
   const args = { portfolioId: 'same-portfolio', tickers: ['MSFT'], profile: 'moderado' };
   const microsoft = await server.pulse(args);
   assert.deepEqual(microsoft.news[0].affectedAssetIds, ['MSFT']);
-  assert.equal(microsoft.news[0].impact, 'favorable');
+  assert.equal(microsoft.news[0].impact, 'neutral');
+  assert.equal(microsoft.news[0].relevanceType, 'valoracion_mercado');
+  assert.equal(microsoft.news[0].portfolioImpactAnalysis.affectedHoldings[0].impactDirection, 'neutral');
+  assert.equal(microsoft.news[0].portfolioImpactAnalysis.horizon, undefined);
   assert.equal((await server.pulse(args)).cached, true);
   const before = (await server.stats()).searches;
   for (const ticker of ['CO29', 'YMCJO', 'TX28']) {
@@ -155,5 +158,22 @@ test('RSS incorpora nuevos emisores y prioriza la selección conservando publica
     const item = result.news.find((item: NewsItem) => item.headline.includes(headline));
     assert.ok(item, headline); assert.ok(item.affectedAssetIds.includes(ticker));
     assert.ok(item.sources.every((source: MediaCoverage) => source.publishedTimestamp && articles.some(article => article.url === source.sourceUrl)));
+  }
+});
+
+
+test('Gemini y RSS conservan rumores como ruido y atribuyen movimientos por activo, sin copiar el sentimiento propuesto por el modelo', async () => {
+  for (const gemini of [true, false]) {
+    const server = await api(gemini);
+    const rumor = await server.pulse({ portfolioId: 'coherent-rumor', tickers: ['PAMP'], profile: 'moderado' });
+    const item = rumor.news.find((item: NewsItem) => item.headline.includes('Rumores: Pampa'));
+    assert.ok(item); assert.doesNotMatch(item.briefSummary, /conviene comprar|recomendaci[oó]n/i); assert.equal(item.relevanceType, 'ruido'); assert.equal(item.impact, 'neutral'); assert.equal(item.factCheck.status, 'en_analisis');
+    assert.equal(item.portfolioImpactAnalysis.affectedHoldings.find((holding: any) => holding.symbol === 'PAMP').impactDirection, 'neutral');
+    assert.doesNotMatch(item.portfolioImpactAnalysis.directExplanation, /ganancia asegurada|comprar|vender|24-72h/i);
+    const mixed = await server.pulse({ portfolioId: 'coherent-mixed', tickers: ['AAPL', 'MSFT'], profile: 'moderado' });
+    const prices = mixed.news.find((item: NewsItem) => item.headline.includes('MSFT cae mientras'));
+    assert.ok(prices); assert.equal(prices.relevanceType, 'impacto_precio'); assert.equal(prices.impact, 'neutral');
+    assert.equal(prices.portfolioImpactAnalysis.affectedHoldings.find((holding: any) => holding.symbol === 'AAPL').impactDirection, 'favorable');
+    assert.equal(prices.portfolioImpactAnalysis.affectedHoldings.find((holding: any) => holding.symbol === 'MSFT').impactDirection, 'alerta');
   }
 });

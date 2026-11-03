@@ -1,5 +1,6 @@
 import React from 'react';
-import { Portfolio, NewsItem, Asset, getEffectiveImpactForPortfolio } from '../types';
+import { Portfolio, NewsItem, Asset } from '../types';
+import { getPortfolioAffectedAssetIds, getPortfolioNewsImpact } from '../utils/portfolioNews';
 import { Volume2, RefreshCw, ChevronDown, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import type { NewsQueryState } from '../utils/newsQuery';
 import { describeNewsQuery } from '../utils/newsQuery';
@@ -19,9 +20,9 @@ export const FeedSummaryHero: React.FC<FeedSummaryHeroProps> = ({ portfolio, new
   const counts = { favorable: 0, alerta: 0, neutral: 0 };
   const assets: Record<string, number> = {};
   items.forEach(n => {
-    const impact = getEffectiveImpactForPortfolio(n.impact, n.affectedAssetIds, portfolio.assetPositions);
+    const impact = getPortfolioNewsImpact(n, portfolio);
     counts[impact === 'positivo' ? 'favorable' : impact === 'negativo' ? 'alerta' : impact === 'neutro' ? 'neutral' : impact]++;
-    n.affectedAssetIds.filter(id => !portfolio.assetIds.length || portfolio.assetIds.includes(id)).forEach(id => assets[id] = (assets[id] || 0) + 1);
+    getPortfolioAffectedAssetIds(n, portfolio.assetIds).forEach(id => assets[id] = (assets[id] || 0) + 1);
   });
   const sources = [...new Set(items.flatMap(n => n.sources.map(s => s.mediaName)))];
   return <section data-tour="feed-hero-pulso" aria-label="Resumen de tu cartera" aria-busy={isLoadingNews} className="min-w-0 rounded-2xl bg-paper border border-ink-200 p-4 sm:p-5 space-y-3">

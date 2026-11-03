@@ -1,5 +1,6 @@
 import React from 'react';
-import { NewsItem, Asset, RelevanceType, AssetPosition, getEffectiveImpactForPortfolio } from '../types';
+import { NewsItem, Asset, RelevanceType, AssetPosition } from '../types';
+import { getPortfolioAffectedAssetIds, getPortfolioNewsImpact } from '../utils/portfolioNews';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -20,6 +21,7 @@ interface NewsCardProps {
   onPlayAudio: (news: NewsItem) => void;
   onToggleSave: (newsId: string) => void;
   isSaved?: boolean;
+  portfolioAssetIds: string[];
   assetPositions?: Record<string, AssetPosition>;
 }
 
@@ -44,12 +46,14 @@ export const NewsCard: React.FC<NewsCardProps> = ({
   onPlayAudio,
   onToggleSave,
   isSaved = false,
+  portfolioAssetIds,
   assetPositions,
 }) => {
-  const primaryAssetSymbol = news.affectedAssetIds[0] || 'MK';
+  const matchingAssetIds = getPortfolioAffectedAssetIds(news, portfolioAssetIds);
+  const primaryAssetSymbol = assetsMap[matchingAssetIds[0]]?.symbol || matchingAssetIds[0] || 'MK';
 
   // Calculate effective impact based on portfolio positions (e.g. Short position inverts impact)
-  const effectiveImpact = getEffectiveImpactForPortfolio(news.impact, news.affectedAssetIds, assetPositions);
+  const effectiveImpact = getPortfolioNewsImpact(news, { assetIds: portfolioAssetIds, assetPositions });
 
   const isFavorable = effectiveImpact === 'favorable' || effectiveImpact === 'positivo';
   const isAlert = effectiveImpact === 'alerta' || effectiveImpact === 'negativo';
@@ -135,13 +139,13 @@ export const NewsCard: React.FC<NewsCardProps> = ({
         {/* Affected Portfolio Assets Chips + Position Badge + Effect Badge */}
         <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
           {/* Affected Assets Chips with optional Long/Short position badges */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          {matchingAssetIds.length > 0 && <div role="region" aria-label="Activos de tu cartera afectados" className="flex flex-wrap items-center gap-1.5">
             <span className="text-xs font-bold text-muted mr-1">
               Activos:
             </span>
-            {news.affectedAssetIds.map((assetId) => {
+            {matchingAssetIds.map((assetId) => {
               const asset = assetsMap[assetId];
-              const pos = assetPositions?.[assetId];
+              const pos = assetPositions?.[assetId] || 'long';
               return (
                 <span
                   key={assetId}
@@ -167,7 +171,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({
                 </span>
               );
             })}
-          </div>
+          </div>}
 
           {/* Indicator of effect */}
           <div>

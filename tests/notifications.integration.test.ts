@@ -154,7 +154,7 @@ test('alertas Web Push persistentes, privadas y con consentimiento, sin enviar a
     const current = (await request(one.url, '/api/auth/me', 'GET', undefined, token)).data.user.portfolio;
     const portfolio = { ...current, assetIds: [...current.assetIds, 'MSFT'], assetPositions: { ...current.assetPositions, MSFT: 'short' } };
     assert.equal((await request(one.url, '/api/auth/user', 'PUT', { portfolio }, token)).status, 200);
-    const article = { ...fixtureNews, id: 'new-msft', headline: 'Microsoft presentó ganancias récord en su balance', affectedAssetIds: ['MSFT'], impact: 'favorable', sources: [{ ...fixtureNews.sources[0], sourceUrl: 'https://example.test/new-msft' }] };
+    const article = { ...fixtureNews, id: 'new-msft', headline: 'Las acciones de Microsoft suben en la Bolsa', affectedAssetIds: ['MSFT'], impact: 'favorable', sources: [{ ...fixtureNews.sources[0], sourceUrl: 'https://example.test/new-msft' }] };
     await one.command('publish', { userId, news: [article] });
     const records = (await state()).data.notifications;
     const alert = records.find((item: any) => item.newsId === article.id);

@@ -93,7 +93,9 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
   }, []);
   // Available assets to add
   const catalog = portfolioAssets(portfolio);
-  const unownedAssets = searchAssets(assetSearch, catalog).filter(a => !portfolio.assetIds.includes(a.id));
+  const matchingAssets = searchAssets(assetSearch, catalog);
+  const selectedAssetIds = new Set(portfolio.assetIds);
+  const selectedCount = matchingAssets.filter(asset => selectedAssetIds.has(asset.id)).length;
 
   const handleConfirmAddAsset = async (assetId: string, position: AssetPosition = 'long') => {
     if (!portfolio.assetIds.includes(assetId)) {
@@ -320,23 +322,27 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
           {/* Keep the whole catalog available, including before entering a query. */}
           {!selectedCandidate && (
             <div>
-              <p className="text-xs text-muted mb-2" role="status">{unownedAssets.length} activos disponibles{assetSearch.trim() ? ' para esta búsqueda' : ''}</p>
+              <p className="text-xs text-muted mb-2" role="status">{matchingAssets.length} {matchingAssets.length === 1 ? 'activo' : 'activos'} {assetSearch.trim() ? 'encontrados' : 'en catálogo'} · {selectedCount} ya {selectedCount === 1 ? 'seleccionado' : 'seleccionados'}</p>
               <div id="portfolio-available-assets" role="region" aria-label="Activos disponibles" className="p-2 rounded-2xl border border-ink-200 bg-paper shadow-lg max-h-72 overflow-y-auto overscroll-contain space-y-1">
-              {unownedAssets.length === 0 ? (
+              {matchingAssets.length === 0 ? (
                 <p className="text-xs text-muted p-3 text-center">
-                  No se encontraron activos disponibles o ya están en tu cartera.
+                  No se encontraron activos con esa búsqueda.
                 </p>
               ) : (
-                unownedAssets.map(a => (
+                matchingAssets.map(a => {
+                  const isSelected = selectedAssetIds.has(a.id);
+                  return (
                   <button
                     type="button"
                     key={a.id}
                     data-asset-id={a.id}
+                    disabled={isSelected}
                     onClick={() => {
+                      if (isSelected) return;
                       setSelectedCandidate(a);
                       setPendingPosition('long');
                     }}
-                    className="w-full min-w-0 p-2.5 rounded-xl hover:bg-brand-50/60 focus-visible:outline-2 focus-visible:outline-brand-700 flex items-center justify-between gap-2 text-left text-xs border border-transparent hover:border-brand-200 transition-colors cursor-pointer group"
+                    className={`w-full min-w-0 p-2.5 rounded-xl focus-visible:outline-2 focus-visible:outline-brand-700 flex items-center justify-between gap-2 text-left text-xs border transition-colors group ${isSelected ? 'bg-ink-50 border-ink-200 cursor-default' : 'border-transparent hover:bg-brand-50/60 hover:border-brand-200 cursor-pointer'}`}
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="w-7 h-7 shrink-0 rounded-lg bg-brand-950 text-paper font-mono font-bold text-xs flex items-center justify-center">
@@ -347,11 +353,13 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                         <span className="text-muted text-[11px]">{a.name} · {a.market} · {a.currency} · {CATEGORY_LABELS[a.category]}{a.manual ? " · Manual" : ""}</span>
                       </span>
                     </span>
-                    <span className="shrink-0 text-xs font-bold text-brand-900 bg-brand-100/70 px-2.5 py-1 rounded-lg">
-                      Seleccionar
+                    <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] sm:text-xs font-bold px-2.5 py-1 rounded-lg ${isSelected ? 'text-ink-800 bg-ink-100' : 'text-brand-900 bg-brand-100/70'}`}>
+                      {isSelected && <Check aria-hidden="true" className="w-3 h-3" />}
+                      {isSelected ? 'Ya seleccionado' : 'Seleccionar'}
                     </span>
                   </button>
-                ))
+                  );
+                })
               )}
               </div>
             </div>

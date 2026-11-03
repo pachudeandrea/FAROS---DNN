@@ -58,3 +58,17 @@ test('caché cambia con altas, bajas, perfil, metadatos y posiciones; orden no d
   assert.equal(getEffectiveImpactForPortfolio('favorable', ['MSFT'], { MSFT: 'short' }), 'alerta');
   assert.equal(getEffectiveImpactForPortfolio('alerta', ['CO29'], { CO29: 'short' }), 'favorable');
 });
+
+
+test('reconocimiento evita preposiciones, visas migratorias, deuda extranjera y mercado libre genérico', () => {
+  assert.deepEqual(recognizeAssetIds('Las acciones de COME suben en la Bolsa'), ['COME']);
+  assert.deepEqual(recognizeAssetIds('Las acciones de V suben en la Bolsa'), ['V']);
+  assert.deepEqual(recognizeAssetIds('  Las ACCIONES de   V suben en la Bolsa  '), ['V']);
+  assert.deepEqual(recognizeAssetIds('Las acciones de DE suben en la Bolsa'), ['DE']);
+  for (const headline of ['La visa presenta cambios para quienes buscan trabajo', 'La visa reporta nuevos requisitos de ingreso', 'El Gobierno de Brasil reduce su deuda soberana', 'El riesgo país de Brasil baja', 'El presidente defiende un mercado libre y la inversión']) assert.deepEqual(recognizeAssetIds(headline), [], headline);
+  assert.ok(recognizeAssetIds('Apple sube los precios del iPhone').includes('AAPL'));
+  assert.ok(recognizeAssetIds('Mercado Libre reportó ganancias récord en su balance').includes('MELI'));
+  assert.deepEqual(recognizeAssetIds('Banco Central: bajan las tasas'), recognizeAssetIds('Bajan las tasas del Banco Central'));
+  const bcra = recognizeAssetIds('Banco Central de la República Argentina incrementa las reservas');
+  assert.ok(bcra.includes('AL30')); assert.ok(!bcra.includes('BOPREAL'));
+});

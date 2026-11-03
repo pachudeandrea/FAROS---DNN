@@ -12,7 +12,10 @@ export const articles = [
   { media: 'Ámbito', url: 'https://www.ambito.com/finanzas/microsoft-balance-prueba', title: 'Microsoft presentó ganancias récord en su balance trimestral' },
   { media: 'El Cronista', url: 'https://www.cronista.com/finanzas-mercados/cordoba-deuda-prueba/', title: 'Los bonos de la Provincia de Córdoba suben tras mejorar su calificación crediticia' },
   { media: 'Ámbito', url: 'https://www.ambito.com/finanzas/ypf-on-prueba', title: 'YPF confirma el pago del cupón de sus obligaciones negociables' },
-  { media: 'Ámbito', url: 'https://www.ambito.com/finanzas/tesoro-tx28-prueba', title: 'TX28: sube el bono del Tesoro ajustado por CER' }
+  { media: 'Ámbito', url: 'https://www.ambito.com/finanzas/tesoro-tx28-prueba', title: 'TX28: sube el bono del Tesoro ajustado por CER' },
+  { media: 'Ámbito', url: 'https://www.ambito.com/finanzas/pampa-rumor-prueba', title: 'Rumores: Pampa Energía podría anunciar una fusión' },
+  { media: 'Ámbito', url: 'https://www.ambito.com/finanzas/precios-mixtos-prueba', title: 'MSFT cae mientras las acciones de Apple suben en la Bolsa' }
+
 
 ];
 
@@ -28,8 +31,8 @@ export function installNewsTransport() {
       if (payload.generationConfig?.responseMimeType === 'application/json') {
         stats.extractions++;
         const energy = text.includes('Activos bajo monitoreo: YPFD');
-        const selected = text.includes('Activos bajo monitoreo: MSFT') ? 7 : text.includes('Activos bajo monitoreo: CO29') ? 8 : text.includes('Activos bajo monitoreo: YMCJO') ? 9 : text.includes('Activos bajo monitoreo: TX28') ? 10 : energy ? 4 : 0;
-        candidate = { content: { parts: [{ text: JSON.stringify({ items: [{ sourceId: selected + 1, headline: articles[selected].title, summary: 'Síntesis de prueba sin cambios.', economicAnalysis: 'Análisis personalizado de prueba sin cambios.', affectedHoldings: energy ? ['YPFD'] : ['AL30'], audioScript: 'Audio de prueba sin cambios.', sentiment: 'favorable', impact: 'medio' }] }) }] } };
+        const selected = text.includes('Activos bajo monitoreo: PAMP') ? 11 : text.includes('Activos bajo monitoreo: AAPL') ? 12 : text.includes('Activos bajo monitoreo: MSFT') ? 7 : text.includes('Activos bajo monitoreo: CO29') ? 8 : text.includes('Activos bajo monitoreo: YMCJO') ? 9 : text.includes('Activos bajo monitoreo: TX28') ? 10 : energy ? 4 : 0;
+        candidate = { content: { parts: [{ text: JSON.stringify({ items: [{ sourceId: selected + 1, headline: articles[selected].title, summary: selected === 11 ? 'Conviene comprar PAMP ahora: recomendación de prueba que debe descartarse.' : 'Síntesis de prueba sin cambios.', economicAnalysis: 'Análisis personalizado de prueba sin cambios.', affectedHoldings: energy ? ['YPFD'] : ['AL30'], audioScript: 'Audio de prueba sin cambios.', sentiment: 'favorable', impact: 'medio' }] }) }] } };
       } else {
         stats.searches++;
         candidate = { content: { parts: [{ text: 'Publicaciones de prueba sobre reservas y acciones de YPF.' }] }, groundingMetadata: { groundingChunks: articles.map(article => ({ web: { uri: article.url, title: article.title } })) } };

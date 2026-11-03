@@ -1,4 +1,5 @@
 import { portfolioNewsScope } from './utils/newsCache';
+import { getPortfolioAffectedAssetIds, getPortfolioNewsImpact } from './utils/portfolioNews';
 import React, { useState, useMemo, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { 
   Asset, 
@@ -9,8 +10,7 @@ import {
   NewsImpact,
   AudioTrack,
   CalendarEvent,
-  getQualitativeImpactLabel,
-  getEffectiveImpactForPortfolio
+  getQualitativeImpactLabel
 } from './types';
 import { 
   MOCK_ASSETS, 
@@ -536,7 +536,7 @@ export default function App() {
         const query = searchQuery.toLowerCase();
         const matchesHeadline = item.headline.toLowerCase().includes(query);
         const matchesSummary = item.briefSummary.toLowerCase().includes(query);
-        const matchesAssets = item.affectedAssetIds.some(aid => aid.toLowerCase().includes(query));
+        const matchesAssets = getPortfolioAffectedAssetIds(item, activePortfolio.assetIds).some(aid => aid.toLowerCase().includes(query));
         if (!matchesHeadline && !matchesSummary && !matchesAssets) return false;
       }
 
@@ -547,11 +547,7 @@ export default function App() {
 
       // 4. Impact filter (computed dynamically based on Long/Short positions)
       if (impactFilter !== 'todos') {
-        const effectiveImpact = getEffectiveImpactForPortfolio(
-          item.impact, 
-          item.affectedAssetIds, 
-          activePortfolio.assetPositions
-        );
+        const effectiveImpact = getPortfolioNewsImpact(item, activePortfolio);
         const itemNorm = 
           (effectiveImpact === 'favorable' || effectiveImpact === 'positivo') ? 'favorable' :
           (effectiveImpact === 'alerta' || effectiveImpact === 'negativo') ? 'alerta' : 'neutral';
@@ -1063,6 +1059,7 @@ export default function App() {
                       onPlayAudio={handlePlayNewsAudio}
                       onToggleSave={handleToggleSave}
                       isSaved={savedNewsIds.includes(news.id)}
+                      portfolioAssetIds={activePortfolio.assetIds}
                       assetPositions={activePortfolio.assetPositions}
                     />
                   ))}

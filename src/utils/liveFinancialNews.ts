@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
-import { recognizeAssetIds, isMacroAssetContext } from './assetNews.js';
+import { recognizeAssetIds } from './assetNews.js';
+import { analyzeNewsRelevance } from './newsRelevance.js';
 import { ASSET_CATALOG } from '../data/assetCatalog.js';
 import type { Asset } from '../types/index.js';
 import { NewsItem, MediaCoverage } from '../types/index.js';
@@ -125,9 +126,9 @@ async function fetchRssCandidates(maxPerFeed = 15, diagnostics = createCollectio
 interface EventCluster {
   id: string;
   headline: string;
-  category: 'deuda_soberana' | 'balances' | 'regulaciones_bcra' | 'macro_tasas' | 'energia';
+  category: NewsItem['topicCategory'];
   tickers: string[];
-  impact: 'favorable' | 'alerta' | 'neutral';
+  impact: NewsItem['impact'];
   sources: MediaCoverage[];
 }
 
@@ -140,24 +141,12 @@ interface EventCluster {
  * NOTE: Category is used solely for metadata and filtering, NEVER to force-group unrelated events!
  */
 export function analyzeArticleContext(headline: string, assets: Asset[] = ASSET_CATALOG): {
-  category: 'deuda_soberana' | 'balances' | 'regulaciones_bcra' | 'macro_tasas' | 'energia';
+  category: NewsItem['topicCategory'];
   tickers: string[];
-  impact: 'favorable' | 'alerta' | 'neutral';
+  impact: NewsItem['impact'];
 } {
-  const lower = headline.toLowerCase();
-
-  // Impact determination based on concrete market facts in headline
-  const isAdverse = /ca[eé]|baja|retroced|derrumbe|presi[oó]n|inflaci[oó]n|sube el riesgo|tensi[oó]n|mora|freno|dudas|d[eé]ficit|ca[ií]da/i.test(lower);
-  const isFavorable = /sube|trepa|compras netas|compr[oó]|super[aá]vit|r[eé]cord|ganancia|baja el riesgo|comprime|inversi[oó]n|acuerdo|duplica|ampl[ií]a|lanzan|mejoran/i.test(lower);
-  const impact = isAdverse ? 'alerta' : isFavorable ? 'favorable' : 'neutral';
-
-  const tickers = recognizeAssetIds(headline, assets);
-  const affected = assets.filter(asset => tickers.includes(asset.id));
-  const category = affected.some(a => ['bonos', 'provinciales', 'corporativos', 'tesoro'].includes(a.category)) ? 'deuda_soberana'
-    : affected.some(a => a.category === 'divisas') ? 'regulaciones_bcra'
-    : /ypf|petroleo|energía|energia|crudo/i.test(lower) ? 'energia'
-    : affected.length ? 'balances' : 'macro_tasas';
-  return { category, tickers, impact };
+  const analysis = analyzeNewsRelevance(headline, assets);
+  return { category: analysis.topicCategory, tickers: analysis.affectedAssetIds, impact: analysis.impact };
 }
 
 /**
@@ -245,12 +234,13 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], d
       continue;
     }
 
+    const analysis = analyzeNewsRelevance(cluster.headline, assets);
     const primarySource = cluster.sources[0];
     const mediaNames = cluster.sources.map(s => s.mediaName).join(' y ');
     const displayTimestamp = primarySource.publishedTime || argInfo.formattedSpanish;
 
     const briefSummary = cluster.sources.length === 1
-      ? `${cluster.headline}. Información reportada y confirmada en ${primarySource.mediaName}.`
+      ? `${cluster.headline}. Información publicada en ${primarySource.mediaName}.`
       : `${cluster.headline}. Acontecimiento con cobertura periodística coincidente en ${mediaNames}.`;
 
     newsItems.push({
@@ -259,7 +249,7 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], d
       briefSummary,
       fullSynthesis: [
         `Hecho concreto informado en ${mediaNames} (${displayTimestamp}).`,
-        `Instrumentos relacionados por identificación o emisor: ${cluster.tickers.join(', ') || 'contexto general'}.`,
+        analysis.explanation,
         `Información respaldada directamente por las publicaciones originales de los medios consultados.`
       ],
       publishedAgo: primarySource.publishedTime || 'Reciente',
@@ -276,22 +266,21 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], d
       })),
       affectedAssetIds: cluster.tickers,
       impact: cluster.impact,
-      relevanceType: isMacroAssetContext(cluster.headline) ? 'contexto_macro' : 'impacto_precio',
+      relevanceType: analysis.relevanceType,
       portfolioImpactAnalysis: {
-        directExplanation: `Hecho respaldado por ${mediaNames} con incidencia sobre las cotizaciones y el flujo de fondos de tus tenencias.`,
+        directExplanation: analysis.explanation,
         affectedHoldings: cluster.tickers.map(sym => ({
           symbol: sym,
-          impactDirection: cluster.impact,
-          relationshipDetail: 'Transmisión vía cotización en plaza local y variables del activo.'
-        })),
-        horizon: 'Corto plazo (24-72h)'
+          impactDirection: analysis.assetImpacts[sym] || 'neutral',
+          relationshipDetail: analysis.relationships[sym]
+        }))
       },
       audioDuration: '1:00 min',
-      audioScript: `Resumen FAROS. ${cluster.headline}. Información confirmada en ${mediaNames} para tus activos ${cluster.tickers.join(' y ')}.`,
+      audioScript: `Resumen FAROS. ${cluster.headline}. ${analysis.explanation} Publicado en ${mediaNames}.`,
       factCheck: {
-        status: 'confirmado',
+        status: analysis.relevanceType === 'ruido' ? 'en_analisis' : 'confirmado',
         officialSource: mediaNames,
-        detail: `Reportado en publicaciones periodísticas con fecha ${displayTimestamp}.`
+        detail: analysis.relevanceType === 'ruido' ? `Publicación verificada en ${mediaNames}; su contenido no se trata como un hecho financiero confirmado.` : `Reportado en publicaciones periodísticas con fecha ${displayTimestamp}.`
       },
       topicCategory: cluster.category
     });

@@ -7,8 +7,8 @@ import {
   Portfolio, 
   AssetPosition, 
   MediaCoverage,
-  getEffectiveImpactForPortfolio 
 } from '../types';
+import { getPortfolioAffectedAssetIds, getPortfolioNewsImpact } from '../utils/portfolioNews';
 import { getRelevanceLabel } from './NewsCard';
 import { 
   X, 
@@ -40,7 +40,7 @@ interface NewsDetailModalProps {
   onClose: () => void;
   assetsMap: Record<string, Asset>;
   onPlayAudio: (news: NewsItem) => void;
-  portfolio?: Portfolio;
+  portfolio: Portfolio;
   assetPositions?: Record<string, AssetPosition>;
   isAudioActive?: boolean;
   activeTrackId?: string;
@@ -48,10 +48,7 @@ interface NewsDetailModalProps {
 
 import { distinctMediaSources } from '../utils/sourceGrounding';
 
-/**
- * Financial transmission mechanism and monitoring factors by asset category / ticker.
- * STRICTLY INFORMATIVE - ZERO INVESTMENT RECOMMENDATIONS.
- */
+/** Keep the explanation tied to the reported event, rather than a ticker-based narrative. */
 interface AssetAnalysisDetail {
   mecanismo: string;
   factores: string[];
@@ -61,100 +58,24 @@ function getAssetAnalysisDetail(
   symbol: string,
   asset: Asset | undefined,
   headline: string,
+  relevanceType: NewsItem['relevanceType'],
   relationshipDetail?: string
 ): AssetAnalysisDetail {
-  switch (symbol) {
-    case 'AL30':
-    case 'GD30': {
-      const isAL30 = symbol === 'AL30';
-      return {
-        mecanismo: `${relationshipDetail ? relationshipDetail + ' ' : ''}La dinámica de compresión del riesgo país y acumulación neta de reservas del Banco Central reduce la prima de riesgo exigida a la curva soberana en dólares. Al descender la tasa interna de retorno (TIR), las paridades de los títulos Hard Dollar se expanden. ${
-          isAL30 
-            ? 'En el caso del AL30 (bajo ley argentina), el título presenta una duración modificada de ~2.8 años que acentúa la sensibilidad de precio en la plaza local.'
-            : 'En el caso del GD30 (bajo ley de Nueva York), el título concentra el mayor flujo de fondos institucionales extranjeros, liderando el estrechamiento de spreads.'
-        }`,
-        factores: [
-          'Evolución diaria de la paridad en dólares y compresión del riesgo país hacia el soporte de 750 bps.',
-          'Spread legislativo (ratio de cotización GD30 vs. AL30) y volumen diario operado en BYMA y MAE.',
-          'Saldo comprador neto del Banco Central en el mercado único y libre de cambios (MULC).'
-        ]
-      };
-    }
-    case 'BOPREAL':
-      return {
-        mecanismo: `${relationshipDetail ? relationshipDetail + ' ' : ''}Al ser títulos de deuda comercial emitidos por el BCRA en moneda extranjera, su cotización refleja directamente la solvencia del balance monetario oficial, la demanda de corporaciones para cancelación de obligaciones y la absorción de liquidez en las licitaciones periódicas.`,
-        factores: [
-          'Rendimiento secundario (TIR en USD) y liquidez en las ruedas de negociación en BYMA.',
-          'Adjudicación y tasa de corte en las licitaciones semanales del BCRA.',
-          'Capacidad de acumulación de reservas netas por parte de la autoridad monetaria.'
-        ]
-      };
-    case 'YPFD':
-      return {
-        mecanismo: `${relationshipDetail ? relationshipDetail + ' ' : ''}La ampliación de la capacidad de evacuación de crudo y gas desde Vaca Muerta elimina cuellos de botella logísticos y proyecta un crecimiento sustancial del EBITDA operativo. Este incremento en el flujo de fondos disponible (FCF) disminuye el ratio de apalancamiento neto y eleva el múltiplo de valuación intrínseco de la compañía.`,
-        factores: [
-          'Precio internacional del barril de petróleo crudo Brent y paridad de exportación neta (export parity).',
-          'Avance físico y puesta en marcha de obras de midstream (oleoductos y plantas compresoras).',
-          'Volumen diario operado en el ADR en la Bolsa de Nueva York (NYSE: YPF) y en el mercado local.'
-        ]
-      };
-    case 'PAMP':
-      return {
-        mecanismo: `${relationshipDetail ? relationshipDetail + ' ' : ''}La generación eléctrica y el transporte de gas presentan ingresos indexados y contratos de provisión predecibles. Nuevas habilitaciones de capacidad eólica o térmica consolidan la generación de caja operativa y reducen el costo de financiamiento en el mercado de capitales.`,
-        factores: [
-          'Despacho comercial de energía contratada y cadena de pagos de CAMMESA.',
-          'Tarifas mayoristas de transporte y distribución en Transportadora de Gas del Sur (TGS).',
-          'Márgenes operativos consolidados y evolución del ADR en Wall Street.'
-        ]
-      };
-    case 'GGAL':
-      return {
-        mecanismo: `${relationshipDetail ? relationshipDetail + ' ' : ''}La desaceleración inflacionaria y la estabilidad de tasas activas y pasivas facilitan la recuperación del crédito bancario al sector privado. La expansión del volumen de préstamos compensa la caída de rentabilidad de títulos públicos, mejorando el margen financiero neto (NIM) y reduciendo el costo de riesgo.`,
-        factores: [
-          'Tasa de crecimiento real de los préstamos en pesos y dólares al sector corporativo y familias.',
-          'Regulaciones del BCRA en materia de encajes bancarios y tasas de política monetaria.',
-          'Ratio de morosidad de cartera y volumen negociado en el ADR de Galicia (NASDAQ: GGAL).'
-        ]
-      };
-    case 'MEP':
-    case 'CCL': {
-      const isMEP = symbol === 'MEP';
-      return {
-        mecanismo: `${relationshipDetail ? relationshipDetail + ' ' : ''}Las cotizaciones de los tipos de cambio financieros arbitran la oferta de liquidación del comercio exterior (esquema exportador blended) contra la demanda de cobertura e importación. ${
-          isMEP
-            ? 'El dólar MEP refleja la operatoria bursátil local entre bonos en pesos y dólares con liquidación en cuentas bancarias argentinas.'
-            : 'El dólar CCL (Contado con Liquidación) canaliza transferencias hacia cuentas del exterior mediante bonos o CEDEARs, reflejando el costo de salida o canje de divisas.'
-        }`,
-        factores: [
-          'Porcentaje de brecha cambiaria respecto a la cotización del tipo de cambio oficial mayorista.',
-          'Volumen diario de liquidación de exportadores a través del mercado financiero.',
-          'Normativas y plazos de parking vigentes fijados por la Comisión Nacional de Valores (CNV).'
-        ]
-      };
-    }
-    case 'AAPL':
-    case 'NVDA':
-    case 'MELI':
-    case 'SPY': {
-      return {
-        mecanismo: `${relationshipDetail ? relationshipDetail + ' ' : ''}Al tratarse de instrumentos con cotización local en pesos representativos de acciones en el exterior (CEDEARs), el precio de mercado arbitra el valor en dólares del activo subyacente en Wall Street multiplicado por el ratio de conversión y la cotización del dólar Contado con Liquidación (CCL). Esta noticia afecta las expectativas de ingresos, márgenes operativos y valuación global de la compañía.`,
-        factores: [
-          'Cotización de la acción en los mercados de Estados Unidos (NYSE / NASDAQ) y múltiplos EV/EBITDA.',
-          'Variación del tipo de cambio financiero implícito (CCL) en la plaza local de CEDEARs.',
-          'Nivel de la tasa libre de riesgo de los Bonos del Tesoro de EE.UU. a 10 años (US10Y).'
-        ]
-      };
-    }
-    default:
-      return {
-        mecanismo: `${relationshipDetail || 'El evento genera impactos en la estructura de ingresos o en la prima de riesgo del activo.'} La dinámica reportada incide en las expectativas de rentabilidad esperada y en la liquidez disponible para la clase de activo (${asset?.sector || 'Mercado financiero'}).`,
-        factores: [
-          'Volumen diario negociado en el mercado secundario local.',
-          'Variación porcentual de la cotización frente a soportes técnicos.',
-          'Indicadores macroeconómicos y sectoriales vinculados.'
-        ]
-      };
-  }
+  const scopeByRelevance: Record<NewsItem['relevanceType'], string> = {
+    impacto_precio: 'La categoría recoge un hecho material o una variación de cotización reportados. La etiqueta por sí sola no demuestra que el precio haya cambiado.',
+    valoracion_mercado: 'El hecho puede aportar información para la valoración del instrumento o de su emisor. No demuestra una reacción de la cotización.',
+    contexto_macro: 'La relación es de contexto macroeconómico. No demuestra un efecto de precio específico sobre este instrumento.',
+    ruido: 'La información se clasifica como ruido: no hay evidencia suficiente de un efecto financiero específico sobre este instrumento.',
+  };
+
+  return {
+    mecanismo: relationshipDetail?.trim()
+      || `El hecho publicado es: «${headline}». La información disponible no detalla un efecto específico sobre ${asset?.name || symbol}.`,
+    factores: [
+      scopeByRelevance[relevanceType],
+      'La lectura se limita al hecho publicado y no estima precios, rendimientos ni movimientos futuros.',
+    ],
+  };
 }
 
 export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
@@ -190,7 +111,8 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
   };
 
   // Calculate effective impact based on portfolio positions
-  const effectiveImpact = getEffectiveImpactForPortfolio(news.impact, news.affectedAssetIds, assetPositions);
+  const matchingAssetIds = getPortfolioAffectedAssetIds(news, portfolio.assetIds);
+  const effectiveImpact = getPortfolioNewsImpact(news, { assetIds: portfolio.assetIds, assetPositions });
   const isFavorable = effectiveImpact === 'favorable' || effectiveImpact === 'positivo';
   const isAlert = effectiveImpact === 'alerta' || effectiveImpact === 'negativo';
 
@@ -237,53 +159,23 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
   // Count matches verified real sources count
   const validSourcesCount = verifiedSources.length;
 
-  // Filter tickers in the portfolio that are related to this news
-  const userPortfolioTickers = useMemo(() => {
-    if (portfolio?.assetIds && portfolio.assetIds.length > 0) {
-      return portfolio.assetIds;
-    }
-    if (assetPositions) {
-      return Object.keys(assetPositions);
-    }
-    return [];
-  }, [portfolio, assetPositions]);
-
-  // Only tickers that the user holds AND are affected by this news
-  const matchingAssetIds = useMemo(() => {
-    return userPortfolioTickers.filter(id => news.affectedAssetIds.includes(id));
-  }, [userPortfolioTickers, news.affectedAssetIds]);
-
   // Generate customized introduction paragraph for portfolio analysis
   // STRICTLY NON-ADVISORY: Objective news & market transmission breakdown
   const introParagraph = useMemo(() => {
-    const portfolioName = portfolio?.name || 'Cartera Principal';
-    const profile = portfolio?.profile || 'moderado';
-    const profileLabels: Record<string, string> = {
-      conservador: 'Perfil: Conservador',
-      moderado: 'Perfil: Moderado',
-      dinamico: 'Perfil: Dinámico'
-    };
-    const profileText = profileLabels[profile] || 'Perfil: Moderado';
+    const portfolioName = portfolio.name || 'Cartera Principal';
 
     if (matchingAssetIds.length === 0) {
-      return `Este reporte aborda hechos vinculados a ${news.headline.toLowerCase()}. En el caso de tu cartera '${portfolioName}' (${profileText}), ninguno de los activos afectados forma parte de tus posiciones activas. Este desglose se presenta como referencia informativa de mercado para el seguimiento de variables macroeconómicas generales.`;
+      return `Ninguno de los activos vinculados con esta publicación forma parte de tu cartera '${portfolioName}'. La noticia se muestra como información de mercado, sin atribuirle un efecto sobre tus posiciones.`;
     }
 
     const symbolsText = matchingAssetIds.join(', ');
-    const countText = matchingAssetIds.length === 1 ? '1 activo presente en tu cartera' : `${matchingAssetIds.length} activos presentes en tu cartera`;
+    const scope = news.relevanceType === 'contexto_macro'
+      ? 'El vínculo es macroeconómico y no demuestra un impacto de precio sobre cada instrumento.'
+      : news.relevanceType === 'ruido'
+        ? 'La información se clasifica como ruido y no permite establecer un efecto financiero específico.'
+        : 'El desglose distingue el hecho publicado de su interpretación condicional para cada posición Long o Short.';
 
-    let contextTheme = 'la dinámica de cotizaciones y flujo de fondos del mercado';
-    if (news.topicCategory === 'deuda_soberana') {
-      contextTheme = 'la política de reservas del Banco Central y la prima de riesgo país';
-    } else if (news.topicCategory === 'energia') {
-      contextTheme = 'la capacidad de transporte e infraestructura energética en Vaca Muerta';
-    } else if (news.topicCategory === 'regulaciones_bcra') {
-      contextTheme = 'el marco normativo cambiario y la liquidez de los dólares financieros';
-    } else if (news.topicCategory === 'cedears_tech') {
-      contextTheme = 'la demanda tecnológica global y las tasas de referencia internacionales';
-    }
-
-    return `Este informe se contextualiza en ${contextTheme}. En relación con tu cartera '${portfolioName}' (${profileText}), la información incide sobre ${countText} (${symbolsText}). A continuación se desglosa el comportamiento técnico del mercado para cada instrumento y cómo interactúa con el sentido de tu posición (Long o Short), facilitando el seguimiento objetivo de variables clave.`;
+    return `Esta publicación se relaciona con los activos ${symbolsText} de tu cartera '${portfolioName}'. ${scope}`;
   }, [portfolio, matchingAssetIds, news]);
 
   if (!news) return null;
@@ -453,16 +345,10 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
                     Desglose de Impacto en tu Cartera
                   </h3>
                   <p className="text-[11px] text-muted">
-                    Análisis de variables y mecanismos de mercado según posición
+                    Hecho publicado, vínculo con tus activos y alcance según posición
                   </p>
                 </div>
               </div>
-
-              {news.portfolioImpactAnalysis.horizon && (
-                <span className="text-[11px] font-semibold text-brand-950 bg-brand-100 border border-brand-300 px-2.5 py-0.5 rounded-full">
-                  Horizonte: {news.portfolioImpactAnalysis.horizon}
-                </span>
-              )}
             </div>
 
             {/* Aviso legal explícito (Cero recomendaciones financieras / No investment advice) */}
@@ -486,7 +372,7 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
                   <span>Esta noticia no tiene impacto directo sobre los activos de tu cartera actual</span>
                 </div>
                 <p className="text-muted leading-relaxed pl-6">
-                  Los activos involucrados en este reporte ({news.affectedAssetIds.join(', ')}) no forman parte de las posiciones activas en tu cartera. Podés utilizar la noticia como referencia macroeconómica.
+                  Ninguno de los activos relacionados con este reporte forma parte de tu cartera actual. La publicación queda como información general de mercado.
                 </p>
               </div>
             ) : (
@@ -497,7 +383,7 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
                     Desglose activo por activo ({matchingAssetIds.length})
                   </span>
                   <span className="text-[11px] text-muted">
-                    Comportamiento de mercado según posición Long / Short
+                    Alcance de la noticia según posición Long / Short
                   </span>
                 </div>
 
@@ -507,40 +393,45 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
                     const position: AssetPosition = assetPositions?.[symbol] || 'long';
                     const holdingData = news.portfolioImpactAnalysis.affectedHoldings.find(h => h.symbol === symbol);
 
-                    // Determine intrinsic asset event direction
-                    const baseDirection = holdingData?.impactDirection || news.impact;
+                    // Context and noise do not establish a directional effect on this holding.
+                    // A missing per-asset explanation must not inherit another asset's direction.
+                    const isContextOnly = news.relevanceType === 'contexto_macro' || news.relevanceType === 'ruido';
+                    const baseDirection = isContextOnly ? 'neutral' : holdingData?.impactDirection || 'neutral';
                     const isAssetPositive = baseDirection === 'favorable' || baseDirection === 'positivo';
                     const isAssetNegative = baseDirection === 'alerta' || baseDirection === 'negativo';
 
                     // Determine descriptive impact on user's portfolio given position (strictly factual, zero advice)
                     let userEffect: 'favorable' | 'desfavorable' | 'neutral' = 'neutral';
-                    let userEffectLabel = 'Comportamiento Neutral';
+                    let userEffectLabel = 'Sin dirección de precio demostrada';
                     let positionMarketContext = '';
 
                     if (isAssetPositive) {
                       if (position === 'long') {
                         userEffect = 'favorable';
-                        userEffectLabel = 'Favorable para posición Long';
-                        positionMarketContext = 'La noticia reporta catalizadores alcistas, mayor demanda o compresión de tasa de descuento para el activo en el mercado secundario.';
+                        userEffectLabel = 'Favorable para posición Long (condicional)';
+                        positionMarketContext = 'Si el efecto favorable identificado se trasladara al valor del instrumento, coincidiría con el sentido de tu posición LONG. Esta lectura no confirma una variación de cotización.';
                       } else {
                         userEffect = 'desfavorable';
-                        userEffectLabel = 'Desfavorable para posición Short';
-                        positionMarketContext = 'La noticia reporta presiones alcistas en cotización o demanda de mercado, operando en sentido contrario a la dirección de una posición bajista.';
+                        userEffectLabel = 'Desfavorable para posición Short (condicional)';
+                        positionMarketContext = 'Si el efecto favorable identificado se trasladara al valor del instrumento, operaría en sentido contrario a tu posición SHORT. Esta lectura no confirma una variación de cotización.';
                       }
                     } else if (isAssetNegative) {
                       if (position === 'long') {
                         userEffect = 'desfavorable';
-                        userEffectLabel = 'Desfavorable para posición Long';
-                        positionMarketContext = 'La noticia reporta factores de cautela, ajuste en valuaciones o mayor prima de riesgo sobre la cotización del activo en el mercado secundario.';
+                        userEffectLabel = 'Desfavorable para posición Long (condicional)';
+                        positionMarketContext = 'Si el efecto desfavorable identificado se trasladara al valor del instrumento, operaría en sentido contrario a tu posición LONG. Esta lectura no confirma una variación de cotización.';
                       } else {
                         userEffect = 'favorable';
-                        userEffectLabel = 'Favorable para posición Short';
-                        positionMarketContext = 'La noticia reporta factores de corrección o debilidad en el precio de mercado del activo, alineados con la dirección de una posición bajista.';
+                        userEffectLabel = 'Favorable para posición Short (condicional)';
+                        positionMarketContext = 'Si el efecto desfavorable identificado se trasladara al valor del instrumento, coincidiría con el sentido de tu posición SHORT. Esta lectura no confirma una variación de cotización.';
                       }
                     } else {
                       userEffect = 'neutral';
-                      userEffectLabel = 'Comportamiento Neutral';
-                      positionMarketContext = `Para una posición ${position === 'long' ? 'Long' : 'Short'}, el acontecimiento aporta datos de contexto sectorial o macro sin modificar sensiblemente las variables de precio del activo.`;
+                      positionMarketContext = news.relevanceType === 'contexto_macro'
+                        ? `La relación con ${symbol} es de contexto macroeconómico y no demuestra un efecto de precio específico. Tu posición ${position.toUpperCase()} no cambia ese alcance.`
+                        : news.relevanceType === 'ruido'
+                          ? `No hay evidencia suficiente para atribuir un efecto financiero específico a ${symbol}. La clasificación como ruido se mantiene para tu posición ${position.toUpperCase()}.`
+                          : `La información disponible no permite establecer una dirección favorable o desfavorable para ${symbol}. Tu posición ${position.toUpperCase()} no resuelve esa falta de evidencia.`;
                     }
 
                     const effectBadgeClass = 
@@ -554,6 +445,7 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
                       symbol,
                       asset,
                       news.headline,
+                      news.relevanceType,
                       holdingData?.relationshipDetail
                     );
 
@@ -602,14 +494,14 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
 
                         {/* Market context according to user position (strictly informative, zero advice) */}
                         <div className="text-xs text-muted bg-ink-50/80 p-3 rounded-xl border border-ink-200 leading-relaxed">
-                          <span className="font-bold text-ink-900">Comportamiento según tu posición: </span>
+                          <span className="font-bold text-ink-900">Lectura según tu posición: </span>
                           <span>{positionMarketContext}</span>
                         </div>
 
                         {/* Mechanism of transmission */}
                         <div className="space-y-1">
                           <span className="text-[11px] font-bold text-brand-950 uppercase tracking-wider block">
-                            Mecanismo de transmisión de la noticia
+                            Relación con el hecho publicado
                           </span>
                           <p className="text-muted leading-relaxed text-xs sm:text-[13px]">
                             {analysisDetail.mecanismo}
@@ -620,7 +512,7 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
                         <div className="space-y-1.5 bg-brand-50/60 p-3.5 rounded-xl border border-brand-200/70">
                           <span className="text-[11px] font-bold text-brand-950 flex items-center gap-1.5 uppercase tracking-wider">
                             <Eye className="w-3.5 h-3.5 text-brand-800" />
-                            Factores clave a monitorear
+                            Alcance de esta lectura
                           </span>
                           <ul className="space-y-1.5 pl-1 pt-1">
                             {analysisDetail.factores.map((factor, fIdx) => (

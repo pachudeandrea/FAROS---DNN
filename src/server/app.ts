@@ -1,6 +1,7 @@
-import { portfolioAssets } from '../data/assetCatalog.js';
+import { portfolioAssets, normalizeAssetText } from '../data/assetCatalog.js';
 import { validateCustomAssets } from '../utils/manualAssets.js';
-import { describeAssets, recognizeAssetIds, isMacroAssetContext } from '../utils/assetNews.js';
+import { describeAssets } from '../utils/assetNews.js';
+import { analyzeNewsRelevance } from '../utils/newsRelevance.js';
 import { portfolioNewsScope } from '../utils/newsCache.js';
 import type { Asset } from '../types/index.js';
 import express, { type RequestHandler } from 'express';
@@ -24,7 +25,7 @@ import {
   purgeUrlVerificationCache,
   getArgentinaDateInfo
 } from '../utils/urlResolver.js';
-import { getLiveVerifiedArgentineNews, createCollectionDiagnostics, analyzeArticleContext } from '../utils/liveFinancialNews.js';
+import { getLiveVerifiedArgentineNews, createCollectionDiagnostics } from '../utils/liveFinancialNews.js';
 import { enrichNewsCoverage } from '../utils/newsCoverage.js';
 import { NEWS_CACHE_VERSION } from '../utils/newsCache.js';
 import {
@@ -281,8 +282,9 @@ INSTRUCCIONES ESTRICTAS:
 1. Extraé entre 3 y 8 noticias del mercado argentino directamente relevantes para la cartera.
 2. Cada noticia DEBE asignar al campo "sourceId" un número entero correspondiente a uno de los IDs de las [FUENTES VERIFICADAS DISPONIBLES].
 3. IMPACTO POR ACTIVO: En "portfolioImpactAnalysis.affectedHoldings", evaluá el impacto ticker por ticker.
-4. "sentiment": "favorable" si beneficia al activo/cartera, "adverso" si perjudica, genera alerta o incertidumbre, o "neutral" si es informativo.
-5. "audioScript": síntesis concisa de 2 oraciones para locución en audio argentino.
+4. La síntesis debe limitarse a hechos respaldados por la fuente asignada. No incluyas recomendaciones de inversión, objetivos de precio ni pronósticos. No confundas variaciones de costos, ventas o inflación con variaciones del precio de una acción. Rumores y expectativas deben conservar su carácter no confirmado.
+5. "sentiment": "favorable" si beneficia al activo/cartera, "adverso" si perjudica, genera alerta o incertidumbre, o "neutral" si es informativo.
+6. "audioScript": síntesis concisa de 2 oraciones para locución en audio argentino.
 
 Respondé ÚNICAMENTE con un JSON con el siguiente esquema:
 {
@@ -336,15 +338,19 @@ Respondé ÚNICAMENTE con un JSON con el siguiente esquema:
       const mediaDomain = assignedSource.domain || (new URL(assignedSource.sourceUrl)).hostname;
       const mediaName = assignedSource.mediaName || mediaDomain;
 
-      const relatedIds = recognizeAssetIds(assignedSource.originalHeadline, assets).filter(id => !tickers.length || tickers.includes(id));
+      const analysis = analyzeNewsRelevance(assignedSource.originalHeadline, assets);
+      const relatedIds = analysis.affectedAssetIds.filter(id => !tickers.length || tickers.includes(id));
       if (tickers.length && !relatedIds.some(id => tickers.includes(id))) continue;
+      const proposedSummary = typeof item.summary === 'string' ? item.summary.trim() : '';
+      const advice = /\b(recomiend\w*|recomendamos|conviene (comprar|vender|invertir)|deberias|tenes que (comprar|vender)|compra ahora|vende ahora|objetivo de precio|rentabilidad garantizada)\b/;
+      const summary = proposedSummary && proposedSummary.length <= 1400 && !advice.test(normalizeAssetText(proposedSummary)) ? proposedSummary : assignedSource.originalHeadline;
       finalNewsItems.push({
         id: `gemini_${argDate.isoDate}_${idx}_${Date.now()}`,
         headline: assignedSource.originalHeadline,
-        briefSummary: item.summary || 'Resumen de mercado elaborado por FAROS.',
+        briefSummary: summary,
         fullSynthesis: [
-          item.summary || '',
-          item.economicAnalysis || '',
+          summary,
+          analysis.explanation,
           `Información respaldada por ${mediaName}.`
         ].filter(Boolean),
         publishedAgo: assignedSource.publishedTime || 'Hoy',
@@ -360,24 +366,23 @@ Respondé ÚNICAMENTE con un JSON con el siguiente esquema:
           domain: mediaDomain
         }],
         affectedAssetIds: relatedIds,
-        impact: item.sentiment === 'favorable' ? 'favorable' : item.sentiment === 'adverso' ? 'alerta' : 'neutral',
-        relevanceType: isMacroAssetContext(assignedSource.originalHeadline) ? 'contexto_macro' : 'impacto_precio',
-        topicCategory: analyzeArticleContext(assignedSource.originalHeadline, assets).category,
+        impact: analysis.impact,
+        relevanceType: analysis.relevanceType,
+        topicCategory: analysis.topicCategory,
         audioDuration: '1:00 min',
-        audioScript: item.audioScript || `${item.headline}. ${item.summary}`,
+        audioScript: `Resumen FAROS. ${assignedSource.originalHeadline}. ${analysis.explanation} Publicado en ${mediaName}.`,
         factCheck: {
-          status: 'confirmado',
+          status: analysis.relevanceType === 'ruido' ? 'en_analisis' : 'confirmado',
           officialSource: mediaName,
-          detail: `Respaldado por publicación original en ${mediaName}.`
+          detail: analysis.relevanceType === 'ruido' ? `Publicación verificada en ${mediaName}; su contenido no se trata como un hecho financiero confirmado.` : `Respaldado por publicación original en ${mediaName}.`
         },
         portfolioImpactAnalysis: {
-          directExplanation: item.economicAnalysis || item.summary || 'Análisis de cartera FAROS.',
+          directExplanation: analysis.explanation,
           affectedHoldings: relatedIds.map((ticker: string) => ({
             symbol: ticker,
-            impactDirection: item.sentiment === 'favorable' ? 'favorable' : item.sentiment === 'adverso' ? 'alerta' : 'neutral',
-            relationshipDetail: 'Transmisión vía variables de mercado y cotización.'
-          })),
-          horizon: 'Corto plazo'
+            impactDirection: analysis.assetImpacts[ticker] || 'neutral',
+            relationshipDetail: analysis.relationships[ticker]
+          }))
         }
       });
     }

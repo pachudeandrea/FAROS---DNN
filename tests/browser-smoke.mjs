@@ -53,7 +53,7 @@ const browser = await chromium.launch({ executablePath, headless: true, args: ['
 const pageErrors = [];
 let checks = 0;
 async function check(name, run) { if (process.env.BROWSER_CHECK && !name.includes(process.env.BROWSER_CHECK)) return; await run(); checks++; console.log(`ok ${checks} - ${name}`); }
-async function setup({ anonymous = false, admin = false, permission = 'granted', longName = false, legacyNews = false, ...options } = {}) {
+async function setup({ anonymous = false, admin = false, permission = 'granted', longName = false, legacyNews = false, portfolioOverride, newsOverride, ...options } = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, ...options });
   if (legacyNews) await context.addInitScript(({ item, portfolioId }) => {
     const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -77,6 +77,8 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
     PushManager.prototype.subscribe = async () => { localStorage.setItem('test_push', 'yes'); return local(); };
   }, { permission, subscription });
   const state = { user: structuredClone(fixture), active: false, calls: [], events: [], newsData: news, newsMode: 'ok', revision: null, saveFailure: false, delayNews: 0 };
+  if (portfolioOverride) state.user.portfolio = structuredClone(portfolioOverride);
+  if (newsOverride) state.newsData = structuredClone(newsOverride);
   if (admin) state.user.isAdmin = true;
   if (longName) state.user.portfolio.name = 'Cartera' + 'Diversificada'.repeat(12);
   await context.route('**/*', async route => {
@@ -179,7 +181,7 @@ try {
       await context.close();
     }
   });
-  await check('Lista completa de activos sin escribir, sin carga manual y seleccionable más allá de 60 en tres tamaños', async () => {
+  await check('Lista completa incluye los activos ya seleccionados y evita duplicados al buscar Apple en tres tamaños', async () => {
     for (const size of [{ width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1440, height: 1000 }]) {
       const { context, page, state } = await setup({ viewport: size });
       await clickVisible(page, 'Ahora no'); await clickVisible(page, 'Mi cartera');
@@ -191,9 +193,12 @@ try {
       assert.equal(await page.getByText('¿No encontrás tu instrumento? Cargar identificación', { exact: true }).count(), 0);
       assert.equal(await page.getByLabel('Identificador o especie', { exact: true }).count(), 0);
       assert.ok(available.length > 60, 'La prueba debe alcanzar opciones que antes se ocultaban');
-      assert.equal(await list.getByRole('button').count(), available.length, 'Todas las opciones no poseídas deben estar presentes sin escribir');
+      assert.equal(await list.getByRole('button').count(), ASSET_CATALOG.length, 'Todo el catálogo, incluidos los activos propios, debe aparecer sin escribir');
       const listedIds = await list.getByRole('button').evaluateAll(buttons => buttons.map(button => button.dataset.assetId));
-      assert.deepEqual(listedIds.sort(), available.map(asset => asset.id).sort(), 'La lista contiene cada instrumento disponible exactamente una vez');
+      assert.deepEqual(listedIds.sort(), ASSET_CATALOG.map(asset => asset.id).sort(), 'La lista contiene cada instrumento del catálogo exactamente una vez');
+      const disabledIds = await list.getByRole('button').evaluateAll(buttons => buttons.filter(button => button.disabled).map(button => button.dataset.assetId));
+      assert.deepEqual(disabledIds.sort(), [...state.user.portfolio.assetIds].sort(), 'Los activos propios permanecen visibles y no se pueden agregar de nuevo');
+      assert.equal(await list.getByText('Ya seleccionado', { exact: true }).count(), state.user.portfolio.assetIds.length);
       const bounds = await list.evaluate(element => ({ height: element.clientHeight, scroll: element.scrollHeight, overflow: getComputedStyle(element).overflowY }));
       assert.ok(bounds.height > 0 && bounds.height <= size.height / 2, `La lista debe ocupar un espacio acotado: ${JSON.stringify(bounds)}`);
       assert.ok(bounds.scroll > bounds.height && ['auto', 'scroll'].includes(bounds.overflow), 'Todas las opciones deben alcanzarse con scroll');
@@ -205,22 +210,106 @@ try {
       assert.equal(await list.getByRole('button').count(), 1, 'La búsqueda filtra la misma lista');
       await search.fill('');
       const last = available.at(-1);
-      await list.getByText(last.symbol, { exact: true }).waitFor();
-      assert.equal(await list.getByRole('button').count(), available.length, 'Limpiar la búsqueda restaura todas las opciones');
-      const option = list.getByRole('button').filter({ has: page.getByText(last.symbol, { exact: true }) });
+      const option = list.locator(`button[data-asset-id="${last.id}"]`);
+      await option.waitFor();
+      assert.equal(await list.getByRole('button').count(), ASSET_CATALOG.length, 'Limpiar la búsqueda restaura todo el catálogo');
+      assert.equal(await option.isDisabled(), false);
+      await option.getByText('Seleccionar', { exact: true }).waitFor();
       await option.click();
       await clickVisible(page, 'Agregar a mi cartera (LONG)');
       await page.getByRole('button', { name: `Quitar ${last.id}`, exact: true }).waitFor();
       assert.ok(state.user.portfolio.assetIds.includes(last.id), 'Debe guardarse una opción situada más allá de las primeras 60');
       await list.waitFor();
-      assert.equal(await list.getByRole('button').count(), available.length - 1);
-      assert.equal(await list.getByText(last.symbol, { exact: true }).count(), 0, 'Un activo ya incorporado no vuelve a ofrecerse para duplicarlo');
+      assert.equal(await list.getByRole('button').count(), ASSET_CATALOG.length);
+      await option.getByText('Ya seleccionado', { exact: true }).waitFor();
+      assert.equal(await option.isDisabled(), true, 'La opción incorporada permanece visible pero no permite duplicarla');
       await page.reload(); await clickVisible(page, 'Mi cartera');
       await page.getByRole('button', { name: `Quitar ${last.id}`, exact: true }).waitFor();
-      assert.equal(await list.getByRole('button').count(), available.length - 1, 'La selección y la lista se recuperan al recargar');
+      assert.equal(await list.getByRole('button').count(), ASSET_CATALOG.length, 'La selección y la lista completa se recuperan al recargar');
+      assert.equal(await option.isDisabled(), true);
       await fits(page, `Lista recuperada a ${size.width}`);
+
+      await search.fill('apple');
+      const apple = list.locator('button[data-asset-id="AAPL"]');
+      await apple.getByText('Ya seleccionado', { exact: true }).waitFor();
+      assert.equal(await list.getByRole('button').count(), 1, 'Apple debe encontrarse aunque AAPL ya esté en la cartera');
+      assert.equal(await apple.isDisabled(), true);
+      assert.equal(state.user.portfolio.assetIds.filter(id => id === 'AAPL').length, 1);
+      await clickVisible(page, 'Quitar AAPL');
+      await page.getByRole('button', { name: 'Quitar AAPL', exact: true }).waitFor({ state: 'hidden' });
+      await apple.getByText('Seleccionar', { exact: true }).waitFor();
+      assert.equal(await apple.isDisabled(), false, 'Quitar el activo vuelve a habilitarlo sin ocultar el resultado de búsqueda');
+      assert.ok(!state.user.portfolio.assetIds.includes('AAPL'));
+      await apple.click(); await clickVisible(page, 'Agregar a mi cartera (LONG)');
+      await page.getByRole('button', { name: 'Quitar AAPL', exact: true }).waitFor();
+      await apple.getByText('Ya seleccionado', { exact: true }).waitFor();
+      assert.equal(await apple.isDisabled(), true);
+      assert.equal(state.user.portfolio.assetIds.filter(id => id === 'AAPL').length, 1, 'Volver a incorporar Apple guarda una sola posición');
+      await page.reload(); await clickVisible(page, 'Mi cartera'); await search.fill('apple');
+      await apple.getByText('Ya seleccionado', { exact: true }).waitFor();
+      assert.equal(await apple.isDisabled(), true, 'Apple sigue encontrándose como seleccionado tras recargar');
+      assert.equal(await list.getByRole('button').count(), 1);
+      await fits(page, `Apple seleccionado a ${size.width}`);
       await context.close();
     }
+  });
+  await check('Noticias muestran solo los activos afectados seleccionados, también al quitar posiciones o vaciar la cartera', async () => {
+    const scopedNews = {
+      ...structuredClone(news[0]), id: 'selected-holdings-only', headline: 'Reporte de prueba de activos seleccionados',
+      briefSummary: 'Publicación de prueba para comprobar la selección de instrumentos.',
+      fullSynthesis: ['Síntesis utilizada únicamente en la prueba local.'],
+      affectedAssetIds: ['GD30D', 'AL29', 'AL30', 'CCL'], impact: 'favorable',
+      portfolioImpactAnalysis: { directExplanation: 'Relación de prueba con las posiciones de la cartera.', affectedHoldings: ['GD30D', 'AL29', 'AL30', 'CCL'].map(symbol => ({ symbol, impactDirection: 'favorable', relationshipDetail: 'Relación exclusiva de prueba.' })) }
+    };
+    const selected = { ...structuredClone(fixture.portfolio), assetIds: ['AL30', 'CCL', 'MSFT'], assetPositions: { CCL: 'short' } };
+    // AL30 is a legacy LONG holding with no explicit position entry. MSFT is
+    // selected but unrelated; GD30D must not be merged with another bond species.
+    for (const size of [{ width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1440, height: 1000 }]) {
+      const { context, page, state } = await setup({ viewport: size, portfolioOverride: selected, newsOverride: [scopedNews] });
+      await clickVisible(page, 'Ahora no');
+      const card = page.locator('article').filter({ has: page.getByRole('button', { name: scopedNews.headline, exact: true }) });
+      const holdings = card.getByRole('region', { name: 'Activos de tu cartera afectados', exact: true });
+      await holdings.waitFor();
+      assert.equal(await holdings.getByText('AL30', { exact: true }).count(), 1);
+      assert.equal(await holdings.getByText('CCL', { exact: true }).count(), 1);
+      assert.equal(await holdings.getByText('LONG', { exact: true }).count(), 1, 'La pertenencia no depende de que exista una posición LONG explícita');
+      assert.equal(await holdings.getByText('SHORT', { exact: true }).count(), 1);
+      assert.doesNotMatch(await holdings.innerText(), /\b(AL29|GD30D|MSFT)\b/);
+      assert.equal(await card.locator('div.font-mono').first().innerText(), 'AL', 'El avatar corresponde a un activo propio, no al primer activo externo de la noticia');
+      await fits(page, `Noticia personalizada a ${size.width}`);
+      await card.screenshot({ path: path.join(artifacts, `news-selected-assets-${size.width}.png`) });
+      await card.getByRole('button', { name: 'Ver impacto', exact: true }).click();
+      const detail = page.getByRole('dialog', { name: scopedNews.headline, exact: true });
+      await detail.getByText('Desglose activo por activo (2)', { exact: true }).waitFor();
+      assert.doesNotMatch(await detail.innerText(), /\b(AL29|GD30D|MSFT)\b/);
+      assert.equal(await detail.getByRole('region', { name: 'Comparación de medios' }).getByRole('link').count(), scopedNews.sources.length, 'Las fuentes y comparación se conservan');
+      await clickVisible(page, 'Cerrar detalle y detener audio');
+
+      await clickVisible(page, 'Mi cartera'); await clickVisible(page, 'Quitar AL30');
+      await page.getByRole('button', { name: 'Quitar AL30', exact: true }).waitFor({ state: 'hidden' });
+      assert.deepEqual(state.user.portfolio.assetIds, ['CCL', 'MSFT']);
+      await clickVisible(page, 'Noticias');
+      await holdings.getByText('CCL', { exact: true }).waitFor();
+      assert.equal(await holdings.getByText('AL30', { exact: true }).count(), 0, 'Quitar el activo actualiza la noticia sin recargar');
+      assert.equal(await holdings.getByText('SHORT', { exact: true }).count(), 1);
+      assert.doesNotMatch(await holdings.innerText(), /\b(AL29|GD30D|MSFT)\b/);
+      await context.close();
+    }
+
+    // Stale position metadata must not turn an explicitly empty selection into
+    // holdings, even when a cached/provider news item lists those same tickers.
+    const { context, page } = await setup({ portfolioOverride: { ...selected, assetIds: [], assetPositions: { AL30: 'long', CCL: 'short' } }, newsOverride: [scopedNews] });
+    await clickVisible(page, 'Ahora no'); await clickVisible(page, 'Noticias');
+    const card = page.locator('article').filter({ has: page.getByRole('button', { name: scopedNews.headline, exact: true }) });
+    await card.waitFor();
+    assert.equal(await card.getByRole('region', { name: 'Activos de tu cartera afectados', exact: true }).count(), 0);
+    assert.equal(await card.locator('div.font-mono').first().innerText(), 'MK');
+    await card.getByRole('button', { name: 'Ver impacto', exact: true }).click();
+    const detail = page.getByRole('dialog', { name: scopedNews.headline, exact: true });
+    const noImpact = detail.getByText('Esta noticia no tiene impacto directo sobre los activos de tu cartera actual', { exact: true });
+    await noImpact.waitFor();
+    assert.doesNotMatch(await noImpact.locator('..').locator('..').innerText(), /\b(AL29|AL30|GD30D|CCL|MSFT)\b/, 'Una cartera vacía no debe enumerar instrumentos ajenos en su bloque personalizado');
+    await context.close();
   });
   await check('Renueva noticias de la versión anterior sin tocar la sesión ni el calendario', async () => {
     const { context, page, state } = await setup({ legacyNews: true });
@@ -527,7 +616,11 @@ try {
   await check('Contadores visibles de impacto filtran inmediatamente la lista y permiten quitar el filtro', async () => {
     const { context, page, state } = await setup({ viewport: { width: 1440, height: 900 } });
     await clickVisible(page, 'Ahora no');
-    state.newsData = news.map((item, index) => ({ ...item, affectedAssetIds: ['AL30'], impact: ['favorable', 'alerta', 'neutral'][index] }));
+    state.newsData = news.map((item, index) => {
+      const impact = ['favorable', 'alerta', 'neutral'][index];
+      return { ...item, affectedAssetIds: ['AL30'], relevanceType: 'impacto_precio', impact,
+        portfolioImpactAnalysis: { directExplanation: 'Clasificación exclusiva de prueba.', affectedHoldings: [{ symbol: 'AL30', impactDirection: impact, relationshipDetail: 'Relación exclusiva de prueba.' }] } };
+    });
     await clickVisible(page, 'Actualizar pulso');
     const group = page.getByRole('group', { name: 'Filtrar noticias por impacto', exact: true });
     await group.getByRole('button', { name: 'Alertas: 1 noticias', exact: true }).waitFor();

@@ -1,6 +1,6 @@
 // Change this namespace when the news format or coverage pipeline changes.
 // Only news caches are invalidated; sessions and personal calendars are kept.
-export const NEWS_CACHE_VERSION = 'v6_asset_catalog';
+export const NEWS_CACHE_VERSION = 'v7_asset_relevance';
 export const NEWS_CLIENT_CACHE_PREFIX = `faros_news_${NEWS_CACHE_VERSION}_`;
 
 export function newsCacheKey(portfolioId: string, hourKey: string): string {

@@ -1,6 +1,8 @@
-import { Portfolio, NewsItem, CalendarEvent, RiskProfile } from '../types/index';
+import { Portfolio, NewsItem, CalendarEvent } from '../types/index';
 import { NowAR, getNowAR } from './dateAR';
 import { calculateEstimatedDuration } from './audioController';
+import { getPortfolioAffectedAssetIds, getPortfolioNewsImpact } from './portfolioNews';
+import { distinctMediaSources } from './sourceGrounding';
 
 export interface DailySummaryResult {
   script: string;
@@ -118,18 +120,7 @@ export function naturalizeScriptForSpeech(raw: string): string {
   return text;
 }
 
-/**
- * Generates an authentic, fully grounded Daily Financial Audio Script
- * specifically calibrated between 320 and 450 words (2 to 3 minutes of speech).
- *
- * Uses:
- * 1. Current Argentina date and time (hour slot)
- * 2. User's active portfolio assets and risk profile
- * 3. Verified breaking news and market transmission
- * 4. Portfolio calendar events for today and upcoming sessions
- * 5. Explicit notice if data/sources are sparse, filling ONLY with verifiable macro context
- * 6. Zero buy/sell recommendations (pure objective market reporting)
- */
+/** Generates an informative audio summary from the supplied portfolio, publications and calendar. */
 export function generateDailySummaryScript(
   portfolio: Portfolio,
   newsList: NewsItem[],
@@ -138,157 +129,76 @@ export function generateDailySummaryScript(
 ): DailySummaryResult {
   const nowAR = customNowAR || getNowAR();
   const timeSlot = getTimeSlot(nowAR.hour);
-  const profile = portfolio.profile || 'moderado';
-  const portfolioName = portfolio.name || 'Cartera Principal';
-  const userTickers = (portfolio.assetIds && portfolio.assetIds.length > 0)
-    ? portfolio.assetIds
-    : ['AL30', 'GD30', 'MEP'];
-
-  // 1. Apertura según horario en Argentina (con voseo natural y oraciones habladas)
-  let opening = '';
-  if (timeSlot === 'manana') {
-    opening = `Muy buenos días. Arrancamos este ${nowAR.formattedSpanish} con el resumen del día de FAROS para tu cartera ${portfolioName}. Antes de la apertura formal de la plaza local y Wall Street, mirá las principales variables que impactan en tus activos para que arranques la jornada con claridad.`;
-  } else if (timeSlot === 'mediodia') {
-    opening = `Buenas tardes. Llegamos a la media rueda de este ${nowAR.formattedSpanish} con el reporte de FAROS para tu cartera ${portfolioName}. Con la operatoria en pleno desarrollo en el mercado cambiario y la bolsa porteña, repasamos cómo vienen moviéndose las cotizaciones de tus instrumentos.`;
-  } else {
-    opening = `Buenas tardes. Cerramos la rueda de este ${nowAR.formattedSpanish} con el balance de FAROS para tu cartera ${portfolioName}. Con el mercado ya finalizado en la plaza local y en Nueva York, te contamos los acontecimientos clave que definieron los valores de tus posiciones.`;
-  }
-
-  // 2. Bloque de perfil de inversor (estilo directo y explicativo)
-  let profileSection = '';
-  if (profile === 'conservador') {
-    profileSection = `Desde tu perfil conservador, el foco está puesto en la solidez de la deuda soberana en dólares, la estabilidad de las cotizaciones del dólar MEP y en mantener acotada la volatilidad de tu patrimonio.`;
-  } else if (profile === 'dinamico') {
-    profileSection = `Bajo tu perfil dinámico, el radar sigue de cerca las oscilaciones tácticas en renta variable, el volumen en acciones líderes y la respuesta de los CEDEARs ante el comportamiento de las tasas internacionales.`;
-  } else {
-    profileSection = `Con tu perfil moderado, buscamos un balance constante entre la paridad de los bonos soberanos y la evolución de las empresas de energía y el sector bancario.`;
-  }
-
-  // 3. Bloque de balance de noticias y desglose simétrico de riesgos y oportunidades
-  const relevantNews = newsList.filter(item =>
-    item.affectedAssetIds.some(aid => userTickers.includes(aid))
-  );
-
-  const favorableNews = relevantNews.filter(n => n.impact === 'favorable' || n.impact === 'positivo');
-  const riskAlertNews = relevantNews.filter(n => n.impact === 'alerta' || n.impact === 'negativo');
-  const neutralNews = relevantNews.filter(n => n.impact === 'neutral' || n.impact === 'neutro');
-
-  let newsSection = '';
-
-  if (relevantNews.length > 0) {
-    const balanceIntro = `En el balance de hoy para tus activos, registramos ${favorableNews.length} novedades favorables, ${riskAlertNews.length} alertas de riesgo y ${neutralNews.length} acontecimientos de contexto neutral.`;
-
-    let riskDetails = '';
-    if (riskAlertNews.length > 0) {
-      const riskItems = riskAlertNews.slice(0, 2).map(n => {
-        const syms = n.affectedAssetIds.filter(aid => userTickers.includes(aid)).join(' y ');
-        return `sobre ${syms}, ${n.headline}. ${n.briefSummary.replace(/\.$/, '')}`;
-      }).join('. Además, ');
-      riskDetails = `Mirando primero las alertas de riesgo y factores de cautela: ${riskItems}. Analizá con detenimiento este factor de presión sobre tus posiciones.`;
-    } else {
-      riskDetails = `En cuanto a riesgos, las fuentes monitoreadas de Ámbito, El Cronista, Infobae, BCRA e INDEC no registran hechos adversos directos sobre tus tenencias en las últimas horas.`;
-    }
-
-    let favorableDetails = '';
-    if (favorableNews.length > 0) {
-      const favItems = favorableNews.slice(0, 2).map(n => {
-        const syms = n.affectedAssetIds.filter(aid => userTickers.includes(aid)).join(' y ');
-        return `en ${syms}, ${n.headline}. ${n.briefSummary.replace(/\.$/, '')}`;
-      }).join('. Asimismo, ');
-      favorableDetails = `Por el lado de los factores favorables y catalizadores: ${favItems}.`;
-    }
-
-    let neutralDetails = '';
-    if (neutralNews.length > 0) {
-      const neuItem = neutralNews[0];
-      const syms = neuItem.affectedAssetIds.filter(aid => userTickers.includes(aid)).join(' y ');
-      neutralDetails = `En el plano regulatorio y de contexto para ${syms}, ${neuItem.headline}.`;
-    }
-
-    newsSection = `${balanceIntro} ${riskDetails} ${favorableDetails} ${neutralDetails}`.trim();
-  } else {
-    newsSection = `Aviso de cobertura: Hoy las fuentes financieras monitoreadas registran baja emisión de novedades directas sobre tus activos específicos. No se identifican alertas de riesgo ni hechos relevantes. Completamos este informe con el análisis de liquidez en el Banco Central, tasas de interés y la dinámica de los dólares financieros MEP y Contado con Liquidación.`;
-  }
-
-  // 4. Bloque de Calendario Financiero de hoy y próximos vencimientos
-  const todayEvents = calendarEvents.filter(e =>
-    e.date === nowAR.isoDate && Boolean(e.assetSymbol && userTickers.includes(e.assetSymbol))
-  );
-
-  let calendarSection = '';
-  if (todayEvents.length > 0) {
-    const eventDetails = todayEvents.map(e =>
-      `${e.title} para el activo ${e.assetSymbol}, previsto para las ${e.time || 'once'} horas con confirmación oficial`
-    ).join('. También ');
-    calendarSection = `En la agenda de hoy tenés compromisos confirmados en tu calendario: ${eventDetails}. Te sugerimos chequear tu cuenta comitente y las acreditaciones del día.`;
-  } else {
-    const upcomingEvents = calendarEvents
-      .filter(e => e.date >= nowAR.isoDate && Boolean(e.assetSymbol && userTickers.includes(e.assetSymbol)))
-      .slice(0, 2);
-
-    if (upcomingEvents.length > 0) {
-      const upDetails = upcomingEvents.map(e =>
-        `el ${e.date.split('-').reverse().join(' de ')} está previsto ${e.title} de ${e.assetSymbol}`
-      ).join(', y ');
-      calendarSection = `Para hoy no se registran pagos de renta ni licitaciones directas en tus activos. Pero tené presente que en la agenda cercana, ${upDetails}. Esto te permite planificar tu liquidez con tiempo.`;
-    } else {
-      calendarSection = `En el calendario de hoy no hay pagos de cupones ni vencimientos programados para tus instrumentos. El cronograma continúa según lo previsto en las emisiones oficiales.`;
-    }
-  }
-
-  // 5. Bloque Macro y Contexto de Mercado (Objetivo y verificable)
-  const macroSection = `En el frente macroeconómico, los operadores miran con atención la intervención diaria del Banco Central en el mercado de cambios, la consolidación del superávit fiscal y la evolución del riesgo país en las pantallas internacionales. Esas tres variables son el termómetro clave para la estabilidad financiera de la plaza local.`;
-
-  // 6. Cierre
-  const closingSection = `Con estos datos, tu cartera ${portfolioName} queda monitoreada para la rueda. En FAROS seguimos minuto a minuto las fuentes financieras oficiales para avisarte únicamente cuando ocurra un hecho relevante para tus inversiones. Que tengas una muy buena jornada.`;
-
-  // Párrafos complementarios verificables en caso de necesitar expansión
-  const expansionParagraphs = [
-    `Mirá también el comportamiento de las tasas implícitas en el mercado de futuros y cauciones bursátiles. La estabilidad de la brecha cambiaria entre el tipo de cambio oficial y los dólares financieros refleja una postura de cautela por parte de los inversores corporativos, aportando previsibilidad para tus posiciones.`,
-    `Por otra parte, para las posiciones vinculadas a la energía como YPF y Pampa Energía, el avance en la infraestructura de transporte desde Vaca Muerta sigue marcando un soporte productivo concreto, más allá de las variaciones lógicas de corto plazo en las cotizaciones diarias.`,
-    `Tené en cuenta que FAROS no emite recomendaciones de compra o venta de acciones ni bonos. Nuestra tarea es puramente informativa y de validación periodística, para que tomes tus propias decisiones con datos corroborados y sin ruidos innecesarios.`
+  const userTickers = new Set(portfolio.assetIds);
+  const sections = [
+    `Resumen FAROS del ${nowAR.formattedSpanish} para tu cartera ${portfolio.name || 'Cartera Principal'}.`,
   ];
+  if (!userTickers.size) sections.push('Tu cartera no tiene activos seleccionados.');
 
-  // Asamblar guion base
-  let rawScript = `${opening} ${profileSection} ${newsSection} ${calendarSection} ${macroSection} ${closingSection}`;
-  let script = naturalizeScriptForSpeech(rawScript);
-  let words = countWords(script);
+  const relevantNews = [...new Map(newsList.map(item => [item.id, item])).values()]
+    .filter(item => getPortfolioAffectedAssetIds(item, portfolio.assetIds).length > 0
+      && (item.factCheck.status === 'confirmado' || item.factCheck.status === 'en_analisis'))
+    .map(item => ({ item, sources: distinctMediaSources(item.sources).filter(source => source.originalHeadline?.trim()) }))
+    .filter(({ item, sources }) => item.headline.trim() && sources.length > 0);
 
-  let expIndex = 0;
-  while (words < 320 && expIndex < expansionParagraphs.length) {
-    rawScript = `${opening} ${profileSection} ${newsSection} ${expansionParagraphs[expIndex]} ${calendarSection} ${macroSection} ${closingSection}`;
-    script = naturalizeScriptForSpeech(rawScript);
-    words = countWords(script);
-    expIndex++;
-  }
-
-  // Si aún queda por debajo de 320 palabras, sumamos un bloque de contexto verificable de próxima rueda
-  if (words < 320) {
-    const extraRueda = `De cara a la próxima rueda operativa, conviene prestar especial atención a las licitaciones de deuda del Tesoro Nacional y al volumen negociado en el segmento de cauciones en pesos, variables que definen el costo del dinero en el sistema bancario.`;
-    rawScript = `${opening} ${profileSection} ${newsSection} ${expansionParagraphs[0]} ${extraRueda} ${calendarSection} ${macroSection} ${closingSection}`;
-    script = naturalizeScriptForSpeech(rawScript);
-    words = countWords(script);
-  }
-
-  // Si excede 450 palabras, recortar oraciones intermedias secundarias
-  if (words > 450) {
-    const sentences = script.split('. ');
-    while (sentences.length > 5 && countWords(sentences.join('. ')) > 445) {
-      sentences.splice(Math.floor(sentences.length / 2), 1);
+  const relevanceLabels: Record<NewsItem['relevanceType'], string> = {
+    impacto_precio: 'hecho material o variación de cotización reportados; la categoría por sí sola no prueba que el precio haya cambiado',
+    valoracion_mercado: 'información para la valoración, sin reacción de cotización demostrada',
+    contexto_macro: 'contexto macroeconómico, sin efecto de precio específico demostrado',
+    ruido: 'ruido, sin efecto financiero específico suficientemente acreditado',
+  };
+  if (!relevantNews.length) {
+    sections.push('No hay noticias verificadas para tus activos en esta consulta. Esto no demuestra ausencia de riesgos.');
+  } else {
+    sections.push(`Este resumen incluye ${Math.min(relevantNews.length, 6)} de las ${relevantNews.length} publicaciones relevantes con fuente disponibles en esta consulta.`);
+    for (const { item, sources } of relevantNews.slice(0, 6)) {
+      const selected = getPortfolioAffectedAssetIds(item, portfolio.assetIds);
+      const positions = selected.map(id => `${id}, posición ${portfolio.assetPositions?.[id] === 'short' ? 'SHORT' : 'LONG'}`).join('; ');
+      const verification = item.factCheck.status === 'confirmado'
+        ? 'Estado de verificación registrado: confirmado.'
+        : 'La verificación del hecho sigue en análisis; no se presenta como confirmado.';
+      sections.push(`Para ${positions}. Según ${sources.map(source => source.mediaName).join(' y ')}, el titular publicado es: ${item.headline}. ${verification} Clasificación: ${relevanceLabels[item.relevanceType]}.`);
+      const effect = getPortfolioNewsImpact(item, portfolio);
+      if (effect === 'favorable' || effect === 'positivo') {
+        sections.push('La lectura para tus posiciones es condicionalmente favorable, si el efecto identificado se traslada al valor de los instrumentos. No anticipa una cotización.');
+      } else if (effect === 'alerta' || effect === 'negativo') {
+        sections.push('La lectura para tus posiciones es condicionalmente desfavorable, si el efecto identificado se traslada al valor de los instrumentos. No anticipa una cotización.');
+      } else {
+        sections.push('No se establece una dirección neta favorable o desfavorable para tus posiciones.');
+      }
     }
-    script = sentences.join('. ');
-    if (!script.endsWith('.')) script += '.';
-    words = countWords(script);
   }
 
-  const durationEst = calculateEstimatedDuration(script, 1.0);
+  const upcomingEvents = [...new Map(calendarEvents.map(event => [event.id, event])).values()]
+    .filter(event => event.date >= nowAR.isoDate && (event.assetSymbol
+      ? userTickers.has(event.assetSymbol)
+      : event.isMacro || event.category === 'macro_bcra' || event.category === 'elecciones_politica'))
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || ''));
+  if (upcomingEvents.length) {
+    sections.push('Próximos registros recibidos del calendario:');
+    for (const event of upcomingEvents.slice(0, 3)) {
+      const status = event.isCustom ? 'recordatorio personal, sin validación como evento oficial'
+        : event.status === 'estimada' ? 'fecha estimada'
+          : event.status === 'confirmada' ? 'figura como confirmado en el calendario recibido'
+            : event.status === 'realizado' ? 'registrado como realizado'
+              : 'sin estado de confirmación informado';
+      const asset = event.assetSymbol ? `, para ${event.assetSymbol}` : ', de alcance general';
+      const time = event.time?.trim() ? `, a las ${event.time}` : ', sin horario informado';
+      sections.push(`${event.title}${asset}, el ${event.date}${time}: ${status}.`);
+    }
+  } else {
+    sections.push('No se recibieron registros de calendario para hoy o fechas posteriores aplicables a tu cartera. Esto no confirma que no existan otros eventos o vencimientos.');
+  }
+  sections.push('Este resumen es informativo y no contiene recomendaciones de compra o venta.');
 
+  const script = naturalizeScriptForSpeech(sections.join(' '));
+  const durationEst = calculateEstimatedDuration(script, 1.0);
   return {
     script,
-    wordCount: words,
+    wordCount: countWords(script),
     durationText: `${durationEst.formatted} min`,
     durationSeconds: durationEst.seconds,
     timeSlot,
-    generatedAtIso: new Date().toISOString()
+    generatedAtIso: new Date().toISOString(),
   };
 }

@@ -1,6 +1,6 @@
 import { recognizeAssetIds } from '../utils/assetNews.js';
 import { portfolioAssets } from '../data/assetCatalog.js';
-import { getEffectiveImpactForPortfolio } from '../types/index.js';
+import { getPortfolioNewsImpact } from '../utils/portfolioNews.js';
 import crypto from 'node:crypto';
 import webPush from 'web-push';
 import { waitUntil } from '@vercel/functions';
@@ -149,7 +149,7 @@ export async function enqueueNews(user: StoredUser, news: NewsItem[]): Promise<v
     const ownManualRelations = recognizeAssetIds(item.sources.map(source => source.originalHeadline).join(' '), manual);
     const affected = [...new Set([...(item.affectedAssetIds || []).filter(id => !manualIds.has(id)), ...ownManualRelations])].filter(id => holdings.includes(id));
     if (!key || !affected.length || !user.preferences?.enabledRelevanceTypes.includes(item.relevanceType)) continue;
-    const impact = getEffectiveImpactForPortfolio(item.impact, affected, Object.fromEntries(holdings.map(id => [id, user.portfolio?.assetPositions?.[id] || 'long'])));
+    const impact = getPortfolioNewsImpact({ ...item, affectedAssetIds: affected }, { assetIds: holdings, assetPositions: user.portfolio?.assetPositions });
     if (user.preferences.alertOnHighImpactOnly && (item.relevanceType !== 'impacto_precio' || impact === 'neutral')) continue;
     await enqueue(user.id, `news:${key}`, 'news', { title: item.headline.slice(0, 500), newsId: item.id, impact, affectedHoldings: affected.join(' · '), reason: item.briefSummary.slice(0, 1500), mediaName: item.sources[0].mediaName, sourceUrl: item.sources[0].sourceUrl, publishedTime: item.sources[0].publishedTime });
   }
