@@ -11,6 +11,7 @@ import { once } from 'node:events';
 import { chromium } from 'playwright-core';
 import { MOCK_PORTFOLIOS, DEFAULT_PREFERENCES } from '../src/data/mockData.ts';
 import { REAL_GROUNDED_NEWS } from '../src/data/groundedRealNews.ts';
+import { ASSET_CATALOG } from '../src/data/assetCatalog.ts';
 
 const artifacts = process.env.BROWSER_ARTIFACTS || path.join(tmpdir(), 'faros-browser-checks');
 await mkdir(artifacts, { recursive: true });
@@ -178,23 +179,48 @@ try {
       await context.close();
     }
   });
-  await check('Carga manual documentada conserva identidad y no desborda en celular', async () => {
-    const { context, page, state } = await setup({ viewport: { width: 390, height: 844 } });
-    await clickVisible(page, 'Ahora no'); await clickVisible(page, 'Mi cartera');
-    await page.getByText('¿No encontrás tu instrumento? Cargar identificación', { exact: true }).click();
-    await page.getByLabel('Identificador o especie', { exact: true }).fill('TEST01');
-    await page.getByLabel('Nombre completo', { exact: true }).fill('Instrumento exclusivo de prueba');
-    await page.getByLabel('Emisor', { exact: true }).fill('Emisor exclusivo de prueba');
-    await page.getByLabel('Categoría', { exact: true }).selectOption('fondos');
-    await page.getByLabel('Enlace a ficha o prospecto', { exact: true }).fill('https://example.test/ficha');
-    await fits(page, 'Formulario manual');
-    await clickVisible(page, 'Revisar LONG / SHORT'); await clickVisible(page, 'Agregar a mi cartera (LONG)');
-    await page.getByRole('button', { name: 'Quitar BYMA:ARS:TEST01', exact: true }).waitFor();
-    assert.equal(state.user.portfolio.customAssets[0].id, 'BYMA:ARS:TEST01');
-    await page.reload(); await clickVisible(page, 'Mi cartera');
-    await page.getByRole('button', { name: 'Quitar BYMA:ARS:TEST01', exact: true }).waitFor();
-    await fits(page, 'Ficha manual recuperada');
-    await context.close();
+  await check('Lista completa de activos sin escribir, sin carga manual y seleccionable más allá de 60 en tres tamaños', async () => {
+    for (const size of [{ width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1440, height: 1000 }]) {
+      const { context, page, state } = await setup({ viewport: size });
+      await clickVisible(page, 'Ahora no'); await clickVisible(page, 'Mi cartera');
+      const search = page.getByPlaceholder('Escribí el símbolo o nombre del activo...');
+      const available = ASSET_CATALOG.filter(asset => !state.user.portfolio.assetIds.includes(asset.id));
+      const list = page.getByRole('region', { name: 'Activos disponibles', exact: true });
+      await list.waitFor();
+      assert.equal(await search.inputValue(), '');
+      assert.equal(await page.getByText('¿No encontrás tu instrumento? Cargar identificación', { exact: true }).count(), 0);
+      assert.equal(await page.getByLabel('Identificador o especie', { exact: true }).count(), 0);
+      assert.ok(available.length > 60, 'La prueba debe alcanzar opciones que antes se ocultaban');
+      assert.equal(await list.getByRole('button').count(), available.length, 'Todas las opciones no poseídas deben estar presentes sin escribir');
+      const listedIds = await list.getByRole('button').evaluateAll(buttons => buttons.map(button => button.dataset.assetId));
+      assert.deepEqual(listedIds.sort(), available.map(asset => asset.id).sort(), 'La lista contiene cada instrumento disponible exactamente una vez');
+      const bounds = await list.evaluate(element => ({ height: element.clientHeight, scroll: element.scrollHeight, overflow: getComputedStyle(element).overflowY }));
+      assert.ok(bounds.height > 0 && bounds.height <= size.height / 2, `La lista debe ocupar un espacio acotado: ${JSON.stringify(bounds)}`);
+      assert.ok(bounds.scroll > bounds.height && ['auto', 'scroll'].includes(bounds.overflow), 'Todas las opciones deben alcanzarse con scroll');
+      await fits(page, `Lista completa a ${size.width}`);
+      await page.locator('[data-tour="portfolio-search"]').screenshot({ path: path.join(artifacts, `asset-selector-${size.width}.png`) });
+
+      await search.fill('microsoft');
+      await list.getByText('MSFT', { exact: true }).waitFor();
+      assert.equal(await list.getByRole('button').count(), 1, 'La búsqueda filtra la misma lista');
+      await search.fill('');
+      const last = available.at(-1);
+      await list.getByText(last.symbol, { exact: true }).waitFor();
+      assert.equal(await list.getByRole('button').count(), available.length, 'Limpiar la búsqueda restaura todas las opciones');
+      const option = list.getByRole('button').filter({ has: page.getByText(last.symbol, { exact: true }) });
+      await option.click();
+      await clickVisible(page, 'Agregar a mi cartera (LONG)');
+      await page.getByRole('button', { name: `Quitar ${last.id}`, exact: true }).waitFor();
+      assert.ok(state.user.portfolio.assetIds.includes(last.id), 'Debe guardarse una opción situada más allá de las primeras 60');
+      await list.waitFor();
+      assert.equal(await list.getByRole('button').count(), available.length - 1);
+      assert.equal(await list.getByText(last.symbol, { exact: true }).count(), 0, 'Un activo ya incorporado no vuelve a ofrecerse para duplicarlo');
+      await page.reload(); await clickVisible(page, 'Mi cartera');
+      await page.getByRole('button', { name: `Quitar ${last.id}`, exact: true }).waitFor();
+      assert.equal(await list.getByRole('button').count(), available.length - 1, 'La selección y la lista se recuperan al recargar');
+      await fits(page, `Lista recuperada a ${size.width}`);
+      await context.close();
+    }
   });
   await check('Renueva noticias de la versión anterior sin tocar la sesión ni el calendario', async () => {
     const { context, page, state } = await setup({ legacyNews: true });

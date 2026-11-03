@@ -1,5 +1,4 @@
 import { portfolioAssets, searchAssets, CATEGORY_LABELS } from '../data/assetCatalog';
-import { ManualAssetForm } from './ManualAssetForm';
 import { usePendingChanges } from '../hooks/usePendingChanges';
 import React, { useState, useEffect } from 'react';
 import { 
@@ -101,7 +100,6 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
       const updated: Portfolio = {
         ...portfolio,
         assetIds: [...portfolio.assetIds, assetId],
-        customAssets: selectedCandidate?.manual && !portfolio.customAssets?.some(a => a.id === assetId) ? [...(portfolio.customAssets || []), selectedCandidate] : portfolio.customAssets,
         assetPositions: {
           ...(portfolio.assetPositions || {}),
           [assetId]: position
@@ -302,7 +300,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
               Buscar e incorporar activos a tu cartera:
             </label>
             <p className="text-[11px] text-muted">
-              Buscá por ticker, nombre, emisor o alias (ej: AL30, Microsoft, Córdoba, QQQ). Podés agregar todos los que desees.
+              Elegí de la lista o buscá por ticker, nombre, emisor o alias (ej: AL30, Microsoft, Córdoba, QQQ).
             </p>
           </div>
 
@@ -310,6 +308,8 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
             <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-muted" />
             <input
               type="text"
+              aria-label="Buscar activos"
+              aria-controls="portfolio-available-assets"
               value={assetSearch}
               onChange={(e) => setAssetSearch(e.target.value)}
               placeholder="Escribí el símbolo o nombre del activo..."
@@ -317,46 +317,45 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
             />
           </div>
 
-          {/* Quick results dropdown if typing */}
-          {assetSearch.trim().length > 0 && !selectedCandidate && (
-            <div className="p-2 rounded-2xl border border-ink-200 bg-paper shadow-lg max-h-52 overflow-y-auto space-y-1">
+          {/* Keep the whole catalog available, including before entering a query. */}
+          {!selectedCandidate && (
+            <div>
+              <p className="text-xs text-muted mb-2" role="status">{unownedAssets.length} activos disponibles{assetSearch.trim() ? ' para esta búsqueda' : ''}</p>
+              <div id="portfolio-available-assets" role="region" aria-label="Activos disponibles" className="p-2 rounded-2xl border border-ink-200 bg-paper shadow-lg max-h-72 overflow-y-auto overscroll-contain space-y-1">
               {unownedAssets.length === 0 ? (
                 <p className="text-xs text-muted p-3 text-center">
                   No se encontraron activos disponibles o ya están en tu cartera.
                 </p>
               ) : (
-                unownedAssets.slice(0, 60).map(a => (
-                  <div
+                unownedAssets.map(a => (
+                  <button
+                    type="button"
                     key={a.id}
+                    data-asset-id={a.id}
                     onClick={() => {
                       setSelectedCandidate(a);
                       setPendingPosition('long');
                     }}
-                    role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedCandidate(a); setPendingPosition('long'); } }} className="p-2.5 rounded-xl hover:bg-brand-50/60 flex items-center justify-between text-xs border border-transparent hover:border-brand-200 transition-colors cursor-pointer group"
+                    className="w-full min-w-0 p-2.5 rounded-xl hover:bg-brand-50/60 focus-visible:outline-2 focus-visible:outline-brand-700 flex items-center justify-between gap-2 text-left text-xs border border-transparent hover:border-brand-200 transition-colors cursor-pointer group"
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="w-7 h-7 rounded-lg bg-brand-950 text-paper font-mono font-bold text-xs flex items-center justify-center">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="w-7 h-7 shrink-0 rounded-lg bg-brand-950 text-paper font-mono font-bold text-xs flex items-center justify-center">
                         {a.symbol.slice(0, 2)}
                       </span>
-                      <div>
+                      <span className="min-w-0 break-words">
                         <span className="font-mono font-bold text-ink-900 mr-2 group-hover:text-brand-950">{a.symbol}</span>
                         <span className="text-muted text-[11px]">{a.name} · {a.market} · {a.currency} · {CATEGORY_LABELS[a.category]}{a.manual ? " · Manual" : ""}</span>
-                      </div>
-                    </div>
-                    <span className="text-xs font-bold text-brand-900 bg-brand-100/70 px-2.5 py-1 rounded-lg">
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-xs font-bold text-brand-900 bg-brand-100/70 px-2.5 py-1 rounded-lg">
                       Seleccionar
                     </span>
-                  </div>
+                  </button>
                 ))
               )}
+              </div>
             </div>
           )}
-
-          {!selectedCandidate && <ManualAssetForm onSelect={asset => {
-            if (portfolio.assetIds.includes(asset.id)) { setAssetSearch(asset.symbol); return; }
-            setSelectedCandidate(asset); setPendingPosition('long');
-          }} />}
-          {unownedAssets.length > 60 && assetSearch.trim() && <p className="text-xs text-muted">Mostrando 60 de {unownedAssets.length}. Refiná la búsqueda por emisor o categoría.</p>}
           {/* Step 3: NUEVA FUNCIONALIDAD LONG / SHORT Selector Card */}
           {selectedCandidate && (
             <div 
