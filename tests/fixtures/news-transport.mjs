@@ -39,11 +39,18 @@ export function installNewsTransport() {
       }
       return Response.json({ candidates: [candidate] });
     }
+    if (new URL(url).hostname === 'www.bing.com') {
+      const query = new URL(url).searchParams.get('q') || '';
+      const publisher = query.match(/^site:(\S+)/)?.[1];
+      const found = process.env.FAROS_TEST_NEWS_DISCOVERY === '1' ? articles.filter(article => new URL(article.url).hostname === `www.${publisher}`) : [];
+      return new Response(`<rss><channel>${found.map(article => `<item><title>${article.title}</title><link>${article.url}</link></item>`).join('')}</channel></rss>`);
+    }
     const feed = url.includes('/rss/') || url.includes('/outboundfeeds/');
     if (feed) {
       stats.feeds++;
       const publisher = url.includes('ambito.com') ? 'Ámbito' : url.includes('cronista.com') ? 'El Cronista' : 'Infobae';
-      const xml = `<rss><channel>${articles.filter(article => article.media === publisher).map(article => `<item><title><![CDATA[${article.title}]]></title><link>${article.url}</link><pubDate>${new Date(published).toUTCString()}</pubDate></item>`).join('')}</channel></rss>`;
+      const found = process.env.FAROS_TEST_NEWS_DISCOVERY === '1' && publisher !== 'Ámbito' ? [] : articles.filter(article => article.media === publisher);
+      const xml = `<rss><channel>${found.map(article => `<item><title><![CDATA[${article.title}]]></title><link>${article.url}</link><pubDate>${new Date(published).toUTCString()}</pubDate></item>`).join('')}</channel></rss>`;
       return new Response(xml, { headers: { 'content-type': 'application/rss+xml' } });
     }
     const article = articles.find(article => article.url === url);

@@ -73,10 +73,10 @@ before(async () => {
 });
 async function stop(child: ChildProcess) { if (child.exitCode !== null) return; const exit = once(child, 'exit'); child.kill('SIGTERM'); await exit; children.delete(child); }
 after(async () => { for (const child of children) await stop(child); if (artifact) await rm(artifact, { recursive: true, force: true }); });
-async function api(gemini = true, singleMedium = false) {
+async function api(gemini = true, singleMedium = false, discovery = false) {
   const child = fork(new URL('fixtures/native-api-server.mjs', import.meta.url), [pathToFileURL(path.join(artifact, 'api/index.js')).href], {
     cwd: root, execArgv: [], silent: true,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: '', POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '' }
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: '', POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '', FAROS_TEST_NEWS_DISCOVERY: discovery ? '1' : '' }
   });
   children.add(child);
   let output = ''; child.stdout?.on('data', chunk => { output += chunk; }); child.stderr?.on('data', chunk => { output += chunk; });
@@ -187,4 +187,15 @@ test('RSS completa otros medios aunque Gemini solo encuentre Ámbito, sin duplic
   assert.deepEqual(events[0].sources.map((source: MediaCoverage) => source.mediaName).sort(), ['El Cronista', 'Infobae', 'Ámbito'].sort());
   assert.equal(events[0].coverageCount, 3);
   const stats = await server.stats(); assert.equal(stats.searches, 1); assert.equal(stats.feeds, 4);
+});
+
+test('la API encuentra otros medios aunque sus RSS no incluyan la publicación, sin Gemini', async () => {
+  const server = await api(false, false, true);
+  const result = await server.pulse({ portfolioId: 'targeted-coverage', tickers: ['AL30'], profile: 'moderado' });
+  const reserves = result.news.find((item: NewsItem) => item.headline === articles[0].title);
+  assert.ok(reserves);
+  assert.equal(reserves.coverageCount, 3, server.output);
+  assert.deepEqual(reserves.sources.map((source: MediaCoverage) => source.mediaName).sort(), ['El Cronista', 'Infobae', 'Ámbito'].sort());
+  assert.equal(result.coverageDiscovery.searches, 2);
+  assert.equal(result.coverageDiscovery.added, 2);
 });

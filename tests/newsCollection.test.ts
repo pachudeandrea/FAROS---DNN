@@ -195,3 +195,26 @@ test('agrupa el mismo hecho en tres medios, evita duplicados de RSS y separa hec
     assert.ok(general.find(item => item.headline.includes('Australia'))!.affectedAssetIds.length === 0);
   } finally { globalThis.fetch = original; purgeUrlVerificationCache(); }
 });
+
+test('no corta el RSS antes de encontrar una nota relevante situada después de quince candidatas', async t => {
+  const original = globalThis.fetch;
+  purgeUrlVerificationCache();
+  t.after(() => { globalThis.fetch = original; purgeUrlVerificationCache(); });
+  const headline = 'El BCRA compró USD 125 millones y elevó sus reservas';
+  const requested: string[] = [];
+  globalThis.fetch = async input => {
+    const url = String(input);
+    const host = new URL(url).hostname;
+    if (url.includes('/rss/') || url.includes('/outboundfeeds/')) {
+      const titles = [...Array.from({ length: 16 }, (_, i) => `Microsoft presentó su balance trimestral número ${i}`), headline];
+      return new Response(`<rss><channel>${titles.map((title, i) => `<item><title>${title}</title><link>https://${host}/economia/deep-feed-fixture-${i}</link></item>`).join('')}</channel></rss>`);
+    }
+    requested.push(url);
+    const title = url.endsWith('-16') ? headline : 'Microsoft presentó su balance trimestral';
+    return new Response(`<html><head><meta property="og:title" content="${title}"><meta property="article:published_time" content="${new Date().toISOString()}"></head><body><h1>${title}</h1></body></html>`, { headers: { 'content-type': 'text/html' } });
+  };
+  const news = await getLiveVerifiedArgentineNews(['AL30']);
+  assert.equal(news.length, 1);
+  assert.equal(news[0].coverageCount, 3);
+  assert.ok(requested.slice(0, 3).every(url => url.endsWith('-16')), 'Prioriza la nota relevante de cada medio antes de las generales');
+});

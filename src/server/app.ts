@@ -28,6 +28,7 @@ import {
 import { getLiveVerifiedArgentineNews, createCollectionDiagnostics } from '../utils/liveFinancialNews.js';
 import { enrichNewsCoverage, mergeVerifiedNews } from '../utils/newsCoverage.js';
 import { NEWS_CACHE_VERSION } from '../utils/newsCache.js';
+import { discoverMissingCoverage, createCoverageDiscoveryDiagnostics } from '../utils/coverageDiscovery.js';
 import {
   getNowAR,
   setSimulatedDayOffset,
@@ -495,14 +496,15 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
   if (!modelNews.length && rss.status === 'rejected') {
     return res.status(503).json({ code: 'NEWS_SOURCES_UNAVAILABLE', error: 'No se pudieron consultar las fuentes. Intentá actualizar nuevamente.' });
   }
-  const news = mergeVerifiedNews(modelNews, rssNews);
+  const coverageDiscovery = createCoverageDiscoveryDiagnostics();
+  const news = await discoverMissingCoverage(mergeVerifiedNews(modelNews, rssNews), coverageDiscovery);
   newsCache[cacheKey] = { timestamp: Date.now(), news };
   trackEventNonBlocking('news_pulse_query', {
     userId: user?.id,
     metadata: { cached: false, usedGemini: !!modelNews.length, rssAvailable: rss.status === 'fulfilled', tickersCount: tickers.length, newsCount: news.length },
     userAgent: req.get('user-agent')
   });
-  return respondWithNews({ news, diagnostics, cached: false, fallback: !modelNews.length, dateKey, hourKey,
+  return respondWithNews({ news, diagnostics, coverageDiscovery, cached: false, fallback: !modelNews.length, dateKey, hourKey,
     checkedAt: new Date(newsCache[cacheKey].timestamp).toISOString() });
 }));
 

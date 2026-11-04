@@ -121,7 +121,7 @@ export function isFinancialCandidate(title: string, link: string, assets: Asset[
 /**
  * Fetches real candidate articles directly from Argentine financial RSS feeds.
  */
-async function fetchRssCandidates(maxPerFeed = 15, diagnostics = createCollectionDiagnostics(), assets: Asset[] = ASSET_CATALOG): Promise<RawFeedItem[]> {
+async function fetchRssCandidates(maxPerFeed = 100, diagnostics = createCollectionDiagnostics(), assets: Asset[] = ASSET_CATALOG): Promise<RawFeedItem[]> {
   // Push diagnostics before launching requests to keep their order stable even
   // if a slow or unavailable feed finishes last.
   const feedResults = RSS_FEEDS.map(feed => ({ name: feed.name, status: 'unavailable', found: 0, accepted: 0 }));
@@ -315,7 +315,7 @@ export async function verifyNewsCandidates(
 }
 
 export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], diagnostics = createCollectionDiagnostics(), assets: Asset[] = ASSET_CATALOG): Promise<NewsItem[]> {
-  const candidates = await fetchRssCandidates(15, diagnostics, assets);
+  const candidates = await fetchRssCandidates(100, diagnostics, assets);
   const argInfo = getArgentinaDateInfo();
   const verifiedSources = await verifyNewsCandidates(candidates, userTickers, diagnostics, assets);
 
