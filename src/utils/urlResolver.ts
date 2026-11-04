@@ -172,7 +172,7 @@ export interface ResolvedUrlResult {
  * using browser User-Agent and a 5-second timeout.
  * Returns response.url as the final canonical URL.
  */
-export async function resolveFinalUrl(uri: string, timeoutMs = 5000): Promise<ResolvedUrlResult | null> {
+export async function resolveFinalUrl(uri: string, timeoutMs = 5000, signal?: AbortSignal): Promise<ResolvedUrlResult | null> {
   if (!uri || typeof uri !== 'string' || !uri.startsWith('http')) {
     return null;
   }
@@ -180,7 +180,7 @@ export async function resolveFinalUrl(uri: string, timeoutMs = 5000): Promise<Re
   try {
     const response = await fetch(uri, {
       redirect: 'follow',
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
       headers: {
         'User-Agent': BROWSER_USER_AGENT,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -544,15 +544,18 @@ const VERIFICATION_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
  */
 export async function verifySourceUrl(
   rawUri: string,
-  rawTitle?: string
+  rawTitle?: string,
+  signal?: AbortSignal
 ): Promise<VerifiedSourceResult> {
+  if (signal?.aborted) return { verified: false, discardReason: 'Consulta cancelada' };
   const cached = urlVerificationCache.get(rawUri);
-  if (cached && Date.now() - cached.timestamp < VERIFICATION_CACHE_TTL_MS) {
+  if (cached && Date.now() - cached.timestamp < (cached.result.verified ? VERIFICATION_CACHE_TTL_MS : 30000)) {
     return cached.result;
   }
 
   // 1. Resolve final URL (following redirects)
-  const resolved = await resolveFinalUrl(rawUri, 5000);
+  const resolved = await resolveFinalUrl(rawUri, 5000, signal);
+  if (signal?.aborted) return { verified: false, discardReason: 'Consulta cancelada' };
   if (!resolved) {
     const fail: VerifiedSourceResult = {
       verified: false,

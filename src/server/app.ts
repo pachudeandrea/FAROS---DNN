@@ -26,7 +26,7 @@ import {
   getArgentinaDateInfo
 } from '../utils/urlResolver.js';
 import { getLiveVerifiedArgentineNews, createCollectionDiagnostics } from '../utils/liveFinancialNews.js';
-import { enrichNewsCoverage } from '../utils/newsCoverage.js';
+import { enrichNewsCoverage, mergeVerifiedNews } from '../utils/newsCoverage.js';
 import { NEWS_CACHE_VERSION } from '../utils/newsCache.js';
 import {
   getNowAR,
@@ -73,8 +73,7 @@ import {
 import { trackEventNonBlocking, isUserAdmin } from './dbAdapter.js';
 import { 
   synthesizeArgentineSpeech, 
-  prefetchAudioScripts, 
-  computeScriptHash 
+  prefetchAudioScripts
 } from './ttsEngine.js';
 
 dotenv.config();
@@ -185,6 +184,8 @@ async function fetchGroundedNewsFromGemini(tickers: string[], portfolioProfile: 
     return null;
   }
 
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), 20000);
   try {
     const argDate = getNowAR();
     const tickersStr = describeAssets(tickers.length ? tickers : ['AL30', 'GD30', 'YPFD', 'GGAL', 'MEP', 'CCL'], assets);
@@ -206,7 +207,7 @@ Detallá los hechos concretos, cifras y mecanismos de transmisión respaldados p
       model: 'gemini-3.8-flash',
       contents: searchPrompt,
       config: {
-        tools: [{ googleSearch: {} }]
+        tools: [{ googleSearch: {} }], abortSignal: controller.signal, httpOptions: { timeout: 8000 }
       }
     });
 
@@ -230,30 +231,23 @@ Detallá los hechos concretos, cifras y mecanismos de transmisión respaldados p
     const rawChunkToSourceId = new Map<number, number>();
     let sourceIdCounter = 1;
 
-    for (let i = 0; i < rawChunks.length; i++) {
-      const chunk = rawChunks[i];
-      const uri = chunk.web?.uri;
-      const title = chunk.web?.title;
-
-      if (!uri || typeof uri !== 'string') continue;
-
-      const vResult = await verifySourceUrl(uri, title);
-      if (!vResult.verified || !vResult.source) {
-        continue;
+    const candidates = rawChunks.slice(0, 24);
+    const results: Awaited<ReturnType<typeof verifySourceUrl>>[] = new Array(candidates.length);
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(4, candidates.length) }, async () => {
+      while (!controller.signal.aborted && next < candidates.length) {
+        const index = next++;
+        const chunk = candidates[index];
+        const uri = chunk.web?.uri;
+        if (typeof uri === 'string') results[index] = await verifySourceUrl(uri, chunk.web?.title, controller.signal);
       }
-
-      validSourcesMap.set(sourceIdCounter, {
-        id: sourceIdCounter,
-        mediaName: vResult.source.mediaName,
-        originalHeadline: vResult.source.originalHeadline,
-        sourceUrl: vResult.source.sourceUrl,
-        domain: vResult.source.domain,
-        publishedTime: vResult.source.publishedTime,
-        publishedDateIso: vResult.source.publishedDateIso,
-        publishedTimestamp: vResult.source.publishedTimestamp
-      });
-      rawChunkToSourceId.set(i, sourceIdCounter);
-      sourceIdCounter++;
+    }));
+    if (controller.signal.aborted) return null;
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      if (!result?.verified || !result.source) continue;
+      validSourcesMap.set(sourceIdCounter, { id: sourceIdCounter, ...result.source });
+      rawChunkToSourceId.set(i, sourceIdCounter++);
     }
 
     if (validSourcesMap.size === 0) {
@@ -318,7 +312,7 @@ Respondé ÚNICAMENTE con un JSON con el siguiente esquema:
       model: 'gemini-3.8-flash',
       contents: extractionPrompt,
       config: {
-        responseMimeType: 'application/json'
+        responseMimeType: 'application/json', abortSignal: controller.signal, httpOptions: { timeout: 8000 }
       }
     });
 
@@ -389,11 +383,14 @@ Respondé ÚNICAMENTE con un JSON con el siguiente esquema:
 
     return finalNewsItems.length > 0 ? enrichNewsCoverage(finalNewsItems, Array.from(validSourcesMap.values())) : null;
   } catch (error: any) {
-    console.error('Error in fetchGroundedNewsFromGemini:', error?.message || error);
+    console.warn('[NEWS SEARCH] La búsqueda externa no estuvo disponible en su plazo.');
     if (error?.status === 429 || error?.message?.includes('RESOURCE_EXHAUSTED')) {
       rateLimitCooldownUntil = Date.now() + 60000;
     }
     return null;
+  } finally {
+    clearTimeout(deadline);
+    controller.abort();
   }
 }
 
@@ -487,66 +484,26 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
     });
   }
 
-  const liveNews = await fetchGroundedNewsFromGemini(tickers, profile, assets);
-  if (liveNews && liveNews.length > 0) {
-    newsCache[cacheKey] = {
-      timestamp: Date.now(),
-      news: liveNews
-    };
-
-    trackEventNonBlocking('news_pulse_query', {
-      userId: user?.id,
-      metadata: { cached: false, usedGemini: true, tickersCount: tickers.length, newsCount: liveNews.length },
-      userAgent: req.get('user-agent')
-    });
-
-    return respondWithNews({
-      news: liveNews,
-      checkedAt: new Date(newsCache[cacheKey].timestamp).toISOString(),
-      cached: false,
-      fallback: false,
-      dateKey,
-      hourKey
-    });
-  }
-
   const diagnostics = createCollectionDiagnostics();
-  let liveVerifiedNews: NewsItem[];
-  try { liveVerifiedNews = await getLiveVerifiedArgentineNews(tickers, diagnostics, assets); }
-  catch {
+  // Both routes search independently. A successful model response must not suppress other outlets.
+  const [grounded, rss] = await Promise.allSettled([
+    fetchGroundedNewsFromGemini(tickers, profile, assets),
+    getLiveVerifiedArgentineNews(tickers, diagnostics, assets)
+  ]);
+  const modelNews = grounded.status === 'fulfilled' ? grounded.value || [] : [];
+  const rssNews = rss.status === 'fulfilled' ? rss.value : [];
+  if (!modelNews.length && rss.status === 'rejected') {
     return res.status(503).json({ code: 'NEWS_SOURCES_UNAVAILABLE', error: 'No se pudieron consultar las fuentes. Intentá actualizar nuevamente.' });
   }
-  if (liveVerifiedNews && liveVerifiedNews.length > 0) {
-    newsCache[cacheKey] = {
-      timestamp: Date.now(),
-      news: liveVerifiedNews
-    };
-
-    trackEventNonBlocking('news_pulse_query', {
-      userId: user?.id,
-      metadata: { cached: false, usedGemini: false, tickersCount: tickers.length, newsCount: liveVerifiedNews.length },
-      userAgent: req.get('user-agent')
-    });
-
-    return respondWithNews({
-      news: liveVerifiedNews,
-      checkedAt: new Date(newsCache[cacheKey].timestamp).toISOString(),
-      diagnostics,
-      cached: false,
-      fallback: false,
-      dateKey,
-      hourKey
-    });
-  }
-
-  return respondWithNews({
-    news: [],
-    diagnostics,
-    cached: false,
-    fallback: false,
-    dateKey,
-    hourKey
+  const news = mergeVerifiedNews(modelNews, rssNews);
+  newsCache[cacheKey] = { timestamp: Date.now(), news };
+  trackEventNonBlocking('news_pulse_query', {
+    userId: user?.id,
+    metadata: { cached: false, usedGemini: !!modelNews.length, rssAvailable: rss.status === 'fulfilled', tickersCount: tickers.length, newsCount: news.length },
+    userAgent: req.get('user-agent')
   });
+  return respondWithNews({ news, diagnostics, cached: false, fallback: !modelNews.length, dateKey, hourKey,
+    checkedAt: new Date(newsCache[cacheKey].timestamp).toISOString() });
 }));
 
 // --- CALENDAR ENDPOINTS ---
@@ -650,16 +607,20 @@ app.get('/api/audio/file/:filename', (req, res) => {
   res.sendFile(filePath);
 });
 
-app.post('/api/audio/prefetch', (req, res) => {
+app.post('/api/audio/prefetch', asyncRoute(async (req, res) => {
   const { items = [] } = req.body;
-  if (Array.isArray(items) && items.length > 0) {
-    prefetchAudioScripts(items);
+  if (!Array.isArray(items) || items.length > 5 || items.some(item => !item || typeof item.text !== 'string' || item.text.length > 12000)) {
+    return res.status(400).json({ success: false, error: 'La lista de textos de audio no es válida.' });
   }
-  return res.json({ success: true, count: items.length });
-});
+  if (!checkIpRateLimit(`audio:${req.ip || 'ip'}`, 90)) return res.status(429).json({ success: false, error: 'Aguardá unos segundos antes de preparar otro audio.' });
+  const controller = new AbortController();
+  res.on('close', () => { if (!res.writableEnded) controller.abort(); });
+  await prefetchAudioScripts(items, controller.signal);
+  if (!res.destroyed) return res.json({ success: true, count: Math.min(items.length, 2) });
+}));
 
 app.post('/api/audio/synthesize', asyncRoute(async (req, res) => {
-  if (!checkIpRateLimit(req.ip || 'ip', 30)) {
+  if (!checkIpRateLimit(`audio:${req.ip || 'ip'}`, 90)) {
     return res.status(429).json({ 
       success: false, 
       error: 'Demasiadas solicitudes de síntesis de voz. Por favor aguardá unos segundos.' 
@@ -674,8 +635,8 @@ app.post('/api/audio/synthesize', asyncRoute(async (req, res) => {
   });
 
   try {
-    const { text } = req.body;
-    if (!text || typeof text !== 'string') {
+    const { text, voice } = req.body;
+    if (typeof text !== 'string' || !text.trim() || text.length > 12000 || (voice !== undefined && !['es-AR-TomasNeural', 'es-AR-ElenaNeural'].includes(voice))) {
       return res.status(400).json({ 
         success: false, 
         error: 'El texto es requerido para la síntesis de audio.' 
@@ -686,12 +647,13 @@ app.post('/api/audio/synthesize', asyncRoute(async (req, res) => {
       metadata: { textLength: text.length }
     });
 
-    const result = await synthesizeArgentineSpeech(text, abortController.signal);
-    if (!res.writableEnded) {
-      return res.json(result);
+    const result = await synthesizeArgentineSpeech(text, abortController.signal, voice);
+    if (!res.writableEnded && !res.destroyed) {
+      res.setHeader('Cache-Control', 'private, no-store');
+      return res.status(result.success ? 200 : 503).json(result);
     }
   } catch (error: any) {
-    if (error?.message === 'AbortError') {
+    if (error?.name === 'AbortError' || error?.message === 'AbortError') {
       return;
     }
     console.warn('TTS endpoint warning:', error?.message || error);

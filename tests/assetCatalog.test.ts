@@ -72,3 +72,8 @@ test('reconocimiento evita preposiciones, visas migratorias, deuda extranjera y 
   const bcra = recognizeAssetIds('Banco Central de la República Argentina incrementa las reservas');
   assert.ok(bcra.includes('AL30')); assert.ok(!bcra.includes('BOPREAL'));
 });
+
+
+test('bancos centrales extranjeros no se convierten en BCRA ni afectan automáticamente tenencias argentinas', () => {
+  for (const country of ['Australia', 'Nueva Zelanda', 'Brasil', 'Canadá', 'Suiza']) assert.deepEqual(recognizeAssetIds(`El banco central de ${country} aumentó las tasas de interés hasta su nivel más alto`), [], country);
+});

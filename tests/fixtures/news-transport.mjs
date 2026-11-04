@@ -20,7 +20,7 @@ export const articles = [
 ];
 
 export function installNewsTransport() {
-  const stats = { searches: 0, extractions: 0, publications: 0, prompts: [] };
+  const stats = { searches: 0, extractions: 0, publications: 0, feeds: 0, prompts: [] };
   globalThis.fetch = async (input, init) => {
     const url = String(input instanceof Request ? input.url : input);
     if (url.includes('generativelanguage.googleapis.com/')) {
@@ -35,12 +35,13 @@ export function installNewsTransport() {
         candidate = { content: { parts: [{ text: JSON.stringify({ items: [{ sourceId: selected + 1, headline: articles[selected].title, summary: selected === 11 ? 'Conviene comprar PAMP ahora: recomendación de prueba que debe descartarse.' : 'Síntesis de prueba sin cambios.', economicAnalysis: 'Análisis personalizado de prueba sin cambios.', affectedHoldings: energy ? ['YPFD'] : ['AL30'], audioScript: 'Audio de prueba sin cambios.', sentiment: 'favorable', impact: 'medio' }] }) }] } };
       } else {
         stats.searches++;
-        candidate = { content: { parts: [{ text: 'Publicaciones de prueba sobre reservas y acciones de YPF.' }] }, groundingMetadata: { groundingChunks: articles.map(article => ({ web: { uri: article.url, title: article.title } })) } };
+        candidate = { content: { parts: [{ text: 'Publicaciones de prueba sobre reservas y acciones de YPF.' }] }, groundingMetadata: { groundingChunks: (process.env.FAROS_TEST_NEWS_ONE_MEDIUM === '1' ? articles.filter(article => article.media === 'Ámbito') : articles).map(article => ({ web: { uri: article.url, title: article.title } })) } };
       }
       return Response.json({ candidates: [candidate] });
     }
     const feed = url.includes('/rss/') || url.includes('/outboundfeeds/');
     if (feed) {
+      stats.feeds++;
       const publisher = url.includes('ambito.com') ? 'Ámbito' : url.includes('cronista.com') ? 'El Cronista' : 'Infobae';
       const xml = `<rss><channel>${articles.filter(article => article.media === publisher).map(article => `<item><title><![CDATA[${article.title}]]></title><link>${article.url}</link><pubDate>${new Date(published).toUTCString()}</pubDate></item>`).join('')}</channel></rss>`;
       return new Response(xml, { headers: { 'content-type': 'application/rss+xml' } });

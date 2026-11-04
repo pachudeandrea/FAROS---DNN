@@ -73,10 +73,10 @@ before(async () => {
 });
 async function stop(child: ChildProcess) { if (child.exitCode !== null) return; const exit = once(child, 'exit'); child.kill('SIGTERM'); await exit; children.delete(child); }
 after(async () => { for (const child of children) await stop(child); if (artifact) await rm(artifact, { recursive: true, force: true }); });
-async function api(gemini = true) {
+async function api(gemini = true, singleMedium = false) {
   const child = fork(new URL('fixtures/native-api-server.mjs', import.meta.url), [pathToFileURL(path.join(artifact, 'api/index.js')).href], {
     cwd: root, execArgv: [], silent: true,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: '', POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1' }
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: '', POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '' }
   });
   children.add(child);
   let output = ''; child.stdout?.on('data', chunk => { output += chunk; }); child.stderr?.on('data', chunk => { output += chunk; });
@@ -118,12 +118,12 @@ test('la API Gemini agrupa fuentes verificadas y conserva caché, actualización
 
 test('la alternativa RSS conserva la cobertura de tres medios y las fechas verificadas', { timeout: 30000 }, async () => {
   const server = await api(false);
-  const result = await server.pulse({ portfolioId: 'rss-fixture', tickers: ['AL30'], profile: 'moderado' });
+  const result = await server.pulse({ portfolioId: 'rss-fixture', tickers: ['AL30', 'YPFD'], profile: 'moderado' });
   const item = result.news.find((item: NewsItem) => item.headline === articles[0].title);
   assert.ok(item, server.output); assert.equal(item.coverageCount, 3, server.output);
   assert.ok(item.sources.every((source: MediaCoverage) => source.publishedTimestamp && source.publishedDateIso));
-  assert.equal(result.news.filter((item: NewsItem) => item.headline.includes('oleoducto')).length, 1);
-  assert.ok(result.news.some((item: NewsItem) => item.headline.includes('naftas')), 'Mantener un hecho distinto como noticia independiente');
+  assert.equal(result.news.filter((item: NewsItem) => item.sources.some(source => source.sourceUrl === articles[4].url)).length, 1);
+  assert.ok(result.news.some((item: NewsItem) => item.sources.some(source => source.sourceUrl === articles[5].url)), 'Mantener un hecho distinto como noticia independiente');
   assert.equal((await server.stats()).searches, 0);
 });
 
@@ -176,4 +176,15 @@ test('Gemini y RSS conservan rumores como ruido y atribuyen movimientos por acti
     assert.equal(prices.portfolioImpactAnalysis.affectedHoldings.find((holding: any) => holding.symbol === 'AAPL').impactDirection, 'favorable');
     assert.equal(prices.portfolioImpactAnalysis.affectedHoldings.find((holding: any) => holding.symbol === 'MSFT').impactDirection, 'alerta');
   }
+});
+
+
+test('RSS completa otros medios aunque Gemini solo encuentre Ámbito, sin duplicar el acontecimiento', async () => {
+  const server = await api(true, true);
+  const result = await server.pulse({ portfolioId: 'parallel-sources-proof', tickers: ['AL30'], profile: 'moderado' });
+  const events = result.news.filter((item: NewsItem) => item.sources.some(source => source.sourceUrl === articles[0].url));
+  assert.equal(events.length, 1);
+  assert.deepEqual(events[0].sources.map((source: MediaCoverage) => source.mediaName).sort(), ['El Cronista', 'Infobae', 'Ámbito'].sort());
+  assert.equal(events[0].coverageCount, 3);
+  const stats = await server.stats(); assert.equal(stats.searches, 1); assert.equal(stats.feeds, 4);
 });

@@ -1,234 +1,147 @@
-import fs from 'fs';
-import path from 'path';
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
-
-const ROOT_DIR = process.cwd();
-
-// Audio cache is prepared only on use; imports must work on read-only runtimes.
-const AUDIO_CACHE_DIR = path.join('/tmp', 'faros_audio_cache');
-const VOICE_ARGENTINA = 'es-AR-ElenaNeural';
+import { HttpsProxyAgent } from 'https-proxy-agent';
+import { AUDIO_CACHE_VERSION, AUDIO_VOICES, DEFAULT_AUDIO_VOICE, splitSpeechText, type ArgentineVoice } from '../utils/speechText.js';
 
 export interface SynthesisResult {
   success: boolean;
-  audioUrl?: string;
   audioBase64?: string;
   mimeType?: string;
   engine?: string;
   voice?: string;
   cached?: boolean;
-  duration?: number;
-  isStreaming?: boolean;
-  chunkUrl?: string;
-  chunkDuration?: number;
-  totalChunks?: number;
   hash?: string;
   error?: string;
   notice?: string;
   fallbackTextOnly?: boolean;
 }
-
-/**
- * Computes sha256 of text for disk cache keys
- */
-export function computeScriptHash(text: string): string {
-  return crypto.createHash('sha256').update(text.trim()).digest('hex');
-}
-
-/**
- * Splits text into sentences for streaming playback
- */
-function splitSentences(text: string): string[] {
-  const cleaned = text.trim();
-  if (!cleaned) return [];
-  const parts = cleaned.split(/(?<=[.?!])\s+/);
-  return parts.map(p => p.trim()).filter(Boolean);
-}
-
-/**
- * Helper to synthesize given text to an MP3 file using MsEdgeTTS
- */
-async function synthesizeTextToFile(text: string, outputPath: string): Promise<number> {
-  const tts = new MsEdgeTTS();
-  await tts.setMetadata(VOICE_ARGENTINA, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
-
-  return new Promise<number>((resolve, reject) => {
-    try {
-      const { audioStream } = tts.toStream(text);
-      const chunks: Buffer[] = [];
-
-      audioStream.on('data', (chunk: Buffer) => {
-        chunks.push(chunk);
-      });
-
-      audioStream.on('end', () => {
-        try {
-          const buffer = Buffer.concat(chunks);
-          if (buffer.length < 200) {
-            return reject(new Error('Audio generado de tamaño insuficiente'));
-          }
-          fs.writeFileSync(outputPath, buffer);
-          resolve(buffer.length);
-        } catch (writeErr) {
-          reject(writeErr);
-        }
-      });
-
-      audioStream.on('error', (err: any) => {
-        reject(err);
-      });
-    } catch (err) {
-      reject(err);
-    }
+export type SpeechTransport = (text: string, voice: ArgentineVoice, signal: AbortSignal) => Promise<Buffer>;
+const abortError = () => Object.assign(new Error('Audio cancelado'), { name: 'AbortError' });
+function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const cancel = () => reject(abortError());
+    signal.addEventListener('abort', cancel, { once: true });
+    if (signal.aborted) cancel();
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', cancel));
   });
 }
-
-/**
- * Warm up TTS engine in-process without port collisions or daemon processes
- */
-export async function ensurePiperDaemon(): Promise<boolean> {
-  try {
-    if (!fs.existsSync(AUDIO_CACHE_DIR)) {
-      fs.mkdirSync(AUDIO_CACHE_DIR, { recursive: true });
-    }
-    return true;
-  } catch {
-    return false;
-  }
+const escapeXml = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+export function computeScriptHash(text: string, voice: ArgentineVoice = DEFAULT_AUDIO_VOICE): string {
+  return crypto.createHash('sha256').update(`${AUDIO_CACHE_VERSION}:${voice}:${text.trim()}`).digest('hex');
 }
 
-/**
- * Asynchronously prefetches audio scripts into disk cache
- */
-export async function prefetchAudioScripts(items: Array<{ text: string; hash?: string }>): Promise<void> {
-  if (!items || items.length === 0) return;
-  if (!await ensurePiperDaemon()) return;
+/** Each segment completes inside its HTTP request. No second file or persistent instance is required. */
+export const edgeSpeechTransport: SpeechTransport = async (text, voice, signal) => {
+  const proxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+  const agent = proxy ? new HttpsProxyAgent(proxy) : undefined;
+  const tts = new MsEdgeTTS({ agent, connectionTimeoutMs: 4500, synthesisTimeoutMs: 5500 });
+  let stream: ReturnType<MsEdgeTTS['toStream']>['audioStream'] | undefined;
+  const cancel = () => { stream?.destroy(abortError()); tts.close(); };
+  signal.addEventListener('abort', cancel, { once: true });
+  try {
+    if (signal.aborted) throw abortError();
+    await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+    if (signal.aborted) throw abortError();
+    stream = tts.toStream(escapeXml(text), { rate: 1, pitch: '+0Hz' }).audioStream;
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    for await (const chunk of stream) {
+      if (signal.aborted) throw abortError();
+      bytes += chunk.length;
+      if (bytes > 2 * 1024 * 1024) throw new Error('AUDIO_TOO_LARGE');
+      chunks.push(Buffer.from(chunk));
+    }
+    const audio = Buffer.concat(chunks);
+    if (audio.length < 256) throw new Error('AUDIO_EMPTY');
+    return audio;
+  } finally {
+    signal.removeEventListener('abort', cancel);
+    tts.close();
+    agent?.destroy();
+  }
+};
 
-  // Process sequentially in background to avoid bursting
-  (async () => {
-    for (const item of items) {
-      const text = item.text?.trim();
-      if (!text) continue;
-      const hash = item.hash || computeScriptHash(text);
-      const targetPath = path.join(AUDIO_CACHE_DIR, `${hash}.mp3`);
+export function createSpeechService(transport: SpeechTransport = edgeSpeechTransport, options: { timeoutMs?: number; maxBytes?: number; maxJobs?: number } = {}) {
+  const cache = new Map<string, { result: SynthesisResult; bytes: number; at: number }>();
+  const jobs = new Map<string, { controller: AbortController; promise: Promise<SynthesisResult>; users: number }>();
+  const timeoutMs = options.timeoutMs ?? 12500;
+  const maxBytes = options.maxBytes ?? 8 * 1024 * 1024;
+  let cacheBytes = 0;
 
-      if (!fs.existsSync(targetPath) || fs.statSync(targetPath).size < 500) {
+  async function synthesize(rawText: string, signal?: AbortSignal, requestedVoice: string = DEFAULT_AUDIO_VOICE): Promise<SynthesisResult> {
+    if (signal?.aborted) throw abortError();
+    const text = rawText.trim();
+    if (!text || text.length > 12000) return { success: false, error: 'El texto de audio debe tener entre 1 y 12000 caracteres.' };
+    if (!AUDIO_VOICES.includes(requestedVoice as ArgentineVoice)) return { success: false, error: 'La voz solicitada no está disponible.' };
+    const voice = requestedVoice as ArgentineVoice;
+    const hash = computeScriptHash(text, voice);
+    const hit = cache.get(hash);
+    if (hit) {
+      cache.delete(hash); cacheBytes -= hit.bytes;
+      if (Date.now() - hit.at < 30 * 60000) { cache.set(hash, hit); cacheBytes += hit.bytes; return { ...hit.result, cached: true }; }
+    }
+    let job = jobs.get(hash);
+    if (!job) {
+      if (jobs.size >= (options.maxJobs ?? 6)) return { success: false, error: 'Hay varios audios preparándose. Volvé a intentar en unos segundos.' };
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      const entry = { controller, users: 0, promise: null as unknown as Promise<SynthesisResult> };
+      entry.promise = (async () => {
+        let chosen = voice;
+        let buffer: Buffer;
+        // A short primary attempt leaves time for the other Argentine voice, without another account.
         try {
-          await synthesizeTextToFile(text, targetPath);
+          const primary = AbortSignal.any([controller.signal, AbortSignal.timeout(Math.min(7500, timeoutMs))]);
+          buffer = await abortable(transport(text, voice, primary), primary);
         } catch {
-          // Ignore prefetch errors silently
+          if (controller.signal.aborted) throw abortError();
+          chosen = voice === 'es-AR-TomasNeural' ? 'es-AR-ElenaNeural' : 'es-AR-TomasNeural';
+          buffer = await abortable(transport(text, chosen, controller.signal), controller.signal);
         }
-      }
+        if (controller.signal.aborted) throw abortError();
+        if (buffer.length < 256) throw new Error('AUDIO_EMPTY');
+        const result: SynthesisResult = { success: true, audioBase64: buffer.toString('base64'), mimeType: 'audio/mpeg', hash, cached: false, engine: 'Microsoft Neural', voice: chosen,
+          ...(chosen !== voice ? { notice: `Se está usando la voz argentina ${chosen === 'es-AR-ElenaNeural' ? 'Elena' : 'Tomás'} porque la otra no respondió.` } : {}) };
+        const bytes = buffer.length * 4 / 3;
+        if (bytes <= maxBytes) {
+          while (cacheBytes + bytes > maxBytes || cache.size >= 96) {
+            const key = cache.keys().next().value;
+            if (!key) break;
+            cacheBytes -= cache.get(key)!.bytes; cache.delete(key);
+          }
+          cache.set(hash, { result, bytes, at: Date.now() }); cacheBytes += bytes;
+        }
+        return result;
+      })().catch(() => ({ success: false, error: 'No se pudo preparar el audio. Tocá Reintentar.', fallbackTextOnly: true } as SynthesisResult)).finally(() => {
+        clearTimeout(timeout);
+        if (jobs.get(hash) === entry) jobs.delete(hash);
+      });
+      jobs.set(hash, entry); job = entry;
     }
-  })().catch(() => {});
+    job.users++;
+    const current = job;
+    return new Promise<SynthesisResult>((resolve, reject) => {
+      let settled = false;
+      const finish = (value?: SynthesisResult, cancelled = false) => {
+        if (settled) return;
+        settled = true; signal?.removeEventListener('abort', cancel); current.users--;
+        if (cancelled && current.users === 0) current.controller.abort();
+        if (cancelled) reject(abortError()); else resolve(value!);
+      };
+      const cancel = () => finish(undefined, true);
+      signal?.addEventListener('abort', cancel, { once: true });
+      if (signal?.aborted) cancel();
+      current.promise.then(value => finish(value));
+    });
+  }
+  return { synthesize };
 }
 
-/**
- * Synthesizes Argentine Spanish speech with sub-second objective:
- * 1. Immediate disk cache lookup (< 5ms)
- * 2. In-process Neuronal MsEdgeTTS (es-AR-ElenaNeural)
- * 3. First-sentence streaming chunk for sub-second playback start
- * 4. Zero port collisions or external Python dependencies
- */
-export async function synthesizeArgentineSpeech(
-  rawText: string,
-  abortSignal?: AbortSignal
-): Promise<SynthesisResult> {
-  const cleanText = rawText.trim();
-  if (!cleanText) {
-    return {
-      success: false,
-      error: 'El texto es requerido para la síntesis de audio.'
-    };
-  }
-
-  if (!await ensurePiperDaemon()) {
-    return { success: false, error: 'El audio no está disponible en este momento.', fallbackTextOnly: true };
-  }
-
-  const hash = computeScriptHash(cleanText);
-  const cachedMp3Path = path.join(AUDIO_CACHE_DIR, `${hash}.mp3`);
-
-  // 1. Instant Disk Cache Check: return immediately in < 2ms!
-  if (fs.existsSync(cachedMp3Path)) {
-    try {
-      const stats = fs.statSync(cachedMp3Path);
-      if (stats.size > 500) {
-        return {
-          success: true,
-          audioUrl: `/api/audio/file/${hash}.mp3`,
-          hash,
-          cached: true,
-          mimeType: 'audio/mpeg',
-          engine: 'Audio Cache (Neuronal es-AR)',
-          voice: VOICE_ARGENTINA
-        };
-      }
-    } catch {}
-  }
-
-  // 2. Synthesize using in-process Neuronal Edge-TTS
-  try {
-    const sentences = splitSentences(cleanText);
-
-    // If multi-sentence, synthesize first sentence chunk for sub-second start
-    if (sentences.length > 1) {
-      const chunk0Path = path.join(AUDIO_CACHE_DIR, `${hash}_chunk_0.mp3`);
-      
-      // Synthesize chunk 0 first if not cached
-      if (!fs.existsSync(chunk0Path) || fs.statSync(chunk0Path).size < 500) {
-        try {
-          await synthesizeTextToFile(sentences[0], chunk0Path);
-        } catch {}
-      }
-
-      // Complete full text in background / foreground
-      const fullPromise = synthesizeTextToFile(cleanText, cachedMp3Path);
-
-      // If chunk 0 is ready, return streaming chunk immediately
-      if (fs.existsSync(chunk0Path) && fs.statSync(chunk0Path).size > 500) {
-        fullPromise.catch(() => {}); // let it complete in background
-        return {
-          success: true,
-          hash,
-          cached: false,
-          isStreaming: true,
-          chunkUrl: `/api/audio/file/${hash}_chunk_0.mp3`,
-          chunkDuration: Math.max(2.5, sentences[0].split(/\s+/).length * 0.4),
-          totalChunks: sentences.length,
-          audioUrl: `/api/audio/file/${hash}.mp3`,
-          mimeType: 'audio/mpeg',
-          engine: 'Microsoft Edge Neuronal TTS (Streaming)',
-          voice: VOICE_ARGENTINA
-        };
-      }
-
-      // Otherwise wait for full synthesis
-      await fullPromise;
-    } else {
-      await synthesizeTextToFile(cleanText, cachedMp3Path);
-    }
-
-    if (fs.existsSync(cachedMp3Path)) {
-      return {
-        success: true,
-        hash,
-        cached: false,
-        audioUrl: `/api/audio/file/${hash}.mp3`,
-        mimeType: 'audio/mpeg',
-        engine: 'Microsoft Edge Neuronal TTS',
-        voice: VOICE_ARGENTINA
-      };
-    }
-
-    throw new Error('No se generó el archivo de audio.');
-  } catch (err: any) {
-    console.warn('[TTS] Synthesis warning, falling back to text:', err?.message || err);
-    return {
-      success: false,
-      error: 'Audio no disponible en este momento.',
-      notice: 'El motor neuronal está en proceso. Podés leer la síntesis a continuación.',
-      fallbackTextOnly: true
-    };
-  }
+const speechService = createSpeechService();
+export const synthesizeArgentineSpeech = speechService.synthesize;
+export async function prefetchAudioScripts(items: Array<{ text: string }>, signal?: AbortSignal): Promise<void> {
+  await Promise.all(items.slice(0, 2).map(item => {
+    const first = splitSpeechText(item.text || '')[0];
+    return first ? synthesizeArgentineSpeech(first, signal).catch(() => {}) : Promise.resolve();
+  }));
 }

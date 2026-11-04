@@ -1,4 +1,5 @@
-import { AudioTrack } from '../types/index';
+import type { AudioTrack } from '../types/index';
+import { AUDIO_CACHE_VERSION, DEFAULT_AUDIO_VOICE, splitSpeechText } from './speechText';
 
 export interface AudioControllerState {
   isPlaying: boolean;
@@ -13,644 +14,608 @@ export interface AudioControllerState {
   engine: string | null;
   voice: string | null;
   isStreaming?: boolean;
+  /** Only this measured prefix can be used for seeking. */
+  seekableDuration?: number;
+  canSeek?: boolean;
+  isDurationEstimated?: boolean;
 }
 
-export interface EstimatedDuration {
-  seconds: number;
-  formatted: string;
-  words: number;
-}
+export interface EstimatedDuration { seconds: number; formatted: string; words: number; }
 
-/**
- * Calculates estimated speech duration in Spanish (145 words per minute standard).
- * Used for initial UI badge before audio stream/file duration is loaded.
- */
-export function calculateEstimatedDuration(text: string, speed: number = 1.0): EstimatedDuration {
-  if (!text) {
-    return { seconds: 0, formatted: '0:00', words: 0 };
-  }
+export function calculateEstimatedDuration(text: string, speed: number = 1): EstimatedDuration {
+  if (!text) return { seconds: 0, formatted: '0:00', words: 0 };
   const words = text.trim().split(/\s+/).filter(Boolean).length;
-  const WORDS_PER_MINUTE = 145;
-  const baseSeconds = Math.max(1, Math.round((words / WORDS_PER_MINUTE) * 60));
-  const adjustedSeconds = Math.max(1, Math.round(baseSeconds / (speed || 1.0)));
-  const mins = Math.floor(adjustedSeconds / 60);
-  const secs = adjustedSeconds % 60;
-
-  return {
-    seconds: adjustedSeconds,
-    formatted: `${mins}:${secs.toString().padStart(2, '0')}`,
-    words
-  };
+  const seconds = Math.max(1, Math.round(Math.max(1, Math.round(words / 145 * 60)) / (speed || 1)));
+  return { seconds, formatted: formatTime(seconds), words };
 }
 
-/**
- * Formats seconds into mm:ss
- */
 export function formatTime(seconds: number): string {
-  const s = Math.max(0, Math.floor(seconds));
-  const m = Math.floor(s / 60);
-  const remainder = s % 60;
-  return `${m}:${remainder.toString().padStart(2, '0')}`;
+  const whole = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+  return `${Math.floor(whole / 60)}:${(whole % 60).toString().padStart(2, '0')}`;
 }
 
 type Listener = (state: AudioControllerState) => void;
+type Clip = { url: string; voice: string; engine: string; notice?: string; duration?: number; size: number };
+type Segment = { text: string; clip?: Clip; duration?: number };
+type Request = { controller: AbortController; consumers: Set<symbol>; promise: Promise<Clip>; settled: boolean };
+const FETCH_TIMEOUT_MS = 16_000;
+const PLAY_TIMEOUT_MS = 12_000;
+const CACHE_ENTRIES = 48;
+const CACHE_BYTES = 8 * 1024 * 1024;
+const SILENT_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+const abortError = () => Object.assign(new Error('Audio cancelado'), { name: 'AbortError' });
+const validDuration = (duration: number) => Number.isFinite(duration) && duration > 0;
 
-/**
- * GlobalAudioController (Singleton):
- * - Exactly ONE HTMLAudioElement instance for the entire application.
- * - Sub-second playback start (< 1.0s) powered by in-memory Piper TTS, 64kbps MP3s, and first-sentence streaming.
- * - Instant cutoff: audio.pause(), currentTime = 0, src = '', audio.load().
- * - Triggers: X button, backdrop click, Escape, navigation, unmount, logout, visibilitychange, beforeunload, pagehide.
- * - Real duration derived directly from audio.duration.
- */
-class GlobalAudioController {
+/** One active media element; complete, short clips are chained in their original text order. */
+export class GlobalAudioController {
   private audioElement: HTMLAudioElement | null = null;
-  private secondaryAudioElement: HTMLAudioElement | null = null; // Used for zero-gap chaining
-  private listeners: Set<Listener> = new Set();
-  private audioUrlCache = new Map<string, string>(); // trackId or textHash -> mp3 url
-  private abortController: AbortController | null = null;
-  private streamPollTimer: any = null;
-  private playStartTime: number = 0;
+  private metadataElement: HTMLAudioElement | null = null;
+  private listeners = new Set<Listener>();
+  private cache = new Map<string, Clip>();
+  private cacheBytes = 0;
+  private requests = new Map<string, Request>();
+  private sessionController: AbortController | null = null;
+  private generation = 0;
+  private sourceVersion = 0;
+  private playAttempt = 0;
+  private metadataVersion = 0;
+  private playTimer: ReturnType<typeof setTimeout> | null = null;
+  private metadataTimer: ReturnType<typeof setTimeout> | null = null;
+  private wantsPlayback = false;
+  private segments: Segment[] = [];
+  private segmentIndex = 0;
+  private loadedIndex = -1;
+  private estimatedDuration = 0;
+  private warmQueue: Array<{ text: string; key: string }> = [];
+  private warmKeys = new Set<string>();
+  private warmController: AbortController | null = null;
+  private warmGeneration = 0;
 
   private state: AudioControllerState = {
-    isPlaying: false,
-    isLoading: false,
-    currentTrack: null,
-    currentSeconds: 0,
-    totalDuration: 0,
-    remainingSeconds: 0,
-    speed: 1,
-    error: null,
-    notice: null,
-    engine: null,
-    voice: null,
-    isStreaming: false
+    isPlaying: false, isLoading: false, currentTrack: null,
+    currentSeconds: 0, totalDuration: 0, remainingSeconds: 0,
+    speed: 1, error: null, notice: null, engine: null, voice: null,
+    isStreaming: false, seekableDuration: 0, canSeek: false, isDurationEstimated: false,
   };
 
   constructor() {
-    if (typeof window !== 'undefined') {
-      this.initAudioElements();
-      this.bindGlobalLifecycleEvents();
-    }
+    if (typeof window === 'undefined') return;
+    this.initAudioElements();
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.stopAll('background'); });
+    window.addEventListener('beforeunload', () => this.stopAll('beforeunload'));
+    window.addEventListener('pagehide', () => this.stopAll('pagehide'));
+    window.addEventListener('keydown', event => { if (event.key === 'Escape') this.stopAll('escape'); });
   }
 
   private initAudioElements(): void {
-    if (!this.audioElement) {
-      this.audioElement = new Audio();
-      this.audioElement.preload = 'auto';
-    }
-    if (!this.secondaryAudioElement) {
-      this.secondaryAudioElement = new Audio();
-      this.secondaryAudioElement.preload = 'auto';
-    }
+    if (typeof Audio === 'undefined') throw new Error('Este dispositivo no permite reproducir audio.');
+    if (!this.audioElement) { this.audioElement = new Audio(); this.audioElement.preload = 'auto'; }
+    if (!this.metadataElement) { this.metadataElement = new Audio(); this.metadataElement.preload = 'metadata'; }
   }
 
-  /**
-   * Binds global browser events to guarantee immediate cutoff:
-   * 1. Tab in background (visibilitychange)
-   * 2. Page unload / hide (beforeunload, pagehide)
-   * 3. Escape key
-   */
-  private bindGlobalLifecycleEvents(): void {
-    if (typeof document === 'undefined') return;
-
-    // 1. Pestaña en segundo plano (visibilitychange)
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
-        this.stopAll('visibilitychange-tab-background');
-      }
-    });
-
-    // 2. beforeunload & pagehide
-    window.addEventListener('beforeunload', () => {
-      this.stopAll('beforeunload');
-    });
-
-    window.addEventListener('pagehide', () => {
-      this.stopAll('pagehide');
-    });
-
-    // 3. Tecla Escape
-    window.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        this.stopAll('escape-key');
-      }
-    });
-  }
-
-  public getState(): AudioControllerState {
-    return { ...this.state };
-  }
+  public getState(): AudioControllerState { return { ...this.state }; }
 
   public subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
     listener(this.getState());
-    return () => {
-      this.listeners.delete(listener);
-    };
+    return () => { this.listeners.delete(listener); };
   }
 
   private emit(): void {
-    const currentState = this.getState();
+    const state = this.getState();
     for (const listener of this.listeners) {
-      try {
-        listener(currentState);
-      } catch (err) {
-        console.error('Error in audio controller listener:', err);
-      }
+      try { listener(state); } catch (error) { console.error('Error in audio controller listener:', error); }
     }
   }
 
-  /**
-   * CRITICAL REQUIREMENT:
-   * Un único reproductor global.
-   * Al cerrar el resumen con la X, tocar fuera, Escape, cambiar de pantalla o ruta,
-   * desmontar el componente, cerrar sesión, pasar la pestaña a segundo plano,
-   * beforeunload o pagehide:
-   * audio.pause(), audio.currentTime = 0, audio.src = "" y audio.load() para liberar la fuente.
-   */
-  public stopAll(reason: string = 'manual'): void {
-    // 1. Clear background streaming poll timer
-    if (this.streamPollTimer) {
-      clearTimeout(this.streamPollTimer);
-      clearInterval(this.streamPollTimer);
-      this.streamPollTimer = null;
-    }
+  private clearPlayTimer(): void {
+    if (this.playTimer !== null) clearTimeout(this.playTimer);
+    this.playTimer = null;
+  }
 
-    // 2. Abort any pending network fetch immediately
-    if (this.abortController) {
-      try {
-        this.abortController.abort();
-      } catch {}
-      this.abortController = null;
-    }
+  private releaseMedia(audio: HTMLAudioElement | null): void {
+    if (!audio) return;
+    audio.onended = audio.onerror = audio.ontimeupdate = audio.onloadedmetadata = null;
+    audio.onplaying = audio.onwaiting = audio.onstalled = null;
+    try {
+      audio.pause();
+      try { audio.currentTime = 0; } catch { /* No resource loaded yet. */ }
+      audio.removeAttribute('src');
+      audio.load();
+    } catch { /* Already detached. */ }
+  }
 
-    // 3. Complete release of the HTML5 Audio elements
-    const releaseAudio = (el: HTMLAudioElement | null) => {
-      if (!el) return;
-      try {
-        el.pause();
-        el.currentTime = 0;
-        el.onended = null;
-        el.onerror = null;
-        el.ontimeupdate = null;
-        el.onloadedmetadata = null;
-        el.src = '';
-        el.removeAttribute('src');
-        el.load();
-      } catch {}
-    };
-
-    releaseAudio(this.audioElement);
-    releaseAudio(this.secondaryAudioElement);
-
-    // 4. Update state
+  private resetPlayback(): void {
+    // IDs are not cancellation tokens: the same summary ID may contain new text.
+    ++this.generation;
+    ++this.sourceVersion;
+    ++this.playAttempt;
+    ++this.metadataVersion;
+    this.wantsPlayback = false;
+    this.sessionController?.abort();
+    this.sessionController = null;
+    this.clearPlayTimer();
+    if (this.metadataTimer !== null) clearTimeout(this.metadataTimer);
+    this.metadataTimer = null;
+    this.releaseMedia(this.audioElement);
+    this.releaseMedia(this.metadataElement);
+    this.segments = [];
+    this.segmentIndex = 0;
+    this.loadedIndex = -1;
+    this.estimatedDuration = 0;
     this.state = {
-      ...this.state,
-      isPlaying: false,
-      isLoading: false,
-      currentTrack: null,
-      currentSeconds: 0,
-      totalDuration: 0,
-      remainingSeconds: 0,
-      error: null,
-      notice: null,
-      engine: null,
-      voice: null,
-      isStreaming: false
+      ...this.state, isPlaying: false, isLoading: false, currentTrack: null,
+      currentSeconds: 0, totalDuration: 0, remainingSeconds: 0,
+      error: null, notice: null, engine: null, voice: null, isStreaming: false,
+      seekableDuration: 0, canSeek: false, isDurationEstimated: false,
     };
+  }
 
+  public stopAll(_reason: string = 'manual'): void {
+    this.resetPlayback();
+    ++this.warmGeneration;
+    this.warmController?.abort();
+    this.warmController = null;
+    this.warmQueue = [];
+    this.warmKeys.clear();
     this.emit();
   }
 
-  /**
-   * Clears error notice
-   */
-  public clearError(): void {
-    this.state.error = null;
-    this.state.notice = null;
-    this.emit();
+  public clearError(): void { this.state.error = null; this.state.notice = null; this.emit(); }
+
+  private cacheKey(text: string, voice: string = DEFAULT_AUDIO_VOICE): string {
+    return `${AUDIO_CACHE_VERSION}\u0000${voice}\u0000${text}`;
   }
 
-  /**
-   * Asynchronously prefetches audio for scripts in background so files are ready
-   * when user clicks play.
-   */
+  private cached(text: string): Clip | undefined {
+    const key = this.cacheKey(text);
+    const clip = this.cache.get(key);
+    if (clip) { this.cache.delete(key); this.cache.set(key, clip); }
+    return clip;
+  }
+
+  private storeClip(text: string, clip: Clip): void {
+    if (clip.size > CACHE_BYTES) return;
+    // A temporary alternate voice must not overwrite the preferred Argentine voice.
+    const key = this.cacheKey(text, clip.voice);
+    const previous = this.cache.get(key);
+    if (previous) this.cacheBytes -= previous.size;
+    this.cache.delete(key);
+    this.cache.set(key, clip);
+    this.cacheBytes += clip.size;
+    while (this.cache.size > CACHE_ENTRIES || this.cacheBytes > CACHE_BYTES) {
+      const oldest = this.cache.entries().next().value;
+      if (!oldest) break;
+      this.cache.delete(oldest[0]);
+      this.cacheBytes -= oldest[1].size;
+    }
+  }
+
+  private async synthesize(text: string, controller: AbortController, lowPriority: boolean): Promise<Clip> {
+    let timer: ReturnType<typeof setTimeout>;
+    let removeAbort = () => {};
+    const deadline = new Promise<never>((_, reject) => {
+      const onAbort = () => reject(abortError());
+      controller.signal.addEventListener('abort', onAbort, { once: true });
+      removeAbort = () => controller.signal.removeEventListener('abort', onAbort);
+      timer = setTimeout(() => {
+        reject(new Error('La preparación del audio tardó demasiado. Volvé a intentar.'));
+        controller.abort();
+      }, FETCH_TIMEOUT_MS);
+    });
+    const download = async (): Promise<Clip> => {
+      const response = await fetch('/api/audio/synthesize', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, voice: DEFAULT_AUDIO_VOICE }), signal: controller.signal,
+        ...(lowPriority ? { priority: 'low' } : {}),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || 'El audio no está disponible en este momento.');
+      if (controller.signal.aborted) throw abortError();
+      const mimeType = data.mimeType || 'audio/mpeg';
+      if (typeof data.audioBase64 !== 'string' || !data.audioBase64.length || !/^audio\/[a-z0-9.+-]+$/i.test(mimeType)) {
+        throw new Error('El servidor no devolvió un audio completo. Volvé a intentar.');
+      }
+      return {
+        url: `data:${mimeType};base64,${data.audioBase64}`,
+        voice: data.voice || DEFAULT_AUDIO_VOICE, engine: data.engine || 'Voz neuronal argentina',
+        notice: typeof data.notice === 'string' ? data.notice : undefined, size: data.audioBase64.length * 2,
+      };
+    };
+    try { return await Promise.race([download(), deadline]); }
+    finally { clearTimeout(timer!); removeAbort(); }
+  }
+
+  /** Shared requests have independent subscribers; cancelling one cannot revive its player. */
+  private requestClip(text: string, signal: AbortSignal, lowPriority = false): Promise<Clip> {
+    if (signal.aborted) return Promise.reject(abortError());
+    const cached = this.cached(text);
+    if (cached) return Promise.resolve(cached);
+    const key = this.cacheKey(text);
+    let request = this.requests.get(key);
+    if (!request || request.controller.signal.aborted) {
+      const created: Request = { controller: new AbortController(), consumers: new Set(), settled: false, promise: null! };
+      created.promise = this.synthesize(text, created.controller, lowPriority).then(clip => {
+        if (created.controller.signal.aborted) throw abortError();
+        this.storeClip(text, clip);
+        return clip;
+      }).finally(() => {
+        created.settled = true;
+        if (this.requests.get(key) === created) this.requests.delete(key);
+      });
+      this.requests.set(key, created);
+      request = created;
+    }
+    const current = request;
+    const consumer = Symbol();
+    current.consumers.add(consumer);
+    return new Promise((resolve, reject) => {
+      const release = () => {
+        signal.removeEventListener('abort', onAbort);
+        current.consumers.delete(consumer);
+        if (!current.settled && current.consumers.size === 0) current.controller.abort();
+      };
+      const onAbort = () => { release(); reject(abortError()); };
+      signal.addEventListener('abort', onAbort, { once: true });
+      current.promise.then(clip => { release(); if (!signal.aborted) resolve(clip); }, error => { release(); reject(error); });
+    });
+  }
+
+  /** Warm only the first clip of each script, one low-priority request at a time. */
   public prefetchScripts(items: Array<{ id?: string; text: string }>): void {
-    if (!items || items.length === 0) return;
-    try {
-      fetch('/api/audio/prefetch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items }),
-        priority: 'low' as any
-      }).catch(() => {});
-    } catch {}
+    for (const item of items || []) {
+      const text = splitSpeechText(item.text || '')[0];
+      if (!text) continue;
+      const key = this.cacheKey(text);
+      if (this.cache.has(key) || this.warmKeys.has(key)) continue;
+      if (this.warmQueue.length >= 12) break;
+      this.warmKeys.add(key);
+      this.warmQueue.push({ text, key });
+    }
+    if (this.warmController || !this.warmQueue.length) return;
+    const controller = new AbortController();
+    const generation = this.warmGeneration;
+    this.warmController = controller;
+    void (async () => {
+      while (generation === this.warmGeneration && !controller.signal.aborted && this.warmQueue.length) {
+        const item = this.warmQueue.shift()!;
+        try { await this.requestClip(item.text, controller.signal, true); } catch { /* Playback can retry explicitly. */ }
+        if (generation === this.warmGeneration) this.warmKeys.delete(item.key);
+      }
+      if (generation === this.warmGeneration) this.warmController = null;
+    })();
   }
 
-  /**
-   * Plays a track using backend in-memory Piper TTS (or edge-tts fallback).
-   * Achieves sub-second start through:
-   * 1. Direct cached 64kbps MP3 playback (< 100ms)
-   * 2. Sentence-0 streaming if uncached (< 1s)
-   */
   public async playTrack(track: AudioTrack, requestedSpeed?: 1 | 1.25 | 1.5): Promise<void> {
-    this.playStartTime = performance.now();
-
-    // Cut any prior audio first
-    this.stopAll(`starting-new-track-${track.id}`);
-
-    const targetSpeed = requestedSpeed || this.state.speed;
-    const textToSpeak = track.script || track.title;
-
-    // Temporary estimated duration while audio file loads
-    const initialDuration = calculateEstimatedDuration(textToSpeak, targetSpeed);
-
+    this.resetPlayback();
+    const generation = this.generation;
+    const text = track.script || track.title;
+    this.segments = splitSpeechText(text).map(part => ({ text: part }));
+    this.estimatedDuration = calculateEstimatedDuration(text).seconds;
+    this.sessionController = new AbortController();
+    this.wantsPlayback = true;
     this.state = {
-      ...this.state,
-      currentTrack: track,
-      isLoading: true,
-      isPlaying: false,
-      currentSeconds: 0,
-      totalDuration: initialDuration.seconds,
-      remainingSeconds: initialDuration.seconds,
-      speed: targetSpeed,
-      error: null,
-      notice: null,
-      engine: null,
-      voice: null,
-      isStreaming: false
+      ...this.state, currentTrack: track, isLoading: true, speed: requestedSpeed || this.state.speed,
+      totalDuration: this.estimatedDuration, remainingSeconds: this.estimatedDuration,
+      isDurationEstimated: true,
     };
     this.emit();
-
-    // Unlock browser HTML5 Audio user gesture token synchronously inside click handler
-    this.initAudioElements();
     try {
-      if (this.audioElement) {
-        this.audioElement.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
-        this.audioElement.play().catch(() => {});
+      if (!this.segments.length) throw new Error('No hay texto disponible para este audio.');
+      this.initAudioElements();
+      if (!this.cached(this.segments[0].text)) {
+        // Unlock this SAME element in the click gesture. Its promise never resumes a later track.
+        // Silent samples, with the element unmuted, also unlock later speech on iOS.
+        this.audioElement!.muted = false;
+        this.audioElement!.src = SILENT_WAV;
+        try { void this.audioElement!.play().catch(() => {}); } catch { /* Real playback reports rejection below. */ }
       }
-    } catch {}
+      await this.startSegment(0);
+    } catch (error) { if (this.isCurrent(generation) && this.wantsPlayback) this.fail(error); }
+  }
 
-    // Check memory cache first
-    const cachedUrl = this.audioUrlCache.get(track.id);
-    if (cachedUrl) {
-      this.mountAndPlayDirectAudio(cachedUrl, track.id, 'Audio Cache (Neuronal es-AR)', 'es-AR-ElenaNeural');
-      return;
+  public retry(): void {
+    const track = this.state.currentTrack;
+    if (track) void this.playTrack(track, this.state.speed);
+  }
+
+  private isCurrent(generation: number): boolean {
+    return generation === this.generation && this.state.currentTrack !== null;
+  }
+
+  private offsetFor(index: number): number | null {
+    let total = 0;
+    for (let previous = 0; previous < index; ++previous) {
+      const duration = this.segments[previous]?.duration;
+      if (!duration || !validDuration(duration)) return null;
+      total += duration;
     }
+    return total;
+  }
 
-    // Request from backend
-    this.abortController = new AbortController();
-    const timeoutId = setTimeout(() => {
-      if (this.abortController) this.abortController.abort();
-    }, 120000);
+  private updateTimeline(): void {
+    let known = 0;
+    let count = 0;
+    for (const segment of this.segments) {
+      if (!segment.duration || !validDuration(segment.duration)) break;
+      known += segment.duration;
+      ++count;
+    }
+    const complete = count === this.segments.length && count > 0;
+    this.state.seekableDuration = known;
+    this.state.canSeek = known > 0 && !this.state.error;
+    this.state.isDurationEstimated = !complete;
+    this.state.totalDuration = complete ? known : Math.max(known, this.state.currentSeconds, this.estimatedDuration);
+    this.state.remainingSeconds = Math.max(0, this.state.totalDuration - this.state.currentSeconds);
+  }
 
+  private async startSegment(index: number): Promise<void> {
+    const generation = this.generation;
+    const attempt = ++this.playAttempt;
+    const segment = this.segments[index];
+    if (!segment || !this.sessionController) return;
+    this.state.isLoading = true;
+    this.state.isPlaying = false;
+    this.emit();
     try {
-      const res = await fetch('/api/audio/synthesize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: textToSpeak,
-          trackId: track.id
-        }),
-        signal: this.abortController.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      // If user stopped playback while request was in-flight, discard
-      if (!this.state.currentTrack || this.state.currentTrack.id !== track.id) {
-        return;
-      }
-
-      const data = await res.json();
-
-      if (data.success) {
-        // CASE A: Full audio ready or cached -> instant playback
-        if (data.audioUrl && !data.isStreaming) {
-          this.audioUrlCache.set(track.id, data.audioUrl);
-          this.mountAndPlayDirectAudio(
-            data.audioUrl,
-            track.id,
-            data.engine || 'Piper TTS',
-            data.voice || 'es_AR-daniela-high',
-            data.notice,
-            data.duration
-          );
-          return;
-        }
-
-        // CASE B: Sentence 0 streaming ready -> begin immediate playback while background finishes
-        if (data.isStreaming && data.chunkUrl) {
-          this.mountAndPlayStreamingChunk(
-            data.chunkUrl,
-            data.audioUrl,
-            data.chunkDuration || 3.0,
-            track.id,
-            data.engine || 'Piper TTS (Streaming)',
-            data.voice || 'es_AR-daniela-high'
-          );
-          return;
-        }
-
-        // CASE C: audioBase64 legacy fallback if needed
-        if (data.audioBase64) {
-          const mimeType = data.mimeType || 'audio/mpeg';
-          const dataUrl = `data:${mimeType};base64,${data.audioBase64}`;
-          this.audioUrlCache.set(track.id, dataUrl);
-          this.mountAndPlayDirectAudio(dataUrl, track.id, data.engine, data.voice, data.notice);
-          return;
-        }
-      }
-
-      // If synthesis failed:
-      // STRICT REQUIREMENT: PROHIBIDO usar voz del navegador: mostrar mensaje claro y texto de resumen
-      this.state = {
-        ...this.state,
-        isLoading: false,
-        isPlaying: false,
-        error: data.error || 'El audio no está disponible en este momento',
-        notice: data.notice || 'Podés leer el texto del resumen a continuación.'
-      };
-      this.emit();
-    } catch (fetchErr: any) {
-      clearTimeout(timeoutId);
-      if (fetchErr?.name === 'AbortError' || !this.state.currentTrack || this.state.currentTrack.id !== track.id) {
-        return;
-      }
-      this.state = {
-        ...this.state,
-        isLoading: false,
-        isPlaying: false,
-        error: 'El audio no está disponible en este momento',
-        notice: `Error de conexión con el servidor (${fetchErr?.message || 'Error de red'}). Podés consultar el resumen en texto.`
-      };
-      this.emit();
+      const clip = segment.clip || this.cached(segment.text) || await this.requestClip(segment.text, this.sessionController.signal);
+      if (!this.isCurrent(generation)) return;
+      segment.clip = clip;
+      segment.duration = clip.duration || segment.duration;
+      if (attempt !== this.playAttempt || !this.wantsPlayback) return;
+      this.mountSegment(index, clip, 0);
+    } catch (error) {
+      if (this.isCurrent(generation) && attempt === this.playAttempt && this.wantsPlayback) this.fail(error);
     }
   }
 
-  /**
-   * Plays a direct MP3 audio URL (full file or cached)
-   */
-  private mountAndPlayDirectAudio(
-    audioUrl: string, 
-    trackId: string, 
-    engine?: string, 
-    voice?: string,
-    notice?: string,
-    serverDuration?: number
-  ): void {
-    this.initAudioElements();
-    const audio = this.audioElement!;
-
-    audio.src = audioUrl;
-    audio.playbackRate = this.state.speed;
-
-    if (serverDuration && serverDuration > 0) {
-      this.state.totalDuration = Math.round(serverDuration);
-      this.state.remainingSeconds = Math.round(serverDuration);
-    }
-
-    audio.onloadedmetadata = () => {
-      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
-        const realSecs = Math.max(1, Math.round(audio.duration));
-        this.state.totalDuration = realSecs;
-        this.state.remainingSeconds = Math.max(0, realSecs - Math.floor(audio.currentTime));
-        this.emit();
-      }
-    };
-
-    audio.ontimeupdate = () => {
-      if (!this.state.currentTrack || this.state.currentTrack.id !== trackId) return;
-      const current = audio.currentTime;
-      const total = this.state.totalDuration || Math.round(audio.duration || 0);
-      const remaining = Math.max(0, Math.round(total - current));
-      this.state.currentSeconds = current;
-      this.state.remainingSeconds = remaining;
-      this.emit();
-    };
-
-    audio.onended = () => {
-      this.stopAll('audio-playback-completed');
-    };
-
-    audio.onerror = () => {
-      this.state = {
-        ...this.state,
-        isLoading: false,
-        isPlaying: false,
-        error: 'El audio no está disponible en este momento',
-        notice: 'Error al decodificar el archivo de audio.'
-      };
-      this.emit();
-    };
-
-    audio.play()
-      .then(() => {
-        const latencyMs = Math.round(performance.now() - this.playStartTime);
-        console.log(`[AUDIO LATENCY] Playback started in ${latencyMs}ms (${engine || 'Piper TTS'})`);
-
-        if (this.state.currentTrack && this.state.currentTrack.id === trackId) {
-          this.state.isPlaying = true;
-          this.state.isLoading = false;
-          this.state.error = null;
-          this.state.engine = engine || 'Piper TTS';
-          this.state.voice = voice || 'es_AR-daniela-high';
-          this.state.notice = notice || null;
-          this.state.isStreaming = false;
-          this.emit();
-        }
-      })
-      .catch((playErr) => {
-        console.warn('Audio play request interrupted:', playErr);
-        this.state.isLoading = false;
-        this.state.isPlaying = false;
-        this.emit();
-      });
-  }
-
-  /**
-   * Plays sentence 0 immediately and seamlessly transitions to full file once ready
-   */
-  private mountAndPlayStreamingChunk(
-    chunk0Url: string,
-    fullAudioUrl: string,
-    chunk0Duration: number,
-    trackId: string,
-    engine: string,
-    voice: string
-  ): void {
-    this.initAudioElements();
-    const audio = this.audioElement!;
-
-    let fullAudioReady = false;
-    audio.src = chunk0Url;
-    audio.playbackRate = this.state.speed;
-
-    // Background checker: poll when full file is ready
-    const checkFullReady = async () => {
+  private prepareFollowing(index: number): void {
+    const generation = this.generation;
+    const segment = this.segments[index + 1];
+    if (!segment || !this.sessionController) return;
+    void (async () => {
       try {
-        const headRes = await fetch(fullAudioUrl, { method: 'HEAD' });
-        if (headRes.ok) {
-          fullAudioReady = true;
-          if (this.secondaryAudioElement) {
-            this.secondaryAudioElement.src = fullAudioUrl;
-            this.secondaryAudioElement.preload = 'auto';
-          }
-          if (this.streamPollTimer) clearInterval(this.streamPollTimer);
-        }
-      } catch {}
+        const clip = segment.clip || this.cached(segment.text) || await this.requestClip(segment.text, this.sessionController!.signal, true);
+        if (!this.isCurrent(generation)) return;
+        segment.clip = clip;
+        segment.duration = clip.duration || segment.duration;
+        this.measureClip(index + 1, clip, generation);
+      } catch { /* If necessary, the next foreground request retries with a visible error. */ }
+    })();
+  }
+
+  private measureClip(index: number, clip: Clip, generation: number): void {
+    if (clip.duration) { this.updateTimeline(); this.emit(); return; }
+    const audio = this.metadataElement!;
+    const version = ++this.metadataVersion;
+    if (this.metadataTimer !== null) clearTimeout(this.metadataTimer);
+    this.releaseMedia(audio);
+    const cleanup = () => {
+      if (version !== this.metadataVersion) return;
+      if (this.metadataTimer !== null) clearTimeout(this.metadataTimer);
+      this.metadataTimer = null;
+      this.releaseMedia(audio);
     };
-
-    this.streamPollTimer = setInterval(checkFullReady, 800);
-
-    audio.ontimeupdate = () => {
-      if (!this.state.currentTrack || this.state.currentTrack.id !== trackId) return;
-      this.state.currentSeconds = audio.currentTime;
-      this.state.remainingSeconds = Math.max(0, this.state.totalDuration - Math.floor(audio.currentTime));
-      this.emit();
+    audio.onloadedmetadata = () => {
+      if (!this.isCurrent(generation) || version !== this.metadataVersion) return;
+      if (validDuration(audio.duration)) {
+        clip.duration = audio.duration;
+        this.segments[index].duration = audio.duration;
+        this.updateTimeline();
+        this.emit();
+      }
+      cleanup();
     };
+    audio.onerror = cleanup;
+    this.metadataTimer = setTimeout(cleanup, 5_000);
+    audio.src = clip.url;
+    audio.load();
+  }
 
-    // When sentence 0 ends, seamlessly continue to full audio at timestamp
-    audio.onended = () => {
-      if (!this.state.currentTrack || this.state.currentTrack.id !== trackId) return;
-
-      const continueFullAudio = () => {
-        audio.src = fullAudioUrl;
-        audio.currentTime = chunk0Duration;
-        audio.playbackRate = this.state.speed;
-
-        audio.onended = () => {
-          this.stopAll('audio-playback-completed');
-        };
-
-        audio.onloadedmetadata = () => {
-          if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
-            this.state.totalDuration = Math.round(audio.duration);
-            this.emit();
-          }
-        };
-
-        audio.ontimeupdate = () => {
-          if (!this.state.currentTrack || this.state.currentTrack.id !== trackId) return;
-          this.state.currentSeconds = audio.currentTime;
-          this.state.remainingSeconds = Math.max(0, this.state.totalDuration - Math.floor(audio.currentTime));
-          this.emit();
-        };
-
-        audio.play().catch(() => {});
-      };
-
-      if (fullAudioReady) {
-        continueFullAudio();
-      } else {
-        // Wait up to 1.5s for final merge if needed
-        const waitTimer = setInterval(async () => {
-          try {
-            const res = await fetch(fullAudioUrl, { method: 'HEAD' });
-            if (res.ok) {
-              clearInterval(waitTimer);
-              continueFullAudio();
-            }
-          } catch {}
-        }, 300);
-
-        setTimeout(() => {
-          clearInterval(waitTimer);
-          if (!audio.src.includes(fullAudioUrl)) {
-            continueFullAudio();
-          }
-        }, 4000);
+  private mountSegment(index: number, clip: Clip, offset: number): void {
+    const audio = this.audioElement!;
+    const generation = this.generation;
+    const version = ++this.sourceVersion;
+    this.clearPlayTimer();
+    this.releaseMedia(audio);
+    this.segmentIndex = index;
+    this.loadedIndex = index;
+    const valid = () => this.isCurrent(generation) && version === this.sourceVersion
+      && (!audio.currentSrc || audio.currentSrc === clip.url);
+    const applyMetadata = () => {
+      if (!valid()) return;
+      if (validDuration(audio.duration)) {
+        clip.duration = audio.duration;
+        this.segments[index].duration = audio.duration;
+        if (offset > 0) { audio.currentTime = Math.min(offset, audio.duration); offset = 0; }
+        this.updateTimeline();
+        this.emit();
       }
     };
+    audio.onloadedmetadata = applyMetadata;
+    audio.ontimeupdate = () => {
+      if (!valid()) return;
+      const start = this.offsetFor(index);
+      if (start === null) return;
+      this.state.currentSeconds = start + (Number.isFinite(audio.currentTime) ? audio.currentTime : 0);
+      this.updateTimeline();
+      this.emit();
+    };
+    audio.onplaying = () => {
+      if (!valid()) return;
+      if (!this.wantsPlayback) { audio.pause(); return; }
+      this.clearPlayTimer();
+      this.state.isPlaying = true;
+      this.state.isLoading = false;
+      this.emit();
+    };
+    audio.onwaiting = audio.onstalled = () => {
+      if (!valid() || !this.wantsPlayback) return;
+      this.state.isLoading = true;
+      this.watchPlayback(generation, version);
+      this.emit();
+    };
+    audio.onerror = () => {
+      if (!valid()) return;
+      const key = this.cacheKey(this.segments[index].text, clip.voice);
+      if (this.cache.delete(key)) this.cacheBytes -= clip.size;
+      this.segments[index].clip = undefined;
+      this.fail(new Error('No se pudo decodificar el audio. Volvé a intentar.'));
+    };
+    audio.onended = () => {
+      if (!valid()) return;
+      this.clearPlayTimer();
+      const duration = validDuration(audio.duration) ? audio.duration : audio.currentTime;
+      if (!validDuration(duration)) { this.fail(new Error('No se pudo comprobar la duración del audio.')); return; }
+      this.segments[index].duration = clip.duration = duration;
+      this.state.currentSeconds = (this.offsetFor(index) || 0) + duration;
+      this.state.isPlaying = false;
+      this.loadedIndex = -1;
+      if (index + 1 >= this.segments.length) { this.stopAll('completed'); return; }
+      this.segmentIndex = index + 1;
+      this.updateTimeline();
+      this.emit();
+      if (this.wantsPlayback) void this.startSegment(index + 1);
+    };
+    audio.muted = false;
+    audio.src = clip.url;
+    audio.playbackRate = this.state.speed;
+    try { audio.currentTime = offset; } catch { /* Applied once metadata is available. */ }
+    this.state.currentSeconds = (this.offsetFor(index) || 0) + offset;
+    this.state.engine = clip.engine;
+    this.state.voice = clip.voice;
+    this.state.notice = clip.notice || null;
+    this.state.error = null;
+    this.state.isPlaying = false;
+    this.state.isLoading = this.wantsPlayback;
+    this.updateTimeline();
+    audio.load();
+    if (!this.isCurrent(generation) || version !== this.sourceVersion) return;
+    this.emit();
+    if (this.wantsPlayback) this.playMounted(generation, version);
+    this.prepareFollowing(index);
+  }
 
-    audio.play()
-      .then(() => {
-        const latencyMs = Math.round(performance.now() - this.playStartTime);
-        console.log(`[AUDIO LATENCY] Streaming playback started in ${latencyMs}ms (${engine})`);
+  private watchPlayback(generation: number, version: number): void {
+    // Repeated waiting/stalled events cannot keep extending the same deadline.
+    if (this.playTimer !== null) return;
+    this.playTimer = setTimeout(() => {
+      if (this.isCurrent(generation) && this.sourceVersion === version && this.wantsPlayback) {
+        this.fail(new Error('El reproductor no pudo iniciar o continuar el audio. Volvé a intentar.'));
+      }
+    }, PLAY_TIMEOUT_MS);
+  }
 
-        if (this.state.currentTrack && this.state.currentTrack.id === trackId) {
-          this.state.isPlaying = true;
-          this.state.isLoading = false;
-          this.state.error = null;
-          this.state.engine = engine;
-          this.state.voice = voice;
-          this.state.isStreaming = true;
-          this.emit();
-        }
-      })
-      .catch((err) => {
-        console.warn('Streaming chunk play failed:', err);
+  private playMounted(generation: number, version: number): void {
+    const audio = this.audioElement!;
+    const attempt = ++this.playAttempt;
+    this.watchPlayback(generation, version);
+    this.state.isLoading = true;
+    this.state.error = null;
+    this.emit();
+    try {
+      void audio.play().then(() => {
+        if (!this.isCurrent(generation) || version !== this.sourceVersion || attempt !== this.playAttempt) return;
+        if (!this.wantsPlayback) { audio.pause(); return; }
+        this.clearPlayTimer();
         this.state.isLoading = false;
-        this.state.isPlaying = false;
+        this.state.isPlaying = true;
         this.emit();
+      }).catch(error => {
+        if (this.isCurrent(generation) && version === this.sourceVersion && attempt === this.playAttempt && this.wantsPlayback) this.fail(error);
       });
+    } catch (error) { this.fail(error); }
+  }
+
+  private fail(error: unknown): void {
+    this.wantsPlayback = false;
+    ++this.playAttempt;
+    ++this.sourceVersion;
+    this.clearPlayTimer();
+    this.sessionController?.abort();
+    ++this.metadataVersion;
+    if (this.metadataTimer !== null) clearTimeout(this.metadataTimer);
+    this.metadataTimer = null;
+    this.releaseMedia(this.metadataElement);
+    this.releaseMedia(this.audioElement);
+    this.loadedIndex = -1;
+    const failure = error as Error;
+    this.state.isLoading = false;
+    this.state.isPlaying = false;
+    this.state.canSeek = false;
+    this.state.error = failure?.name === 'NotAllowedError'
+      ? 'El navegador bloqueó el inicio del audio. Tocá Reintentar para habilitarlo.'
+      : failure?.message || 'No se pudo reproducir el audio. Volvé a intentar.';
+    this.state.notice = 'Podés leer el resumen en texto o reintentar el audio.';
+    this.emit();
   }
 
   public togglePlay(): void {
-    if (this.state.isLoading || !this.state.currentTrack) return;
-
-    if (this.state.isPlaying) {
-      this.pause();
-    } else {
-      this.resume();
-    }
+    if (!this.state.currentTrack) return;
+    if (this.wantsPlayback || this.state.isPlaying || this.state.isLoading) this.pause();
+    else this.resume();
   }
 
   public pause(): void {
-    if (this.audioElement) {
-      try {
-        this.audioElement.pause();
-      } catch {}
-    }
+    this.wantsPlayback = false;
+    ++this.playAttempt;
+    this.clearPlayTimer();
+    try { this.audioElement?.pause(); } catch { /* Already detached. */ }
     this.state.isPlaying = false;
+    this.state.isLoading = false;
     this.emit();
   }
 
   public resume(): void {
-    if (this.audioElement && this.audioElement.src) {
-      this.audioElement.play()
-        .then(() => {
-          this.state.isPlaying = true;
-          this.emit();
-        })
-        .catch(() => {});
+    if (!this.state.currentTrack) return;
+    if (this.state.error) { this.retry(); return; }
+    this.wantsPlayback = true;
+    this.state.error = null;
+    if (this.loadedIndex === this.segmentIndex && this.audioElement?.getAttribute('src')) {
+      this.playMounted(this.generation, this.sourceVersion);
+    } else {
+      // A paused pending synthesis never starts itself; this explicit gesture starts it.
+      void this.startSegment(this.segmentIndex);
     }
   }
 
   public seek(targetSeconds: number): void {
-    const clamped = Math.max(0, Math.min(this.state.totalDuration, targetSeconds));
-    if (this.audioElement && this.audioElement.duration) {
-      this.audioElement.currentTime = clamped;
-      this.state.currentSeconds = clamped;
-      this.state.remainingSeconds = Math.max(0, Math.round(this.state.totalDuration - clamped));
+    if (!this.state.currentTrack || this.state.error || !Number.isFinite(targetSeconds)) return;
+    const known = this.state.seekableDuration || 0;
+    if (!known) {
+      this.state.notice = 'El audio todavía se está preparando. Podés avanzar cuando haya una duración comprobada.';
       this.emit();
+      return;
+    }
+    const target = Math.max(0, Math.min(known, targetSeconds));
+    let index = 0;
+    let local = target;
+    while (index + 1 < this.segments.length && this.segments[index + 1].duration && local >= this.segments[index].duration!) {
+      local -= this.segments[index].duration!;
+      ++index;
+    }
+    const segment = this.segments[index];
+    if (!segment?.duration || !segment.clip) return;
+    if (this.loadedIndex === index && this.audioElement) {
+      try { this.audioElement.currentTime = local; } catch { return; }
+      this.state.currentSeconds = target;
+      this.updateTimeline();
     } else {
-      this.state.currentSeconds = clamped;
-      this.state.remainingSeconds = Math.max(0, Math.round(this.state.totalDuration - clamped));
-      this.emit();
+      ++this.playAttempt;
+      this.mountSegment(index, segment.clip, local);
     }
+    if (targetSeconds > known) this.state.notice = 'Podés avanzar hasta la parte del audio que ya se preparó.';
+    this.emit();
   }
 
-  public rewind(seconds: number = 10): void {
-    this.seek(this.state.currentSeconds - seconds);
-  }
+  public rewind(seconds: number = 10): void { this.seek(this.state.currentSeconds - seconds); }
+  public forward(seconds: number = 10): void { this.seek(this.state.currentSeconds + seconds); }
 
-  public forward(seconds: number = 10): void {
-    this.seek(this.state.currentSeconds + seconds);
-  }
-
-  public setSpeed(newSpeed: 1 | 1.25 | 1.5): void {
-    this.state.speed = newSpeed;
-    if (this.audioElement) {
-      this.audioElement.playbackRate = newSpeed;
-    }
-    if (this.secondaryAudioElement) {
-      this.secondaryAudioElement.playbackRate = newSpeed;
-    }
+  public setSpeed(speed: 1 | 1.25 | 1.5): void {
+    this.state.speed = speed;
+    if (this.audioElement) this.audioElement.playbackRate = speed;
     this.emit();
   }
 }
 
-// Export singleton instance
 export const audioController = new GlobalAudioController();

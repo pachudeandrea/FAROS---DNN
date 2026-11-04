@@ -19,7 +19,7 @@ function hasMarkedTicker(text: string, caseText: string, symbol: string): boolea
   });
 }
 
-const foreignSovereign = /\b(brasil|brazil|chile|uruguay|paraguay|peru|colombia|venezuela|ecuador|mexico|estados unidos|eeuu|espana|italia|alemania|francia|japon|china)\b/;
+const foreignSovereign = /\b(australia|nueva zelanda|canada|reino unido|inglaterra|suiza|suecia|brasil|brazil|chile|uruguay|paraguay|peru|colombia|venezuela|ecuador|mexico|estados unidos|eeuu|espana|italia|alemania|francia|japon|china)\b/;
 
 /** Relations are established from the verified publication, never from generated prose. */
 export function recognizeAssetIds(headline: string, assets: Asset[] = ASSET_CATALOG): string[] {

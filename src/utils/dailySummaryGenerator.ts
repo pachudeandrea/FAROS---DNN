@@ -131,7 +131,7 @@ export function generateDailySummaryScript(
   const timeSlot = getTimeSlot(nowAR.hour);
   const userTickers = new Set(portfolio.assetIds);
   const sections = [
-    `Resumen FAROS del ${nowAR.formattedSpanish} para tu cartera ${portfolio.name || 'Cartera Principal'}.`,
+    `Resumen FAROS del ${nowAR.formattedSpanish}, para ${portfolio.name || 'tu cartera principal'}.`,
   ];
   if (!userTickers.size) sections.push('Tu cartera no tiene activos seleccionados.');
 
@@ -141,30 +141,39 @@ export function generateDailySummaryScript(
     .map(item => ({ item, sources: distinctMediaSources(item.sources).filter(source => source.originalHeadline?.trim()) }))
     .filter(({ item, sources }) => item.headline.trim() && sources.length > 0);
 
-  const relevanceLabels: Record<NewsItem['relevanceType'], string> = {
-    impacto_precio: 'hecho material o variación de cotización reportados; la categoría por sí sola no prueba que el precio haya cambiado',
-    valoracion_mercado: 'información para la valoración, sin reacción de cotización demostrada',
-    contexto_macro: 'contexto macroeconómico, sin efecto de precio específico demostrado',
-    ruido: 'ruido, sin efecto financiero específico suficientemente acreditado',
+  const relevanceNotes: Record<NewsItem['relevanceType'], string> = {
+    impacto_precio: '',
+    valoracion_mercado: 'Aporta información para la valoración, sin una reacción de precio demostrada.',
+    contexto_macro: 'Es contexto macroeconómico, sin un efecto de precio demostrado para tus activos.',
+    ruido: 'No hay un efecto financiero suficientemente respaldado.',
   };
   if (!relevantNews.length) {
     sections.push('No hay noticias verificadas para tus activos en esta consulta. Esto no demuestra ausencia de riesgos.');
   } else {
-    sections.push(`Este resumen incluye ${Math.min(relevantNews.length, 6)} de las ${relevantNews.length} publicaciones relevantes con fuente disponibles en esta consulta.`);
+    const newsCount = Math.min(relevantNews.length, 6);
+    sections.push(relevantNews.length > newsCount
+      ? `Repasamos ${newsCount} de las ${relevantNews.length} noticias con fuente relacionadas con tu cartera.`
+      : `Repasamos ${newsCount} ${newsCount === 1 ? 'noticia con fuente relacionada' : 'noticias con fuente relacionadas'} con tu cartera.`);
     for (const { item, sources } of relevantNews.slice(0, 6)) {
       const selected = getPortfolioAffectedAssetIds(item, portfolio.assetIds);
-      const positions = selected.map(id => `${id}, posición ${portfolio.assetPositions?.[id] === 'short' ? 'SHORT' : 'LONG'}`).join('; ');
-      const verification = item.factCheck.status === 'confirmado'
-        ? 'Estado de verificación registrado: confirmado.'
-        : 'La verificación del hecho sigue en análisis; no se presenta como confirmado.';
-      sections.push(`Para ${positions}. Según ${sources.map(source => source.mediaName).join(' y ')}, el titular publicado es: ${item.headline}. ${verification} Clasificación: ${relevanceLabels[item.relevanceType]}.`);
+      const positions = selected.map(id => `${id}, posición ${portfolio.assetPositions?.[id] === 'short' ? 'vendida' : 'comprada'}`).join('; ');
+      const pending = item.factCheck.status === 'en_analisis';
+      sections.push(`Para ${positions}.`);
+      if (pending) sections.push('El hecho sigue en análisis; todavía no está confirmado.');
+      const headline = item.headline.trim();
+      sections.push(`${sources.map(source => source.mediaName).join(' y ')}: ${headline}${/[.!?…]$/.test(headline) ? '' : '.'}`);
+      if (relevanceNotes[item.relevanceType]) sections.push(relevanceNotes[item.relevanceType]);
       const effect = getPortfolioNewsImpact(item, portfolio);
       if (effect === 'favorable' || effect === 'positivo') {
-        sections.push('La lectura para tus posiciones es condicionalmente favorable, si el efecto identificado se traslada al valor de los instrumentos. No anticipa una cotización.');
+        sections.push(pending
+          ? 'Si se confirma, la lectura para tus posiciones sería favorable.'
+          : 'La lectura para tus posiciones es favorable.');
       } else if (effect === 'alerta' || effect === 'negativo') {
-        sections.push('La lectura para tus posiciones es condicionalmente desfavorable, si el efecto identificado se traslada al valor de los instrumentos. No anticipa una cotización.');
-      } else {
-        sections.push('No se establece una dirección neta favorable o desfavorable para tus posiciones.');
+        sections.push(pending
+          ? 'Si se confirma, la lectura para tus posiciones sería desfavorable.'
+          : 'La lectura para tus posiciones es desfavorable.');
+      } else if (item.relevanceType !== 'contexto_macro' && item.relevanceType !== 'ruido') {
+        sections.push('No hay una dirección neta clara para tus posiciones.');
       }
     }
   }
@@ -175,11 +184,11 @@ export function generateDailySummaryScript(
       : event.isMacro || event.category === 'macro_bcra' || event.category === 'elecciones_politica'))
     .sort((a, b) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || ''));
   if (upcomingEvents.length) {
-    sections.push('Próximos registros recibidos del calendario:');
+    sections.push('En tu calendario:');
     for (const event of upcomingEvents.slice(0, 3)) {
       const status = event.isCustom ? 'recordatorio personal, sin validación como evento oficial'
         : event.status === 'estimada' ? 'fecha estimada'
-          : event.status === 'confirmada' ? 'figura como confirmado en el calendario recibido'
+          : event.status === 'confirmada' ? 'confirmado en el calendario recibido'
             : event.status === 'realizado' ? 'registrado como realizado'
               : 'sin estado de confirmación informado';
       const asset = event.assetSymbol ? `, para ${event.assetSymbol}` : ', de alcance general';
@@ -187,9 +196,9 @@ export function generateDailySummaryScript(
       sections.push(`${event.title}${asset}, el ${event.date}${time}: ${status}.`);
     }
   } else {
-    sections.push('No se recibieron registros de calendario para hoy o fechas posteriores aplicables a tu cartera. Esto no confirma que no existan otros eventos o vencimientos.');
+    sections.push('No recibimos eventos próximos para tu cartera. Puede haber otros eventos o vencimientos.');
   }
-  sections.push('Este resumen es informativo y no contiene recomendaciones de compra o venta.');
+  sections.push('Las lecturas de impacto son condicionales, no anticipan cotizaciones. Este resumen es informativo, sin recomendaciones de compra o venta.');
 
   const script = naturalizeScriptForSpeech(sections.join(' '));
   const durationEst = calculateEstimatedDuration(script, 1.0);

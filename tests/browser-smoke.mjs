@@ -13,6 +13,16 @@ import { MOCK_PORTFOLIOS, DEFAULT_PREFERENCES } from '../src/data/mockData.ts';
 import { REAL_GROUNDED_NEWS } from '../src/data/groundedRealNews.ts';
 import { ASSET_CATALOG } from '../src/data/assetCatalog.ts';
 
+// Playable test tone: validates decoding/progress, not the quality or availability of a live voice.
+const sampleRate = 8000; const sampleCount = sampleRate * 4;
+const audioFixture = Buffer.alloc(44 + sampleCount * 2);
+audioFixture.write('RIFF'); audioFixture.writeUInt32LE(audioFixture.length - 8, 4); audioFixture.write('WAVEfmt ', 8);
+audioFixture.writeUInt32LE(16, 16); audioFixture.writeUInt16LE(1, 20); audioFixture.writeUInt16LE(1, 22);
+audioFixture.writeUInt32LE(sampleRate, 24); audioFixture.writeUInt32LE(sampleRate * 2, 28); audioFixture.writeUInt16LE(2, 32); audioFixture.writeUInt16LE(16, 34);
+audioFixture.write('data', 36); audioFixture.writeUInt32LE(sampleCount * 2, 40);
+for (let index = 0; index < sampleCount; index++) audioFixture.writeInt16LE(Math.round(Math.sin(index * 2 * Math.PI * 440 / sampleRate) * 1000), 44 + index * 2);
+const audioBase64 = audioFixture.toString('base64');
+
 const artifacts = process.env.BROWSER_ARTIFACTS || path.join(tmpdir(), 'faros-browser-checks');
 await mkdir(artifacts, { recursive: true });
 const candidates = [process.env.CHROMIUM_PATH, '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome'].filter(Boolean);
@@ -53,7 +63,7 @@ const browser = await chromium.launch({ executablePath, headless: true, args: ['
 const pageErrors = [];
 let checks = 0;
 async function check(name, run) { if (process.env.BROWSER_CHECK && !name.includes(process.env.BROWSER_CHECK)) return; await run(); checks++; console.log(`ok ${checks} - ${name}`); }
-async function setup({ anonymous = false, admin = false, permission = 'granted', longName = false, legacyNews = false, portfolioOverride, newsOverride, ...options } = {}) {
+async function setup({ anonymous = false, admin = false, permission = 'granted', longName = false, legacyNews = false, portfolioOverride, newsOverride, audioMode = 'ok', audioDelay = 0, ...options } = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, ...options });
   if (legacyNews) await context.addInitScript(({ item, portfolioId }) => {
     const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -76,7 +86,7 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
     PushManager.prototype.getSubscription = async () => local();
     PushManager.prototype.subscribe = async () => { localStorage.setItem('test_push', 'yes'); return local(); };
   }, { permission, subscription });
-  const state = { user: structuredClone(fixture), active: false, calls: [], events: [], newsData: news, newsMode: 'ok', revision: null, saveFailure: false, delayNews: 0 };
+  const state = { user: structuredClone(fixture), active: false, calls: [], events: [], newsData: news, newsMode: 'ok', revision: null, saveFailure: false, delayNews: 0, audioMode, audioDelay };
   if (portfolioOverride) state.user.portfolio = structuredClone(portfolioOverride);
   if (newsOverride) state.newsData = structuredClone(newsOverride);
   if (admin) state.user.isAdmin = true;
@@ -101,7 +111,12 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
       data = { success: true, user: state.user };
     }
     if (url.pathname === '/api/auth/register') { state.user = { ...state.user, ...body, preferences: { ...state.user.preferences, ...body.preferences }, portfolio: { ...state.user.portfolio, assetIds: [], assetPositions: {} } }; data = { success: true, user: state.user, token: 'local-browser-test' }; }
-    if (url.pathname === '/api/audio/synthesize') data = { success: true, audioBase64: 'UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA', mimeType: 'audio/wav', engine: 'test', voice: 'test' };
+    if (url.pathname === '/api/audio/synthesize') {
+      if (state.audioDelay) await new Promise(resolve => setTimeout(resolve, state.audioDelay));
+      status = state.audioMode === 'error' ? 503 : 200;
+      data = state.audioMode === 'error' ? { success: false, error: 'Fallo simulado del proveedor de audio.' }
+        : { success: true, audioBase64, mimeType: 'audio/wav', engine: 'test', voice: 'es-AR-TomasNeural' };
+    }
     if (url.pathname === '/api/calendar/events') data = { events: [] };
     if (url.pathname === '/api/admin/check') data = { isAdmin: !!state.user.isAdmin };
     if (url.pathname === '/api/notifications') data = { userId: fixture.id, notifications: [], enabled: state.active, subscribed: state.active, publicKey };
@@ -116,7 +131,7 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
       data = { success: true, events: state.events };
       }
     }
-    await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
+    try { await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) }); } catch (error) { if (url.pathname !== '/api/audio/synthesize') throw error; }
   });
   const page = await context.newPage();
   page.on('pageerror', error => pageErrors.push(error.message));
@@ -506,9 +521,49 @@ try {
     await card.getByRole('button', { name: 'Guardar noticia', exact: true }).waitFor();
     await card.getByRole('button', { name: /Escuchar síntesis/ }).click();
     await page.waitForTimeout(150);
-    assert.ok(state.calls.some(call => call.path === '/api/audio/synthesize' && call.body.trackId === news[0].id));
+    assert.ok(state.calls.some(call => call.path === '/api/audio/synthesize' && call.body.voice === 'es-AR-TomasNeural' && typeof call.body.text === 'string'));
     await page.screenshot({ path: path.join(artifacts, 'audio-390.png') });
     await context.close();
+  });
+  await check('Audio reproduce bytes reales, permite pausa y reintento, y arranca también el resumen del día', async () => {
+    const { context, page, state } = await setup({ audioMode: 'error' });
+    await clickVisible(page, 'Ahora no');
+    const card = page.locator('article').first();
+    await card.getByRole('button', { name: /Escuchar síntesis/ }).click();
+    const player = page.getByRole('region', { name: 'Reproductor de audio', exact: true });
+    await player.getByRole('alert').getByText('Fallo simulado del proveedor de audio.', { exact: true }).waitFor();
+    assert.equal(await player.getByRole('button', { name: 'Cancelar preparación del audio', exact: true }).count(), 0);
+    state.audioMode = 'ok';
+    await player.getByRole('button', { name: 'Reintentar', exact: true }).click();
+    await player.getByRole('button', { name: 'Pausar audio', exact: true }).waitFor();
+    const progress = player.getByRole('slider');
+    await page.waitForFunction(() => Number(document.querySelector('[aria-label="Reproductor de audio"] [role="slider"]')?.getAttribute('aria-valuenow')) > 0.2);
+    await player.getByRole('button', { name: 'Pausar audio', exact: true }).click();
+    const paused = Number(await progress.getAttribute('aria-valuenow'));
+    await page.waitForTimeout(350);
+    assert.ok(Math.abs(Number(await progress.getAttribute('aria-valuenow')) - paused) < 0.2, 'La pausa detiene el audio real');
+    await player.getByRole('button', { name: 'Reproducir audio', exact: true }).click();
+    await player.getByRole('button', { name: 'Pausar audio', exact: true }).waitFor();
+    await player.getByRole('button', { name: 'Cerrar reproductor y detener audio', exact: true }).click();
+    await player.waitFor({ state: 'hidden' });
+    await clickVisible(page, 'Escuchar resumen del día');
+    await player.getByText('Resumen del día', { exact: true }).waitFor();
+    await player.getByRole('button', { name: 'Pausar audio', exact: true }).waitFor();
+    await page.waitForFunction(() => Number(document.querySelector('[aria-label="Reproductor de audio"] [role="slider"]')?.getAttribute('aria-valuenow')) > 0.2);
+    assert.ok(state.calls.filter(call => call.path === '/api/audio/synthesize').every(call => call.body.voice === 'es-AR-TomasNeural'));
+    await page.screenshot({ path: path.join(artifacts, 'audio-reliable-390.png') });
+    await player.getByRole('button', { name: 'Cerrar reproductor y detener audio', exact: true }).click();
+    await player.waitFor({ state: 'hidden' }); await context.close();
+  });
+  await check('Cerrar mientras se prepara audio impide que una respuesta tardía vuelva a reproducir', async () => {
+    const { context, page, state } = await setup({ audioMode: 'error' });
+    await clickVisible(page, 'Ahora no'); state.audioMode = 'ok'; state.audioDelay = 700;
+    await page.locator('article').first().getByRole('button', { name: /Escuchar síntesis/ }).click();
+    const player = page.getByRole('region', { name: 'Reproductor de audio', exact: true });
+    await player.getByRole('button', { name: 'Cancelar preparación del audio', exact: true }).waitFor();
+    await player.getByRole('button', { name: 'Cerrar reproductor y detener audio', exact: true }).click();
+    await player.waitFor({ state: 'hidden' }); await page.waitForTimeout(1000);
+    assert.equal(await player.count(), 0); await context.close();
   });
   await check('Agenda móvil, error de guardado sin perder borrador, edición y eliminación sincronizadas', async () => {
     const { context, page, state } = await setup({ viewport: { width: 320, height: 568 } });

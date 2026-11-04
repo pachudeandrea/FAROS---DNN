@@ -42,10 +42,11 @@ test('excluye noticias de otros activos, enlaces sin publicación y rumores desc
   const items = [
     { ...news, id: 'other', headline: 'Titular ajeno sobre petróleo', affectedAssetIds: ['YPFD'] },
     { ...news, id: 'root-url', headline: 'Titular sin publicación', sources: [{ ...news.sources[0], sourceUrl: 'https://www.reuters.com/' }] },
+    { ...news, id: 'no-headline', headline: 'Titular sin respaldo', sources: [{ ...news.sources[0], originalHeadline: '' }] },
     { ...news, id: 'discarded', headline: 'Rumor descartado de prueba', factCheck: { ...news.factCheck, status: 'rumor_descartado' as const } },
   ];
   const result = generateDailySummaryScript(portfolio, items, [], now);
-  assert.doesNotMatch(result.script, /Titular ajeno|Titular sin publicación|Rumor descartado/);
+  assert.doesNotMatch(result.script, /Titular ajeno|Titular sin publicación|Titular sin respaldo|Rumor descartado/);
   assert.match(result.script, /No hay noticias verificadas/);
   assert.match(result.script, /no demuestra ausencia de riesgos/);
 });
@@ -53,12 +54,13 @@ test('excluye noticias de otros activos, enlaces sin publicación y rumores desc
 test('respeta LONG y SHORT usando el impacto del instrumento seleccionado', () => {
   const long = generateDailySummaryScript(portfolio, [news], [], now).script;
   const short = generateDailySummaryScript({ ...portfolio, assetPositions: { MSFT: 'short' } }, [news], [], now).script;
-  assert.match(long, /MSFT, posición LONG/);
-  assert.match(long, /condicionalmente favorable/);
-  assert.match(short, /MSFT, posición SHORT/);
-  assert.match(short, /condicionalmente desfavorable/);
-  assert.doesNotMatch(short, /condicionalmente favorable/);
-  assert.match(short, /No anticipa una cotización/);
+  assert.match(long, /MSFT, posición comprada/);
+  assert.match(long, /lectura para tus posiciones es favorable/);
+  assert.match(short, /MSFT, posición vendida/);
+  assert.match(short, /lectura para tus posiciones es desfavorable/);
+  assert.doesNotMatch(short, /lectura para tus posiciones es favorable/);
+  assert.match(short, /impacto son condicionales, no anticipan cotizaciones/);
+  assert.doesNotMatch(long + short, /posición LONG|posición SHORT/);
   const noAlert = generateDailySummaryScript(portfolio, [news], [], now).script;
   assert.doesNotMatch(noAlert, /no registran hechos adversos|no se identifican alertas|sin riesgos/i);
 });
@@ -67,11 +69,31 @@ test('contexto y ruido no heredan una dirección favorable y la verificación pe
   for (const relevanceType of ['contexto_macro', 'ruido'] as const) {
     const pending = { ...news, relevanceType, factCheck: { ...news.factCheck, status: 'en_analisis' as const } };
     const script = generateDailySummaryScript(portfolio, [pending], [], now).script;
-    assert.match(script, /verificación del hecho sigue en análisis/);
-    assert.match(script, /no se presenta como confirmado/);
-    assert.match(script, /No se establece una dirección neta/);
-    assert.doesNotMatch(script, /condicionalmente favorable|condicionalmente desfavorable/);
+    assert.match(script, /El hecho sigue en análisis; todavía no está confirmado/);
+    assert.ok(script.indexOf('todavía no está confirmado') < script.indexOf(news.headline), 'La falta de confirmación se aclara antes de leer el titular');
+    assert.match(script, relevanceType === 'contexto_macro'
+      ? /contexto macroeconómico, sin un efecto de precio demostrado/
+      : /No hay un efecto financiero suficientemente respaldado/);
+    assert.doesNotMatch(script, /lectura para tus posiciones (?:es|sería) (?:favorable|desfavorable)/);
   }
+});
+
+test('el guion confirmado lee fuente y titular sin recitar etiquetas ni repetir advertencias por noticia', () => {
+  const items = Array.from({ length: 7 }, (_, index) => ({ ...news, id: `news-${index}`, headline: `Titular de prueba ${index + 1}.` }));
+  const result = generateDailySummaryScript(portfolio, items, [], now);
+  assert.match(result.script, /Repasamos 6 de las 7 noticias/);
+  assert.match(result.script, /Reuters: Titular de prueba 1\./);
+  assert.doesNotMatch(result.script, /Titular de prueba 7|Estado de verificación|el titular publicado es|Clasificación:|posición LONG/);
+  assert.equal((result.script.match(/no anticipan cotizaciones/g) || []).length, 1);
+  assert.ok(result.wordCount < 300, 'Seis titulares no requieren un bloque de advertencias por noticia');
+});
+
+test('el impacto de una noticia en análisis se mantiene condicionado a su confirmación', () => {
+  const pending = { ...news, factCheck: { ...news.factCheck, status: 'en_analisis' as const } };
+  const script = generateDailySummaryScript(portfolio, [pending], [], now).script;
+  assert.match(script, /El hecho sigue en análisis; todavía no está confirmado/);
+  assert.match(script, /Si se confirma, la lectura para tus posiciones sería favorable/);
+  assert.doesNotMatch(script, /lectura para tus posiciones es favorable/);
 });
 
 test('eventos estimados y personales conservan su alcance y no inventan horas ni confirmaciones oficiales', () => {
@@ -83,7 +105,7 @@ test('eventos estimados y personales conservan su alcance y no inventan horas ni
   const personal = generateDailySummaryScript(portfolio, [], [{ ...event, status: 'confirmada', isCustom: true, time: '15:30' }], now).script;
   assert.match(personal, /recordatorio personal, sin validación como evento oficial/);
   assert.match(personal, /15:30/);
-  assert.doesNotMatch(personal, /figura como confirmado|confirmación oficial/);
+  assert.doesNotMatch(personal, /confirmado en el calendario|confirmación oficial/);
 });
 
 test('el calendario sólo usa activos seleccionados y eventos generales recibidos, sin afirmar ausencia de vencimientos', () => {
@@ -96,8 +118,8 @@ test('el calendario sólo usa activos seleccionados y eventos generales recibido
   assert.match(script, /Publicación macro de prueba, de alcance general/);
   assert.doesNotMatch(script, /Evento pasado|Evento ajeno/);
   const emptyCalendar = generateDailySummaryScript(portfolio, [], [], now).script;
-  assert.match(emptyCalendar, /No se recibieron registros de calendario/);
-  assert.match(emptyCalendar, /no confirma que no existan otros eventos o vencimientos/);
+  assert.match(emptyCalendar, /No recibimos eventos próximos para tu cartera/);
+  assert.match(emptyCalendar, /Puede haber otros eventos o vencimientos/);
   assert.doesNotMatch(emptyCalendar, /no hay pagos|continúa según lo previsto|planificar tu liquidez/);
 });
 
