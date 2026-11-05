@@ -828,7 +828,30 @@ try {
     await clickVisible(page, 'Preferencias'); await inspect('preferences-1440');
     await clickVisible(page, 'Activos y carteras'); await clickVisible(page, 'Crear nueva cartera');
     await dialogFits(page); await inspect('onboarding-step-1');
-    await clickVisible(page, 'Elegir activos'); await dialogFits(page); await inspect('onboarding-step-2');
+    await clickVisible(page, 'Elegir activos');
+    for (const width of [320, 390, 768, 832, 1440]) {
+      await page.setViewportSize({ width, height: width < 500 ? 640 : 900 });
+      await dialogFits(page);
+      const categories = page.getByRole('group', { name: 'Filtrar activos por categoría' });
+      const geometry = await categories.locator('button').evaluateAll(buttons => buttons.map(button => {
+        const rect = button.getBoundingClientRect();
+        const text = document.createRange(); text.selectNodeContents(button);
+        const label = text.getBoundingClientRect();
+        return { name: button.textContent, left: rect.left, right: rect.right, textLeft: label.left, textRight: label.right, height: rect.height };
+      }));
+      geometry.forEach((button, index) => {
+        assert.ok(button.textLeft >= button.left - 1 && button.textRight <= button.right + 1, `Etiqueta fuera de su botón a ${width}: ${button.name}`);
+        if (index) assert.ok(button.left >= geometry[index - 1].right, `Categorías superpuestas a ${width}: ${button.name}`);
+        assert.ok(button.height >= 44, `Objetivo táctil insuficiente: ${button.name}`);
+      });
+      const last = categories.locator('button').last();
+      await last.scrollIntoViewIfNeeded(); await last.click();
+      assert.equal(await last.getAttribute('aria-pressed'), 'true');
+      await fits(page, `Crear cartera ${width}`);
+      await inspect(`onboarding-step-2-${width}`);
+      await categories.getByRole('button', { name: 'Todos', exact: true }).scrollIntoViewIfNeeded();
+      await categories.getByRole('button', { name: 'Todos', exact: true }).click();
+    }
     await page.keyboard.press('Escape');
     await context.close();
     await import('node:fs/promises').then(fs => fs.writeFile(path.join(artifacts,'brand-audit.json'), JSON.stringify(report,null,2)));

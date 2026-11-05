@@ -104,19 +104,19 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     <div className="fixed inset-0 z-50 overflow-y-auto bg-ink-950/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
       <div 
         ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Crear cartera"
-        className="bg-paper rounded-3xl max-w-xl w-full border border-ink-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-150"
+        className="bg-paper rounded-3xl max-w-xl w-full border border-ink-200 shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header with Progress Bar */}
-        <div className="bg-brand-950 text-paper p-6 pb-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2.5">
+        <div className="shrink-0 bg-brand-950 text-paper p-4 sm:p-6 pb-4">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
               <BrandLogo size="sm" variant="full" tone="dark" />
               <span className="text-xs font-bold tracking-widest uppercase text-brand-300">
                 FAROS · Configuración Inicial
               </span>
             </div>
-            <span className="text-xs font-mono font-bold text-brand-200">
+            <span className="shrink-0 whitespace-nowrap text-xs font-mono font-bold text-brand-200">
               Paso {step} de 2
             </span>
           </div>
@@ -141,7 +141,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         </div>
 
         {/* Content Area */}
-        <div className="p-6 overflow-y-auto space-y-6 flex-1 text-ink-800">
+        <div className="min-h-0 min-w-0 p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 text-ink-800">
           {step === 1 && (
             <div className="space-y-5">
               <div>
@@ -190,12 +190,14 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               </div>
 
               {/* Category tabs */}
-              <div className="flex items-center gap-1 p-1 bg-ink-100 rounded-xl overflow-x-auto text-xs">
+              <div role="group" aria-label="Filtrar activos por categoría" className="flex min-w-0 max-w-full items-center gap-1 p-1 bg-ink-100 rounded-xl overflow-x-auto text-xs">
                 {(['todos', ...Object.keys(CATEGORY_LABELS)] as ('todos' | AssetCategory)[]).map(cat => (
                   <button
                     key={cat}
+                    type="button"
+                    aria-pressed={activeCategory === cat}
                     onClick={() => setActiveCategory(cat)}
-                    className={`px-3 py-1 font-bold rounded-lg capitalize whitespace-nowrap transition-colors cursor-pointer ${
+                    className={`shrink-0 min-h-11 px-3 py-2 font-bold rounded-lg capitalize whitespace-nowrap transition-colors cursor-pointer ${
                       activeCategory === cat
                         ? 'bg-paper text-brand-950 shadow-xs'
                         : 'text-muted hover:text-ink-900'
@@ -362,7 +364,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         </div>
 
         {/* Footer Navigation */}
-        <div className="px-6 py-4 border-t border-ink-200 bg-ink-50 flex items-center justify-between">
+        <div className="shrink-0 px-4 sm:px-6 py-4 border-t border-ink-200 bg-ink-50 flex items-center justify-between gap-3">
           {step === 2 ? (
             <button
               onClick={() => setStep(1)}
