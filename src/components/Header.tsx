@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrandLogo } from './BrandLogo';
-import { Bell, ArrowRight, Sparkles, Shield, Wallet } from 'lucide-react';
+import { Bell, ArrowRight, Sparkles, Shield, Wallet, LogOut } from 'lucide-react';
 
 interface HeaderProps {
   currentTab: 'feed' | 'calendar' | 'settings';
@@ -12,6 +12,7 @@ interface HeaderProps {
   onStartTour?: () => void;
   isAdmin?: boolean;
   onOpenAdmin?: () => void;
+  onLogout?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -24,6 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
   onStartTour,
   isAdmin = false,
   onOpenAdmin,
+  onLogout,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-paper/95 backdrop-blur-md border-b border-ink-200/80 shadow-brand-soft">
@@ -81,7 +83,7 @@ export const Header: React.FC<HeaderProps> = ({
         </nav>
 
         {/* Zone 3: Rocket Money-style Account/Portfolio Pill + Notifications */}
-        <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+        <div className="flex flex-1 min-w-0 items-center justify-end gap-1 sm:gap-2">
           {/* Admin panel launcher if admin */}
           {isAdmin && onOpenAdmin && (
             <button
@@ -126,7 +128,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Rocket Money-style Account Selector / Portfolio Chip */}
           <button
             onClick={() => onSelectTab('settings')}
-            className="flex items-center gap-2 pl-3 pr-2.5 py-1.5 text-xs font-bold rounded-full bg-ink-100 hover:bg-brand-50 text-ink-800 hover:text-brand-950 border border-ink-200/90 hover:border-brand-300 transition-all cursor-pointer group shadow-2xs"
+            className="flex min-w-0 items-center gap-2 pl-3 pr-2.5 py-1.5 text-xs font-bold rounded-full bg-ink-100 hover:bg-brand-50 text-ink-800 hover:text-brand-950 border border-ink-200/90 hover:border-brand-300 transition-all cursor-pointer group shadow-2xs"
             title="Cambiar o configurar cartera activa"
             aria-label={`Configurar cartera: ${portfolioName}`}
           >
@@ -134,10 +136,23 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="block max-w-[100px] sm:max-w-[150px] lg:max-w-[110px] xl:max-w-[170px] truncate font-medium">
               {portfolioName}
             </span>
-            <div className="w-5 h-5 rounded-full bg-brand-950 text-brand-200 flex items-center justify-center ml-0.5 group-hover:translate-x-0.5 transition-transform">
+            <div className="shrink-0 w-5 h-5 rounded-full bg-brand-950 text-brand-200 flex items-center justify-center ml-0.5 group-hover:translate-x-0.5 transition-transform">
               <Wallet className="w-3 h-3" />
             </div>
           </button>
+          {onLogout && (
+            <button
+              type="button"
+              onClick={onLogout}
+              aria-label="Cerrar sesión"
+              title="Cerrar sesión"
+              className="inline-flex shrink-0 min-h-11 items-center justify-center gap-1.5 px-2.5 sm:px-3 rounded-xl border border-danger-300 bg-danger-50 text-danger-800 hover:bg-danger-100 text-xs font-bold transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger-800"
+            >
+              <LogOut aria-hidden="true" className="w-4 h-4" />
+              <span className="sm:hidden">Salir</span>
+              <span className="hidden sm:inline">Cerrar sesión</span>
+            </button>
+          )}
         </div>
       </div>
     </header>

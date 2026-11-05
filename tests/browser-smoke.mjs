@@ -912,8 +912,22 @@ try {
       const header = authenticated.page.locator('header').first();
       const logo = await header.locator('.brand-logo').boundingBox(); const pro = await header.getByText('PRO', { exact: true }).boundingBox();
       assert.ok(logo && pro && logo.x + logo.width <= pro.x, 'Logo y PRO quedan juntos, sin superposición');
+      const logout = header.getByRole('button', { name: 'Cerrar sesión', exact: true });
+      await logout.waitFor({ state: 'visible' });
+      const exit = await logout.boundingBox();
+      assert.ok(exit && exit.height >= 44 && exit.x >= 0 && exit.x + exit.width <= width, `Cerrar sesión visible y accesible a ${width}`);
+      const configure = await header.getByRole('button', { name: /Configurar cartera:/ }).boundingBox();
+      assert.ok(configure && configure.x + configure.width <= exit.x, 'La cartera y la salida no se superponen');
       await authenticated.page.screenshot({ path: path.join(artifacts, `header-pro-${width}.png`) });
     }
+    await clickVisible(authenticated.page, 'Mi cartera');
+    await authenticated.page.evaluate(() => scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }));
+    const exit = authenticated.page.locator('header').getByRole('button', { name: 'Cerrar sesión', exact: true });
+    await exit.click();
+    await authenticated.page.getByRole('button', { name: 'Iniciar sesión', exact: true }).first().waitFor();
+    assert.equal(authenticated.state.calls.filter(call => call.path === '/api/auth/logout' && call.method === 'POST').length, 1);
+    assert.equal(authenticated.state.calls.filter(call => call.path === '/api/auth/account' && call.method === 'DELETE').length, 0, 'Salir no elimina la cuenta');
+    assert.equal(await authenticated.page.locator('header').getByRole('button', { name: 'Cerrar sesión', exact: true }).count(), 0);
     await authenticated.context.close();
   });
   await check('Worker real muestra avisos con la página cerrada y filtra otras cuentas', async () => {

@@ -757,6 +757,7 @@ export default function App() {
         onStartTour={() => setIsTourActive(true)}
         isAdmin={isCurrentUserAdmin}
         onOpenAdmin={navigateToAdmin}
+        onLogout={handleLogout}
       />
 
       <VersionNotice />
