@@ -116,9 +116,28 @@ function sovereignSpread(value: string) {
   return { valid: true, level: level[1].replaceAll('.', ''), direction, kind };
 }
 
+/** Price directions belong to their own clause and asset, never a neighboring metric. */
+function marketDirections(headline: string): Map<string, string> {
+  const movements = new Map<string, string>();
+  const raw = headline.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  for (const clause of raw.split(/;|,(?!\d)|\b(?:mientras|pero|y)\b/)) {
+    if (!/\b(acciones|adrs?|bonos|dolar|cotiza|cotizacion|merval)\b/.test(clause)) continue;
+    if (/\b(riesgo pais|prima de riesgo|tasas?|encajes|reservas|inflacion|ganancias|ebitda|dividendos)\b/.test(clause)) continue;
+    const up = /\b(sube|suben|subio|subieron|trepa|trepan|trepo|avanza|avanzan|rebotan|rebotaron)\b/.test(clause);
+    const down = /\b(baja|bajan|bajo|bajaron|cae|caen|cayo|cayeron|retrocede|retroceden|pierden|perdieron)\b/.test(clause);
+    if (up === down || /\b(no|sin)\b/.test(clause)) continue;
+    const keys = [...recognizeAssetIds(clause), ...[...clause.matchAll(/\bdolar (mep|ccl|blue|oficial)\b/g)].map(match => `dolar_${match[1]}`)];
+    if (/\bmerval\b/.test(clause)) keys.push('merval');
+    for (const key of keys) movements.set(key, up ? 'up' : 'down');
+  }
+  return movements;
+}
+
 export function sourcesCoverSameEvent(primary: MediaCoverage, candidate: MediaCoverage): boolean {
   const a = eventText(primary.originalHeadline); const b = eventText(candidate.originalHeadline);
   if (!a || !b) return false;
+  const directionsA = marketDirections(primary.originalHeadline); const directionsB = marketDirections(candidate.originalHeadline);
+  if ([...directionsA].some(([asset, direction]) => directionsB.has(asset) && directionsB.get(asset) !== direction)) return false;
   if (disjoint(centralBankActors(primary.originalHeadline), centralBankActors(candidate.originalHeadline))) return false;
   // Same sector/ticker is insufficient. Separate different releases, currency
   // markets and corporate actions even when their wording is very similar.

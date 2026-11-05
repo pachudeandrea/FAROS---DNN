@@ -196,7 +196,8 @@ test('la API encuentra otros medios aunque sus RSS no incluyan la publicación, 
   assert.ok(reserves);
   assert.equal(reserves.coverageCount, 3, server.output);
   assert.deepEqual(reserves.sources.map((source: MediaCoverage) => source.mediaName).sort(), ['El Cronista', 'Infobae', 'Ámbito'].sort());
-  assert.equal(result.coverageDiscovery.searches, 2);
+  assert.ok(result.coverageDiscovery.queries.some((query: any) => query.publisher === 'cronista.com' && query.accepted > 0));
+  assert.ok(result.coverageDiscovery.queries.some((query: any) => query.publisher === 'infobae.com' && query.accepted > 0));
   assert.equal(result.coverageDiscovery.added, 2);
 });
 
@@ -217,5 +218,5 @@ test('una tarjeta reúne Ámbito RSS, Infobae sección y Cronista búsqueda con 
   assert.ok(event.portfolioImpactAnalysis.affectedHoldings.some((holding: any) => holding.symbol === 'AL30'));
   assert.ok(result.diagnostics.sections.some((section: any) => section.accepted > 0));
   assert.ok(result.coverageDiscovery.queries.some((query: any) => query.publisher === 'cronista.com' && query.accepted > 0));
-  assert.equal((await server.stats()).sections, 1);
+  assert.equal((await server.stats()).sections, 2, 'La sección se consulta también en la búsqueda general de cobertura');
 });

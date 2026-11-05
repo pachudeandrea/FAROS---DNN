@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { NewsItem } from '../src/types/index.js';
-import { discoverMissingCoverage, createCoverageDiscoveryDiagnostics, coverageCandidateUrl, coverageEventQueries } from '../src/utils/coverageDiscovery.js';
+import { discoverMissingCoverage as discoverCoverage, createCoverageDiscoveryDiagnostics, coverageCandidateUrl, coverageEventQueries } from '../src/utils/coverageDiscovery.js';
 import { purgeUrlVerificationCache } from '../src/utils/urlResolver.js';
 
+const discoverMissingCoverage: typeof discoverCoverage = (news, diagnostics) => discoverCoverage(news, diagnostics, { publishers: ['ambito.com', 'cronista.com', 'infobae.com'], sections: false, searchPaths: ['/search'] });
 const title = 'El BCRA compró USD 125 millones y elevó sus reservas';
 const source = (headline = title, publisher = 'ambito.com', date = new Date().toISOString()) => ({
   mediaName: publisher, originalHeadline: headline, sourceUrl: `https://www.${publisher}/economia/coverage-fixture`,

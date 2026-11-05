@@ -120,3 +120,13 @@ test('equivalencia de prima argentina exige nivel, dirección propia y jornada v
   assert.equal(sourcesCoverSameEvent(a, { ...b, publishedTimestamp: NaN, publishedDateIso: undefined }), false);
   assert.equal(sourcesCoverSameEvent(a, { ...b, publishedTimestamp: Date.parse('2030-06-14T16:00:00Z') }), false);
 });
+
+
+test('recuperación amplia: no une movimientos opuestos del mismo activo ni toma el verbo de otra métrica', () => {
+  for (const [a, b] of [
+    ['El dólar MEP sube y amplía la brecha', 'El dólar MEP baja y amplía la brecha'],
+    ['Las acciones de Apple suben tras el balance', 'Las acciones de Apple caen tras el balance'],
+    ['Los bonos argentinos suben tras la elección', 'Los bonos argentinos caen tras la elección']
+  ]) assert.equal(sourcesCoverSameEvent(fixture(a), fixture(b, 'cronista.com')), false, `${a} / ${b}`);
+  assert.equal(sourcesCoverSameEvent(fixture('Las acciones de Apple suben mientras las acciones de Microsoft caen'), fixture('Las acciones de Apple caen mientras las acciones de Microsoft suben', 'cronista.com')), false);
+});
