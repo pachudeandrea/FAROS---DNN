@@ -50,6 +50,9 @@ test('revisa todas las tarjetas y reúne seis hechos distintos desde secciones a
   assert.equal(diagnostics.added, 6);
   assert.equal(diagnostics.summary.multiMedia, 6);
   assert.equal(diagnostics.summary.singleSource, 0);
+  assert.equal(diagnostics.searchBudgetExhausted, true);
+  assert.ok(diagnostics.summary.incompleteSearches > 0, 'Leer los índices no oculta las consultas dirigidas pendientes');
+  assert.ok(diagnostics.events.some(event => event.searchesCompleted < event.searchesPlanned && event.searchIncomplete));
   assert.equal(calls.filter(url => url === 'https://www.cronista.com/finanzas-mercados/').length, 1, 'Un índice compartido, no una descarga por tarjeta');
   assert.ok(calls.filter(url => /\/broad-\d+\/$/.test(url)).length <= topics.length, 'Se reutiliza la verificación de URLs');
   assert.ok(input.every(item => item.sources.length === 1));

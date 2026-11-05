@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { NewsItem } from '../src/types/index.js';
-import { discoverMissingCoverage as discoverCoverage, createCoverageDiscoveryDiagnostics, coverageCandidateUrl, coverageEventQueries } from '../src/utils/coverageDiscovery.js';
+import { discoverMissingCoverage as discoverCoverage, createCoverageDiscoveryDiagnostics, coverageCandidateUrl, coverageEventQueries, coverageDatedQueries } from '../src/utils/coverageDiscovery.js';
 import { purgeUrlVerificationCache } from '../src/utils/urlResolver.js';
 
 const discoverMissingCoverage: typeof discoverCoverage = (news, diagnostics) => discoverCoverage(news, diagnostics, { publishers: ['ambito.com', 'cronista.com', 'infobae.com'], sections: false, searchPaths: ['/search'] });
@@ -147,4 +147,25 @@ test('diagnostica destinos decodificados fuera del medio y formatos de seguimien
     assert.equal(query.rejectedExamples[0].path, '/article');
     assert.doesNotMatch(JSON.stringify(query.rejectedExamples), /private|secret|token|\?/);
   }
+});
+
+
+test('Bing Noticias: decodifica wrappers HTTP y anidados sin visitarlos ni aceptar otros dominios', () => {
+  const target = 'https://www.cronista.com/finanzas-mercados/verified-fixture/';
+  const wrap = (value: string) => `http://www.bing.com/news/apiclick.aspx?ref=FexRss&url=${encodeURIComponent(value)}`;
+  assert.equal(coverageCandidateUrl(wrap(target), 'cronista.com'), target);
+  assert.equal(coverageCandidateUrl(wrap(wrap(target)), 'cronista.com'), target);
+  assert.equal(coverageCandidateUrl(wrap('https://www.bing.com/ck/a?u=a1' + Buffer.from(target).toString('base64url')), 'cronista.com'), target);
+  assert.equal(coverageCandidateUrl(wrap('https://cronista.com.evil.test/private'), 'cronista.com'), null);
+  assert.equal(coverageCandidateUrl(wrap('file:///private'), 'cronista.com'), null);
+  assert.equal(coverageCandidateUrl(wrap(wrap(wrap(wrap(target)))), 'cronista.com'), null);
+  assert.equal(coverageCandidateUrl(wrap(target).replace('www.bing.com', 'user:password@www.bing.com'), 'cronista.com'), null);
+});
+
+test('busca hechos anteriores por su fecha pública argentina y conserva una variante amplia', () => {
+  const anchor = source(title, 'ambito.com', '2026-11-05T01:00:00Z');
+  const queries = coverageDatedQueries(anchor, new Date('2026-11-05T18:00:00Z'));
+  assert.match(queries[0], /4 de noviembre de 2026/);
+  assert.equal(queries[1], coverageEventQueries(title)[1]);
+  assert.deepEqual(coverageDatedQueries(anchor, new Date('2026-11-05T02:00:00Z')), coverageEventQueries(title));
 });

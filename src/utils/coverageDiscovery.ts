@@ -6,7 +6,7 @@ import { verifySourceUrl } from './urlResolver.js';
 
 import { COVERAGE_PUBLISHERS, collectPublisherSections, type SectionReport, type PublicationCandidate } from './publisherSections.js';
 const PUBLISHERS = COVERAGE_PUBLISHERS.map(publisher => publisher.domain);
-interface EventReport { id: string; headline: string; unresolvedPublishers: string[]; checkedPublishers: string[]; candidateCount: number; attempted: number; matched: number; differentEvent: number; failed: number; skipped: number; sourcesBefore: number; sourcesAfter: number; status: string };
+interface EventReport { searchesPlanned: number; searchesCompleted: number; searchIncomplete: boolean; id: string; headline: string; unresolvedPublishers: string[]; checkedPublishers: string[]; candidateCount: number; attempted: number; matched: number; differentEvent: number; failed: number; skipped: number; sourcesBefore: number; sourcesAfter: number; status: string };
 export function createCoverageDiscoveryDiagnostics() {
   return { summary: { total: 0, multiMedia: 0, singleSource: 0, enriched: 0, incompleteSearches: 0 }, events: [] as EventReport[], sections: [] as SectionReport[], verification: { budgetExhausted: false, skipped: 0 }, searchBudgetExhausted: false, searches: 0, unavailable: 0, candidates: 0, verified: 0, added: 0, queries: [] as { publisher: string; query: string; raw: number; rejected: number; accepted: number; status: string; route: string; rejectionReasons: Record<string, number>; rejectedExamples: { host: string; path: string; reason: string }[] }[] };
 }
@@ -21,7 +21,11 @@ function inspectCoverageCandidate(raw: string, publisher: string) {
   const reject = (reason: string) => ({ url: null as string | null, reason, host: url?.hostname || '', path: (url?.pathname || '').slice(0, 180) });
   try {
     url = new URL(raw, 'https://www.bing.com');
-    if (url.protocol === 'https:' && ['www.bing.com', 'bing.com'].includes(url.hostname)) {
+    for (let depth = 0; ['www.bing.com', 'bing.com'].includes(url.hostname); depth++) {
+      if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.port) return reject('unsafe_url');
+      if (depth >= 3) return reject('tracker_limit');
+      // Decode locally: HTTP tracking wrappers are never visited.
+
       if (url.pathname === '/ck/a') {
         const value = url.searchParams.get('u') || '';
         if (!/^a1[A-Za-z0-9_-]+$/.test(value)) return reject('malformed_tracker');
@@ -57,6 +61,18 @@ export function coverageEventQueries(headline: string): string[] {
   return [...new Set([event, alternative])].filter(Boolean);
 }
 
+/** Date hints improve discovery of older events without changing verified dates. */
+export function coverageDatedQueries(anchor: MediaCoverage, now = new Date()): string[] {
+  const queries = coverageEventQueries(anchor.originalHeadline);
+  const at = typeof anchor.publishedTimestamp === 'number' && Number.isFinite(anchor.publishedTimestamp) ? anchor.publishedTimestamp : Date.parse(anchor.publishedDateIso || '');
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+  if (queries.length && Number.isFinite(at) && at < now.getTime() && day.format(at) !== day.format(now)) {
+    const date = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: 'numeric', month: 'long', year: 'numeric' }).format(at);
+    queries[0] = `${queries[0]} ${date}`;
+  }
+  return queries;
+}
+
 /** Broad retrieval: candidates may be approximate; final event matching is strict. */
 export function coverageCandidateScore(anchor: string, candidate: string): number {
   const terms = (value: string) => new Set(cleanHeadlineText(value)
@@ -77,7 +93,7 @@ export async function discoverMissingCoverage(news: NewsItem[], diagnostics = cr
   const targets = news.filter(item => item.sources.length && item.sources.length < 5 && publishers.some(publisher => !item.sources.some(source => getPublisherKey(source) === publisher)));
   const reports = new Map<NewsItem, EventReport>();
   for (const item of news) {
-    const report: EventReport = { id: item.id, headline: item.sources[0]?.originalHeadline || item.headline, unresolvedPublishers: [], checkedPublishers: [], candidateCount: 0, attempted: 0, matched: 0, differentEvent: 0, failed: 0, skipped: 0, sourcesBefore: item.sources.length, sourcesAfter: item.sources.length, status: item.sources.length >= 5 ? 'coverage_limit' : item.sources.length ? 'pending' : 'missing_anchor' };
+    const report: EventReport = { searchesPlanned: 0, searchesCompleted: 0, searchIncomplete: false, id: item.id, headline: item.sources[0]?.originalHeadline || item.headline, unresolvedPublishers: [], checkedPublishers: [], candidateCount: 0, attempted: 0, matched: 0, differentEvent: 0, failed: 0, skipped: 0, sourcesBefore: item.sources.length, sourcesAfter: item.sources.length, status: item.sources.length >= 5 ? 'coverage_limit' : item.sources.length ? 'pending' : 'missing_anchor' };
     diagnostics.events.push(report); reports.set(item, report);
   }
   if (!targets.length) return news;
@@ -87,16 +103,18 @@ export async function discoverMissingCoverage(news: NewsItem[], diagnostics = cr
   const sectionsTask = options.sections === false ? Promise.resolve([] as PublicationCandidate[]) : collectPublisherSections(COVERAGE_PUBLISHERS.filter(publisher => publishers.includes(publisher.domain)), diagnostics.sections, searchSignal);
   // Round-robin across events first, instead of exhausting the first four cards.
   const queues = targets.map(item => publishers.filter(publisher => !item.sources.some(source => getPublisherKey(source) === publisher)).map(publisher => ({ item, anchor: item.sources[0], publisher })));
+  queues.forEach((queue, index) => { reports.get(targets[index])!.searchesPlanned = queue.length; });
   const queries = Array.from({ length: publishers.length }, (_, turn) => queues.flatMap(queue => queue[turn] ? [queue[turn]] : [])).flat();
   let nextQuery = 0;
   await Promise.all(Array.from({ length: Math.min(4, queries.length) }, async () => {
     while (!searchSignal.aborted && nextQuery < queries.length && diagnostics.searches < 48) {
       const { item, anchor, publisher } = queries[nextQuery++];
       const seen = new Set<string>();
-      let accepted = false;
-      for (const terms of coverageEventQueries(anchor.originalHeadline)) {
+      let accepted = false; let interrupted = false; let queryFailed = false;
+      for (const terms of coverageDatedQueries(anchor)) {
         for (const route of options.searchPaths || ['/news/search', '/search']) {
-          if (searchSignal.aborted || accepted || diagnostics.searches >= 48) break;
+          if (accepted) break;
+          if (searchSignal.aborted || diagnostics.searches >= 48) { interrupted = true; break; }
           diagnostics.searches++;
           const query = `site:${publisher} ${terms}`;
           const report = { publisher, query, route, raw: 0, rejected: 0, accepted: 0, status: 'pending', rejectionReasons: {} as Record<string, number>, rejectedExamples: [] as { host: string; path: string; reason: string }[] };
@@ -128,14 +146,15 @@ export async function discoverMissingCoverage(news: NewsItem[], diagnostics = cr
               report.accepted++;
             });
             if (report.raw && !report.accepted) report.status = 'irrelevant_results';
-          } catch { diagnostics.unavailable++; report.status = 'unavailable'; accepted = true; break; }
+          } catch { diagnostics.unavailable++; report.status = 'unavailable'; queryFailed = true; accepted = true; break; }
           if (report.accepted) { if (!reports.get(item)!.checkedPublishers.includes(publisher)) reports.get(item)!.checkedPublishers.push(publisher); accepted = true; break; }
         }
         if (accepted) break;
       }
+      if (!interrupted && !queryFailed) reports.get(item)!.searchesCompleted++;
     }
   }));
-  diagnostics.searchBudgetExhausted = nextQuery < queries.length || searchSignal.aborted;
+  diagnostics.searchBudgetExhausted = diagnostics.events.some(event => event.searchesCompleted < event.searchesPlanned) && (searchSignal.aborted || diagnostics.searches >= 48);
   const sectionCandidates = await sectionsTask;
   for (const item of targets) {
     const report = reports.get(item)!;
@@ -181,13 +200,14 @@ export async function discoverMissingCoverage(news: NewsItem[], diagnostics = cr
   for (const item of targets) {
     const report = reports.get(item)!;
     report.sourcesAfter = enriched[news.indexOf(item)].sources.length;
+    report.searchIncomplete = report.searchesCompleted < report.searchesPlanned;
     report.unresolvedPublishers = queues[targets.indexOf(item)].map(query => query.publisher).filter(publisher => !report.checkedPublishers.includes(publisher));
-    report.status = report.sourcesAfter > report.sourcesBefore ? 'enriched' : report.skipped || report.checkedPublishers.length < queues[targets.indexOf(item)].length ? 'incomplete'
+    report.status = report.sourcesAfter > report.sourcesBefore ? 'enriched' : report.skipped || report.searchIncomplete || report.checkedPublishers.length < queues[targets.indexOf(item)].length ? 'incomplete'
       : report.failed ? 'verification_failed' : report.differentEvent ? 'different_event' : 'no_verified_match';
   }
   diagnostics.summary.multiMedia = enriched.filter(item => item.sources.length > 1).length;
   diagnostics.summary.singleSource = enriched.filter(item => item.sources.length === 1).length;
   diagnostics.summary.enriched = diagnostics.events.filter(event => event.status === 'enriched').length;
-  diagnostics.summary.incompleteSearches = diagnostics.events.filter(event => event.unresolvedPublishers.length || event.skipped || event.failed).length;
+  diagnostics.summary.incompleteSearches = diagnostics.events.filter(event => event.searchIncomplete || event.unresolvedPublishers.length || event.skipped || event.failed).length;
   return enriched;
 }

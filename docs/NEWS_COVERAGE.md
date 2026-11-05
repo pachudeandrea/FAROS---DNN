@@ -20,14 +20,14 @@ En paralelo se consulta Bing Noticias RSS y, si no aporta candidatos, su búsque
 
 La recuperación directa y las búsquedas comparten cinco segundos. Las búsquedas tienen cuatro trabajadores, hasta 48 peticiones y turnos entre acontecimientos. La verificación dispone de diez segundos adicionales, cuatro trabajadores y turnos entre tarjetas: cada noticia recibe su mejor candidato antes de los segundos. Se clasifican hasta tres candidatos por editorial para cada hecho, con coincidencias amplias de términos y actores para ordenar la inspección. Ese puntaje no autoriza la fusión. Se reutilizan publicaciones ya verificadas y se conserva un máximo de cinco editoriales por tarjeta. Los presupuestos se suman a la recopilación inicial; no son una búsqueda exhaustiva de toda la web.
 
-Cada candidato debe superar la verificación en la publicación original: HTTPS final del medio correcto, titular propio y fecha. Después se compara con la fuente principal del acontecimiento. Los snippets del buscador y la sección nunca son evidencia del hecho. Los enlaces de seguimiento Bing conocidos se decodifican antes de validar el destino; no se siguen destinos arbitrarios. HTTP solo se admite como candidato que termine en HTTPS.
+Cada candidato debe superar la verificación en la publicación original: HTTPS final del medio correcto, titular propio y fecha. Después se compara con la fuente principal del acontecimiento. Los snippets del buscador y la sección nunca son evidencia del hecho. Los enlaces de seguimiento Bing conocidos se decodifican localmente antes de validar el destino, incluidos envoltorios HTTP y hasta tres capas anidadas. El envoltorio HTTP no se visita; solo se abre la publicación del medio autorizado. Las consultas para hechos de jornadas anteriores incluyen la fecha pública argentina en la primera variante y conservan una segunda más amplia; no se siguen destinos arbitrarios. HTTP solo se admite como candidato que termine en HTTPS.
 
 `coverageDiscovery` conserva los contadores globales y agrega:
 
 - `summary`: total final de noticias, tarjetas con varios medios, con una fuente, enriquecidas y búsquedas incompletas. Los contadores de `diagnostics` describen la recopilación RSS anterior al enriquecimiento.
 - `sections`: acceso, contenido vacío y candidatos de cada índice.
 - `queries`: ruta de búsqueda, resultados brutos, aceptados, motivos y ejemplos acotados de descartes, sin query strings ni credenciales de los resultados.
-- `events`: por noticia, editoriales revisadas y pendientes, candidatos, verificaciones, coincidencias, otros hechos, fallos, omisiones por presupuesto y fuentes antes/después.
+- `events`: por noticia, editoriales revisadas y pendientes, búsquedas dirigidas planificadas/completadas y su estado incompleto, candidatos, verificaciones, coincidencias, otros hechos, fallos, omisiones por presupuesto y fuentes antes/después.
 - `verification` y `searchBudgetExhausted`: límites que impidieron completar pasos.
 
 Una tarjeta de un solo medio puede deberse a un índice parcial, búsqueda irrelevante, acceso fallido, otro acontecimiento o presupuesto agotado. **Ninguno de esos resultados demuestra que no exista otra cobertura.** La cantidad de medios se mide; no se impone un mínimo artificial ni se elimina una noticia legítima para mejorar la proporción.
@@ -46,8 +46,17 @@ Cada fuente conserva su titular, editorial, fecha y URL verificados. La comparac
 
 ## Caché y pruebas
 
-El espacio de caché actual es `v12_broad_verified_coverage`, compartido por cliente y servidor. Se descartan las noticias del formato anterior conservando sesión, cartera y calendario. `Actualizar pulso` fuerza la búsqueda. `/api/version` informa el commit y `newsVersion`, sin datos privados.
+El espacio de caché actual es `v13_news_tracking_coverage`, compartido por cliente y servidor. Se descartan las noticias del formato anterior conservando sesión, cartera y calendario. `Actualizar pulso` fuerza la búsqueda. `/api/version` informa el commit y `newsVersion`, sin datos privados.
 
 Las pruebas cubren RSS simultáneos, un medio lento o caído, reparto entre editoriales, deduplicación, plazos, reintento de errores transitorios y tres medios para un mismo acontecimiento. Las pruebas de API demuestran que RSS agrega El Cronista e Infobae cuando la búsqueda simulada de Gemini solo encuentra Ámbito. También verifican que otros pagos, fechas, países, cifras o decisiones permanezcan separados. Los transportes son fixtures explícitos y no sustituyen consultas periodísticas en vivo.
 
 La red de este entorno todavía deniega las consultas directas a los sitios periodísticos y a producción. Los dominios quedaron declarados en el borrador de configuración; deben estar aplicados para verificar cobertura y despliegue reales. Publicar código en Git no demuestra por sí solo que Vercel haya finalizado el despliegue.
+
+
+## Evidencia de producción aportada
+
+La consulta del usuario sobre `6b459ed` y `v12_broad_verified_coverage` confirmó tres de cinco tarjetas con varios medios: Ámbito/Infobae para el cruce de 900 puntos; Ámbito/Infobae/iProfesional para reservas y FMI; Ámbito/iProfesional para la reanudación de compras del BCRA. Los nueve índices devolvieron candidatos, y se verificaron los 51 candidatos seleccionados sin fallos ni omisiones por tiempo. Una columna panorámica y el hecho del día anterior sobre 850 puntos conservaron una fuente. Esto prueba cobertura múltiple real en esa consulta, no una proporción universal ni ausencia de otras publicaciones.
+
+Bing siguió sin aportar candidatos; Noticias mostró enlaces `/news/apiclick.aspx` descartados con dominio Bing. El parser de v12 solo desenvolvía la capa inicial HTTPS; v13 incorpora la regresión de envoltorios HTTP y anidados, sin ampliar dominios aceptados. Su efecto en búsquedas en vivo requiere otra comprobación de producción.
+
+En v13 el resumen de búsquedas incompletas cuenta también consultas dirigidas que no se terminaron, aunque los índices de todas las editoriales hayan respondido. Se conserva por separado el progreso de secciones y buscadores: un límite global de consultas no puede aparecer como una revisión totalmente completada.
