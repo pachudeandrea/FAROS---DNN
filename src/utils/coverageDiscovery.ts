@@ -1,43 +1,58 @@
 import * as cheerio from 'cheerio';
 import type { MediaCoverage, NewsItem } from '../types/index.js';
-import { cleanHeadlineText, getPublisherKey } from './sourceGrounding.js';
+import { getPublisherKey } from './sourceGrounding.js';
 import { enrichNewsCoverage, sourcesCoverSameEvent } from './newsCoverage.js';
 import { verifySourceUrl } from './urlResolver.js';
 
 const PUBLISHERS = ['ambito.com', 'cronista.com', 'infobae.com'];
 export function createCoverageDiscoveryDiagnostics() {
-  return { searches: 0, unavailable: 0, candidates: 0, verified: 0, added: 0, queries: [] as { publisher: string; query: string; raw: number; rejected: number; accepted: number; status: string }[] };
+  return { searches: 0, unavailable: 0, candidates: 0, verified: 0, added: 0, queries: [] as { publisher: string; query: string; raw: number; rejected: number; accepted: number; status: string; rejectionReasons: Record<string, number>; rejectedExamples: { host: string; path: string; reason: string }[] }[] };
 }
 const belongsTo = (url: string, publisher: string, candidate = false) => {
   try { const parsed = new URL(url); return (parsed.protocol === 'https:' || candidate && parsed.protocol === 'http:') && !parsed.username && !parsed.password && !parsed.port && (parsed.hostname === publisher || parsed.hostname.endsWith(`.${publisher}`)); }
   catch { return false; }
 };
 
-/** Decode only known Bing tracking formats, then validate the destination. */
-export function coverageCandidateUrl(raw: string, publisher: string): string | null {
+/** Inspect public result destinations without following search-engine links. */
+function inspectCoverageCandidate(raw: string, publisher: string) {
+  let url: URL | undefined;
+  const reject = (reason: string) => ({ url: null as string | null, reason, host: url?.hostname || '', path: (url?.pathname || '').slice(0, 180) });
   try {
-    let url = new URL(raw, 'https://www.bing.com');
+    url = new URL(raw, 'https://www.bing.com');
     if (url.protocol === 'https:' && ['www.bing.com', 'bing.com'].includes(url.hostname)) {
       if (url.pathname === '/ck/a') {
         const value = url.searchParams.get('u') || '';
-        if (!/^a1[A-Za-z0-9_-]+$/.test(value)) return null;
+        if (!/^a1[A-Za-z0-9_-]+$/.test(value)) return reject('malformed_tracker');
         url = new URL(Buffer.from(value.slice(2), 'base64url').toString('utf8'));
       } else if (url.pathname === '/news/apiclick.aspx') {
         url = new URL(url.searchParams.get('url') || '');
-      } else return null;
+      } else return reject('unsupported_tracker');
     }
-    if (!belongsTo(url.href, publisher, true)) return null;
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.port) return reject('unsafe_url');
+    if (!belongsTo(url.href, publisher, true)) return reject('outside_publisher');
     url.hash = '';
-    return url.href;
-  } catch { return null; }
+    return { url: url.href as string | null, reason: '', host: url.hostname, path: url.pathname.slice(0, 180) };
+  } catch { return reject('invalid_url'); }
+}
+
+/** Decode only known Bing tracking formats, then validate the destination. */
+export function coverageCandidateUrl(raw: string, publisher: string): string | null {
+  return inspectCoverageCandidate(raw, publisher).url;
 }
 
 export function coverageEventQueries(headline: string): string[] {
-  const text = cleanHeadlineText(headline);
-  const words = text.split(/\s+/).filter(word => !/^(el|la|los|las|un|una|de|del|en|a|al|y|por|para|con|sus|su|tras|se|que)$/.test(word));
+  const normalized = headline.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/u\s*\$s?\s*|us\$/g, ' dolares ')
+    .replace(/(\d)\.(?=\d{3}(?:\D|$))/g, '$1').replace(/(\d),(?=\d)/g, '$1.');
+  const tokens = normalized.match(/[a-z0-9]+(?:\.\d+)?/g) || [];
+  const text = tokens.join(' ');
+  const words = tokens.filter(word => !/^(el|la|los|las|un|una|de|del|en|a|al|y|por|para|con|sus|su|tras|se|que)$/.test(word));
   // Keep public event terms and figures; avoid searching the whole editorial headline.
+  const risk = text.match(/(?:riesgo pais|prima de riesgo argentina).*?\b(\d+) puntos/);
+  if (risk) return [`riesgo pais Argentina ${risk[1]} puntos`, `riesgo pais Argentina ${risk[1]}`];
   const event = words.slice(0, 9).join(' ');
-  return [...new Set([event, words.slice(0, 5).join(' ')])].filter(Boolean);
+  const alternative = words.filter(word => !/^(ya|mas|dolares|ano)$/.test(word)).slice(0, 6).join(' ');
+  return [...new Set([event, alternative])].filter(Boolean);
 }
 
 /** Search missing outlets explicitly. Search results are candidates, never evidence. */
@@ -54,7 +69,7 @@ export async function discoverMissingCoverage(news: NewsItem[], diagnostics = cr
       if (signal.aborted) break;
       diagnostics.searches++;
       const query = `site:${publisher} ${terms}`;
-      const report = { publisher, query, raw: 0, rejected: 0, accepted: 0, status: 'pending' };
+      const report = { publisher, query, raw: 0, rejected: 0, accepted: 0, status: 'pending', rejectionReasons: {} as Record<string, number>, rejectedExamples: [] as { host: string; path: string; reason: string }[] };
       diagnostics.queries.push(report);
       const search = new URL('https://www.bing.com/search');
       search.searchParams.set('q', query);
@@ -69,8 +84,17 @@ export async function discoverMissingCoverage(news: NewsItem[], diagnostics = cr
         $('item, entry').each((_, node) => {
           report.raw++;
           const link = $(node).find('link').first();
-          const url = coverageCandidateUrl(link.attr('href') || link.text().trim(), publisher);
-          if (report.accepted >= 3 || !url || seen.has(url)) { report.rejected++; return; }
+          const raw = link.attr('href') || link.text().trim();
+          const inspected = inspectCoverageCandidate(raw, publisher);
+          const url = inspected.url;
+          if (report.accepted >= 3 || !url || seen.has(url)) {
+            report.rejected++;
+            const reason = url ? seen.has(url) ? 'duplicate' : 'limit' : inspected.reason;
+            report.rejectionReasons[reason] = (report.rejectionReasons[reason] || 0) + 1;
+            const example = { host: inspected.host, path: inspected.path, reason };
+            if (report.rejectedExamples.length < 3 && !report.rejectedExamples.some(item => item.host === example.host && item.path === example.path && item.reason === reason)) report.rejectedExamples.push(example);
+            return;
+          }
           seen.add(url);
           candidates.push({ anchor, publisher, url, title: $(node).find('title').first().text().trim() });
           report.accepted++;

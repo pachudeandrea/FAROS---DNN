@@ -100,11 +100,20 @@ function sovereignSpread(value: string) {
   const text = value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const metric = /\b(?:riesgo pais|prima de riesgo argentina)\b/;
   if (!metric.test(text)) return null;
-  const clause = text.split(/[,;:]|\by\b/).find(part => metric.test(part)) || '';
-  const level = clause.match(/\b(\d{1,3}(?:\.\d{3})*|\d+)\s*puntos\b/);
-  const movement = clause.match(/(?:riesgo pais|prima de riesgo argentina)\s+(?:(?:argentino|argentina|se)\s+)?(baja|bajo|cae|cayo|retrocede|retrocedio|sube|subio|aumenta|aumento|salta|salto)\b/);
-  if (!level || !movement || /\b(brasil|brasileno|chile|chileno|mexico|mexicano|colombia|colombiano|peru|peruano|ecuador|ecuatoriano)\b/.test(text)) return { valid: false, level: '', direction: '' };
-  return { valid: true, level: level[1].replaceAll('.', ''), direction: /^(baja|bajo|cae|cayo|retrocede|retrocedio)$/.test(movement[1]) ? 'down' : 'up' };
+  // Keep the risk quotation through its percentage/threshold, stopping before
+  // another market metric. A decimal comma is not a clause boundary.
+  const clause = text.slice(text.search(metric)).split(/;|,(?!\d)|\b(?:mientras|pero)\b|\by\s+(?:(?:el|la|los|las)\s+)?(?:dolar|acciones|bonos|merval|reservas)\b/)[0];
+  const levels = [...clause.matchAll(/\b(\d{1,3}(?:\.\d{3})*|\d+)\s*puntos\b/g)];
+  const level = levels[0];
+  const movement = clause.match(/^(?:riesgo pais|prima de riesgo argentina)\s+(?:(?:de la argentina|argentino|argentina|se)\s+)?(?:siguio\s+)?(baja|bajo|bajando|cae|cayo|cayendo|retrocede|retrocedio|sube|subio|subiendo|aumenta|aumento|salta|salto|trepa|trepo)\b/);
+  if (!level || new Set(levels.map(item => item[1].replaceAll('.', ''))).size !== 1 || !movement || /\b(no|sin|brasil|brasileno|chile|chileno|mexico|mexicano|colombia|colombiano|peru|peruano|ecuador|ecuatoriano)\b/.test(clause)
+    || /\b(brasil|brasileno|chile|chileno|mexico|mexicano|colombia|colombiano|peru|peruano|ecuador|ecuatoriano)\b/.test(text)) return { valid: false, level: '', direction: '', kind: '' };
+  const beforeLevel = clause.slice(0, level.index);
+  const kind = /(?:encima de|supero|rompio (?:la )?barrera de)\s+(?:los\s+)?$/.test(beforeLevel) ? 'above'
+    : /(?:debajo de|perforo|rompio (?:el )?piso de)\s+(?:los\s+)?$/.test(beforeLevel) ? 'below' : 'level';
+  const direction = /^(baja|bajo|bajando|cae|cayo|cayendo|retrocede|retrocedio)$/.test(movement[1]) ? 'down' : 'up';
+  if ((kind === 'above' && direction !== 'up') || (kind === 'below' && direction !== 'down')) return { valid: false, level: '', direction: '', kind: '' };
+  return { valid: true, level: level[1].replaceAll('.', ''), direction, kind };
 }
 
 export function sourcesCoverSameEvent(primary: MediaCoverage, candidate: MediaCoverage): boolean {
@@ -134,7 +143,7 @@ export function sourcesCoverSameEvent(primary: MediaCoverage, candidate: MediaCo
   }
   const spreadA = sovereignSpread(primary.originalHeadline); const spreadB = sovereignSpread(candidate.originalHeadline);
   if (spreadA && spreadB) {
-    return spreadA.valid && spreadB.valid && spreadA.level === spreadB.level && spreadA.direction === spreadB.direction
+    return spreadA.valid && spreadB.valid && spreadA.level === spreadB.level && spreadA.direction === spreadB.direction && spreadA.kind === spreadB.kind
       && Number.isFinite(timeA) && Number.isFinite(timeB) && argentinaDay(timeA) === argentinaDay(timeB);
   }
   return areSourcesReportingSameEvent(a, b);

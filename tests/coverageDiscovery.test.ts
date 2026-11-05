@@ -110,6 +110,7 @@ test('intenta una consulta breve alternativa y distingue RSS vacío de descartes
   await discoverMissingCoverage([item()], diagnostics);
   assert.equal(diagnostics.searches, 4); assert.equal(diagnostics.unavailable, 0);
   assert.ok(diagnostics.queries.every(query => query.raw === 1 && query.rejected === 1 && query.accepted === 0));
+  assert.ok(diagnostics.queries.every(query => query.rejectionReasons.outside_publisher === 1 && query.rejectedExamples[0].host === 'evil.test'));
   assert.equal(coverageEventQueries(title).length, 2);
 });
 
@@ -129,4 +130,20 @@ test('un candidato HTTP puede subir a HTTPS, pero nunca se sigue una redirecció
   assert.equal(valid.verified, true); assert.match(valid.source!.sourceUrl, /^https:/);
   assert.equal((await verifySourceUrl('https://www.cronista.com/economia/unsafe', title, undefined, 'cronista.com')).verified, false);
   assert.ok(calls.every(url => new URL(url).hostname === 'www.cronista.com'));
+});
+
+
+test('diagnostica destinos decodificados fuera del medio y formatos de seguimiento no admitidos', async t => {
+  const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
+  const tracked = 'https://www.bing.com/ck/a?u=a1' + Buffer.from('https://other.test/article?token=private').toString('base64url');
+  globalThis.fetch = async () => new Response(`<rss><channel><item><link>${tracked}</link></item><item><link>https://www.bing.com/unknown?secret=private</link></item><item><link>https://www.bing.com/ck/a?u=broken</link></item></channel></rss>`);
+  const diagnostics = createCoverageDiscoveryDiagnostics(); await discoverMissingCoverage([item()], diagnostics);
+  for (const query of diagnostics.queries) {
+    assert.equal(query.rejectionReasons.outside_publisher, 1);
+    assert.equal(query.rejectionReasons.unsupported_tracker, 1);
+    assert.equal(query.rejectionReasons.malformed_tracker, 1);
+    assert.equal(query.rejectedExamples[0].host, 'other.test');
+    assert.equal(query.rejectedExamples[0].path, '/article');
+    assert.doesNotMatch(JSON.stringify(query.rejectedExamples), /private|secret|token|\?/);
+  }
 });
