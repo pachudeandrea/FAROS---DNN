@@ -1,3 +1,4 @@
+import { readNewsResponse } from './utils/newsResponse';
 import { portfolioNewsScope } from './utils/newsCache';
 import { getPortfolioAffectedAssetIds, getPortfolioNewsImpact } from './utils/portfolioNews';
 import React, { useState, useMemo, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
@@ -20,7 +21,7 @@ import {
 import { useAlerts } from './hooks/useAlerts';
 import { NEWS_CLIENT_CACHE_PREFIX, newsClientCacheKey } from './utils/newsCache';
 import { REAL_GROUNDED_NEWS } from './data/groundedRealNews';
-import { readNewsSnapshot, type NewsQueryState } from './utils/newsQuery';
+import { readNewsSnapshot, findRecentNewsSnapshot, type NewsQueryState } from './utils/newsQuery';
 import { ScreenBoundary } from './components/ScreenBoundary';
 import { usePendingChanges } from './hooks/usePendingChanges';
 import { VersionNotice } from './components/VersionNotice';
@@ -203,6 +204,11 @@ export default function App() {
   const [isLoadingNews, setIsLoadingNews] = useState(false);
   const newsRequest = useRef<AbortController | null>(null);
   const newsPortfolio = useRef('');
+  const visibleNews = useRef<NewsItem[]>([]);
+  useEffect(() => {
+    visibleNews.current = newsList;
+    setSelectedNews(current => current ? newsList.find(item => item.sources.some(source => current.sources.some(previous => previous.sourceUrl === source.sourceUrl))) || current : current);
+  }, [newsList]);
   const [comparisonFirst, setComparisonFirst] = useState(false);
   const [pendingRemindersCount, setPendingRemindersCount] = useState<number>(0);
 
@@ -305,12 +311,14 @@ export default function App() {
     if (newsPortfolio.current !== scope) {
       newsPortfolio.current = scope;
       setNewsList([]);
+      visibleNews.current = [];
       setQueryState({ status: 'idle', checkedAt: null });
     }
     if (!isManualRefresh) {
       try {
         const cached = readNewsSnapshot(localStorage.getItem(cacheKey));
         if (cached) {
+          visibleNews.current = cached.news;
           setNewsList(cached.news);
           setQueryState({ status: 'cached', checkedAt: cached.checkedAt });
           setIsLoadingNews(false);
@@ -318,19 +326,30 @@ export default function App() {
         }
       } catch {}
     }
+    if (!visibleNews.current.length) {
+      try {
+        const recent = findRecentNewsSnapshot(localStorage, `${NEWS_CLIENT_CACHE_PREFIX}${scope}_`);
+        if (recent) { visibleNews.current = recent.news; setNewsList(recent.news); setQueryState({ status: 'cached', checkedAt: recent.checkedAt }); }
+      } catch {}
+    }
+    const retainPrevious = visibleNews.current.length > 0;
     setIsLoadingNews(true);
     setQueryState(previous => ({ ...previous, status: 'loading', error: undefined }));
     const timeout = setTimeout(() => controller.abort(), 60000);
     try {
       const response = await fetch('/api/news/pulse', {
         method: 'POST', signal: controller.signal,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/x-ndjson' },
         body: JSON.stringify({ portfolioId: activePortfolio.id, tickers: activePortfolio.assetIds, customAssets: activePortfolio.customAssets, assetPositions: activePortfolio.assetPositions, profile: activePortfolio.profile, forceRefresh: isManualRefresh })
       });
       if (!response.ok) throw new Error('No se pudo completar la consulta.');
-      const data = await response.json();
+      const data = await readNewsResponse(response, partial => {
+        if (newsRequest.current !== controller || controller.signal.aborted || retainPrevious) return;
+        setNewsList(partial.news);
+        setQueryState({ status: 'partial', checkedAt: partial.checkedAt || null, partial: true });
+      });
       if (!Array.isArray(data.news)) throw new Error('La consulta no devolvió noticias válidas.');
-      if (newsRequest.current !== controller) return;
+      if (newsRequest.current !== controller || controller.signal.aborted) return;
       const checkedAt = typeof data.checkedAt === 'string' && Number.isFinite(Date.parse(data.checkedAt)) ? data.checkedAt : data.cached ? null : new Date().toISOString();
       setNewsList(data.news);
       setQueryState({ status: data.cached ? 'cached' : 'success', checkedAt });
@@ -344,9 +363,10 @@ export default function App() {
   }, [activePortfolio.id, activePortfolio.assetIds, activePortfolio.profile, activePortfolio.assetPositions, activePortfolio.customAssets, getArgentinaTodayKey, purgeOldClientCache]);
 
   useEffect(() => {
+    if (isSessionLoading) return;
     fetchPulseNews(false);
     return () => newsRequest.current?.abort();
-  }, [fetchPulseNews]);
+  }, [fetchPulseNews, isSessionLoading]);
 
   const handleSessionSuccess = useCallback((user: UserAccount, token?: string, isNewRegistration: boolean = false) => {
     setCurrentUser(user);

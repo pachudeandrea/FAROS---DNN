@@ -63,7 +63,7 @@ const browser = await chromium.launch({ executablePath, headless: true, args: ['
 const pageErrors = [];
 let checks = 0;
 async function check(name, run) { if (process.env.BROWSER_CHECK && !name.includes(process.env.BROWSER_CHECK)) return; await run(); checks++; console.log(`ok ${checks} - ${name}`); }
-async function setup({ anonymous = false, admin = false, permission = 'granted', longName = false, legacyNews = false, portfolioOverride, newsOverride, audioMode = 'ok', audioDelay = 0, ...options } = {}) {
+async function setup({ anonymous = false, admin = false, permission = 'granted', longName = false, legacyNews = false, portfolioOverride, newsOverride, audioMode = 'ok', audioDelay = 0, progressiveNews = false, ...options } = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, ...options });
   if (legacyNews) await context.addInitScript(({ item, portfolioId }) => {
     const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -133,6 +133,23 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
     }
     try { await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) }); } catch (error) { if (url.pathname !== '/api/audio/synthesize') throw error; }
   });
+  if (progressiveNews) await context.addInitScript(({ items }) => {
+    const original = window.fetch.bind(window);
+    window.__newsStarts = 0;
+    window.fetch = (input, init) => {
+      if (new URL(typeof input === 'string' ? input : input.url, location.href).pathname !== '/api/news/pulse') return original(input, init);
+      window.__newsStarts++;
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({ start(controller) {
+        const send = frame => controller.enqueue(encoder.encode(JSON.stringify(frame) + '\n'));
+        window.__finishNews = () => { send({ type: 'complete', news: items, checkedAt: new Date().toISOString() }); controller.close(); };
+        window.__failNews = () => controller.error(new Error('Interrupción de prueba'));
+        send({ type: 'progress', news: items.slice(0, 1), checkedAt: new Date().toISOString() });
+        init?.signal?.addEventListener('abort', () => { try { controller.error(new DOMException('Aborted', 'AbortError')); } catch {} }, { once: true });
+      } });
+      return Promise.resolve(new Response(stream, { headers: { 'content-type': 'application/x-ndjson' } }));
+    };
+  }, { items: state.newsData });
   const page = await context.newPage();
   page.on('pageerror', error => pageErrors.push(error.message));
   await page.goto(origin, { waitUntil: 'networkidle' });
@@ -471,6 +488,34 @@ try {
     assert.equal(await page.getByRole('button', { name: 'Activar alertas', exact: true }).count(), 0);
     assert.equal(await page.evaluate(() => window.__permissionRequests), 0);
     await fits(page, 'Instrucciones de iPhone');
+    await context.close();
+  });
+  await check('Carga progresiva: muestra noticias y habilita audio antes de completar medios; solo guarda el resultado final', async () => {
+    const { context, page } = await setup({ progressiveNews: true });
+    await clickVisible(page, 'Ahora no');
+    const hero = page.getByRole('region', { name: 'Resumen de tu cartera' });
+    await hero.getByText('Completando la comparación entre medios.', { exact: false }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Comparar 4 medios', exact: true }).count(), 1);
+    assert.equal(await hero.getByRole('button', { name: 'Escuchar resumen del día' }).isEnabled(), true);
+    assert.equal(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('faros_news_')).length), 0, 'El avance no se guarda como una consulta completa');
+    await page.evaluate(() => window.__finishNews());
+    await hero.getByText('Actualización completada.', { exact: false }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Comparar 4 medios', exact: true }).count(), news.length);
+    await page.reload({ waitUntil: 'networkidle' });
+    await hero.getByText('Mostrando información de una consulta anterior.', { exact: false }).waitFor();
+    assert.equal(await page.evaluate(() => window.__newsStarts), 0, 'La visita siguiente recupera la consulta completa sin esperar la red');
+    await context.close();
+  });
+  await check('Una carga progresiva interrumpida conserva noticias verificadas y permite reintentar', async () => {
+    const { context, page } = await setup({ progressiveNews: true });
+    await clickVisible(page, 'Ahora no');
+    const hero = page.getByRole('region', { name: 'Resumen de tu cartera' });
+    await hero.getByText('Completando la comparación entre medios.', { exact: false }).waitFor();
+    await page.evaluate(() => window.__failNews());
+    await hero.getByText('Error al actualizar.', { exact: false }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Comparar 4 medios', exact: true }).count(), 1);
+    assert.equal(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('faros_news_')).length), 0);
+    assert.equal(await hero.getByRole('button', { name: 'Actualizar pulso' }).isEnabled(), true);
     await context.close();
   });
   await check('Actualización confiable: búsqueda, error con contenido anterior, vacío y caché con horario real', async () => {

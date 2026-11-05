@@ -20,6 +20,9 @@ export const articles = [
 ];
 
 export function installNewsTransport() {
+  let releaseCoverage;
+  const coverageGate = new Promise(resolve => { releaseCoverage = resolve; });
+  process.on('message', message => { if (message?.type === 'news-release-coverage') releaseCoverage(); });
   const stats = { sections: 0, searches: 0, extractions: 0, publications: 0, feeds: 0, prompts: [] };
   globalThis.fetch = async (input, init) => {
     const url = String(input instanceof Request ? input.url : input);
@@ -40,6 +43,7 @@ export function installNewsTransport() {
       return Response.json({ candidates: [candidate] });
     }
     if (new URL(url).hostname === 'www.bing.com') {
+      if (process.env.FAROS_TEST_NEWS_GATED === '1') await coverageGate;
       const query = new URL(url).searchParams.get('q') || '';
       const publisher = query.match(/^site:(\S+)/)?.[1];
       const found = process.env.FAROS_TEST_NEWS_DISCOVERY === '1' ? articles.filter(article => new URL(article.url).hostname === `www.${publisher}`) : [];

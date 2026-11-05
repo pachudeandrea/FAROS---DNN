@@ -38,7 +38,7 @@ export const FeedSummaryHero: React.FC<FeedSummaryHeroProps> = ({ portfolio, new
     <p className="text-base text-ink-800"><strong>{items.length}</strong> novedades · <strong>{counts.alerta}</strong> con impacto de alerta</p>
     <div className="flex flex-wrap items-center gap-2">
       <button data-tour="feed-refresh-btn" aria-label="Actualizar pulso" title="Actualizar pulso" onClick={onRefreshNews} disabled={isLoadingNews} className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-ink-100 text-ink-800 font-semibold text-sm disabled:opacity-60">
-        <RefreshCw className={`w-4 h-4 ${isLoadingNews ? 'animate-spin' : ''}`} /><span className="hidden sm:inline">{isLoadingNews ? 'Buscando…' : 'Actualizar pulso'}</span>
+        <RefreshCw className={`w-4 h-4 ${isLoadingNews ? 'animate-spin' : ''}`} /><span className="hidden sm:inline">{isLoadingNews ? query.status === 'partial' ? 'Completando…' : newsList.length ? 'Actualizando…' : 'Buscando…' : 'Actualizar pulso'}</span>
       </button>
 
       <button data-tour="feed-audio-brief" onClick={onPlayAudioBrief} disabled={!items.length} className="inline-flex items-center justify-center gap-2 bg-brand-950 text-paper rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-50" aria-label={isPlayingDailySummary ? 'Pausar o detener resumen del día' : 'Escuchar resumen del día'}>

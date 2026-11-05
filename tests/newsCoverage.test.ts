@@ -1,3 +1,4 @@
+import { readNewsResponse } from '../src/utils/newsResponse.js';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, fork, type ChildProcess } from 'node:child_process';
@@ -73,10 +74,10 @@ before(async () => {
 });
 async function stop(child: ChildProcess) { if (child.exitCode !== null) return; const exit = once(child, 'exit'); child.kill('SIGTERM'); await exit; children.delete(child); }
 after(async () => { for (const child of children) await stop(child); if (artifact) await rm(artifact, { recursive: true, force: true }); });
-async function api(gemini = true, singleMedium = false, discovery = false, section = false) {
+async function api(gemini = true, singleMedium = false, discovery = false, section = false, gated = false) {
   const child = fork(new URL('fixtures/native-api-server.mjs', import.meta.url), [pathToFileURL(path.join(artifact, 'api/index.js')).href], {
     cwd: root, execArgv: [], silent: true,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: '', POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '', FAROS_TEST_NEWS_DISCOVERY: discovery ? '1' : '', FAROS_TEST_NEWS_SECTION: section ? '1' : '' }
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: '', POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '', FAROS_TEST_NEWS_DISCOVERY: discovery ? '1' : '', FAROS_TEST_NEWS_SECTION: section ? '1' : '', FAROS_TEST_NEWS_GATED: gated ? '1' : '' }
   });
   children.add(child);
   let output = ''; child.stdout?.on('data', chunk => { output += chunk; }); child.stderr?.on('data', chunk => { output += chunk; });
@@ -87,7 +88,8 @@ async function api(gemini = true, singleMedium = false, discovery = false, secti
   };
   const stats = () => new Promise<any>(resolve => { child.once('message', resolve); child.send({ type: 'news-test-stats' }); });
   const version = () => fetch(`http://127.0.0.1:${port}/api/version`);
-  return { pulse, stats, version, get output() { return output; } };
+  const stream = (body: Record<string, unknown>) => fetch(`http://127.0.0.1:${port}/api/news/pulse`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/x-ndjson' }, body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
+  return { pulse, stream, releaseCoverage: () => child.send({ type: 'news-release-coverage' }), stats, version, get output() { return output; } };
 }
 
 test('la API Gemini agrupa fuentes verificadas y conserva caché, actualización y cartera', { timeout: 30000 }, async () => {
@@ -219,4 +221,32 @@ test('una tarjeta reúne Ámbito RSS, Infobae sección y Cronista búsqueda con 
   assert.ok(result.diagnostics.sections.some((section: any) => section.accepted > 0));
   assert.ok(result.coverageDiscovery.queries.some((query: any) => query.publisher === 'cronista.com' && query.accepted > 0));
   assert.equal((await server.stats()).sections, 2, 'La sección se consulta también en la búsqueda general de cobertura');
+});
+
+
+test('la API entrega noticias verificadas antes de acabar la cobertura y comparte una actualización simultánea', { timeout: 20000 }, async () => {
+  const server = await api(false, false, true, true, true);
+  const body = { portfolioId: 'progressive-fixture', tickers: ['AL30'], forceRefresh: true };
+  let firstDone = false; let resolveFirst!: () => void;
+  const firstFrame = new Promise<void>(resolve => { resolveFirst = resolve; });
+  const response = await server.stream(body);
+  assert.match(response.headers.get('content-type') || '', /application\/x-ndjson/);
+  const first = readNewsResponse(response, progress => {
+    assert.ok(progress.news.length > 0);
+    assert.ok(progress.news.every(item => item.sources.length && item.affectedAssetIds.includes('AL30')));
+    resolveFirst();
+  }).then(result => { firstDone = true; return result; });
+  await firstFrame;
+  assert.equal(firstDone, false, 'El lector ya ve noticias mientras Bing sigue bloqueado por el transporte de prueba');
+  let resolveSecond!: () => void;
+  const secondFrame = new Promise<void>(resolve => { resolveSecond = resolve; });
+  const second = readNewsResponse(await server.stream(body), () => resolveSecond());
+  await secondFrame;
+  assert.equal((await server.stats()).feeds, 4, 'Las dos conexiones comparten una recopilación RSS');
+  server.releaseCoverage();
+  const [a, b] = await Promise.all([first, second]);
+  assert.deepEqual(a.news, b.news);
+  assert.ok(a.news.some(item => item.sources.length === 3), 'El resultado completo conserva la cobertura de tres medios');
+  const cached = await server.pulse({ ...body, forceRefresh: false });
+  assert.equal(cached.cached, true); assert.deepEqual(cached.news, a.news);
 });

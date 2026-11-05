@@ -1,3 +1,5 @@
+import { COVERAGE_PUBLISHERS, collectPublisherSections } from '../utils/publisherSections.js';
+import { NewsJobs } from './newsJobs.js';
 import { portfolioAssets, normalizeAssetText } from '../data/assetCatalog.js';
 import { validateCustomAssets } from '../utils/manualAssets.js';
 import { describeAssets } from '../utils/assetNews.js';
@@ -126,6 +128,8 @@ interface CacheEntry {
   news: NewsItem[];
 }
 const newsCache: Record<string, CacheEntry> = {};
+type PulseResult = { news: NewsItem[]; diagnostics: ReturnType<typeof createCollectionDiagnostics>; coverageDiscovery: ReturnType<typeof createCoverageDiscoveryDiagnostics>; fallback: boolean; timestamp: number; timingsMs: { firstNews: number | null; total: number } };
+const newsJobs = new NewsJobs<PulseResult>();
 
 interface CalendarCacheEntry {
   timestamp: number;
@@ -430,6 +434,17 @@ async function fetchCalendarEvents(
 app.post('/api/news/pulse', asyncRoute(async (req, res) => {
   const pulseStartTime = Date.now();
   const user = await getSessionUser(req);
+  const streaming = req.get('accept')?.includes('application/x-ndjson');
+  const writeFrame = (body: unknown) => {
+    if (res.destroyed || res.writableEnded) return;
+    if (!res.headersSent) {
+      res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.setHeader('Cache-Control', 'private, no-store, no-transform');
+      res.flushHeaders();
+    }
+    res.write(JSON.stringify(body) + '\n');
+  };
   const respondWithNews = (body: any) => {
     if (Array.isArray(body.news)) {
       console.info('[NEWS PULSE]', JSON.stringify({ cached: !!body.cached, news: body.news.length,
@@ -437,7 +452,9 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
         multiMedia: body.news.filter((item: NewsItem) => new Set(item.sources.map(source => source.mediaName)).size > 1).length }));
       if (user) backgroundNotification(publishNews(user, body.news));
     }
-    return res.json({ checkedAt: new Date().toISOString(), ...body, newsVersion: NEWS_CACHE_VERSION });
+    const result = { checkedAt: new Date().toISOString(), ...body, newsVersion: NEWS_CACHE_VERSION };
+    if (streaming) { writeFrame({ type: 'complete', ...result }); return res.end(); }
+    return res.json(result);
   };
 
   if (!checkIpRateLimit(req.ip || 'ip', 45)) {
@@ -485,27 +502,48 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
     });
   }
 
-  const diagnostics = createCollectionDiagnostics();
-  // Both routes search independently. A successful model response must not suppress other outlets.
-  const [grounded, rss] = await Promise.allSettled([
-    fetchGroundedNewsFromGemini(tickers, profile, assets),
-    getLiveVerifiedArgentineNews(tickers, diagnostics, assets)
-  ]);
-  const modelNews = grounded.status === 'fulfilled' ? grounded.value || [] : [];
-  const rssNews = rss.status === 'fulfilled' ? rss.value : [];
-  if (!modelNews.length && rss.status === 'rejected') {
-    return res.status(503).json({ code: 'NEWS_SOURCES_UNAVAILABLE', error: 'No se pudieron consultar las fuentes. Intentá actualizar nuevamente.' });
-  }
-  const coverageDiscovery = createCoverageDiscoveryDiagnostics();
-  const news = await discoverMissingCoverage(mergeVerifiedNews(modelNews, rssNews), coverageDiscovery);
-  newsCache[cacheKey] = { timestamp: Date.now(), news };
-  trackEventNonBlocking('news_pulse_query', {
-    userId: user?.id,
-    metadata: { cached: false, usedGemini: !!modelNews.length, rssAvailable: rss.status === 'fulfilled', tickersCount: tickers.length, newsCount: news.length },
-    userAgent: req.get('user-agent')
+  const job = newsJobs.getOrCreate(cacheKey, async publish => {
+    const startedAt = pulseStartTime;
+    let firstNews: number | null = null;
+    const emit = (news: NewsItem[]) => {
+      if (news.length && firstNews === null) firstNews = Date.now() - startedAt;
+      publish(news);
+    };
+    const diagnostics = createCollectionDiagnostics();
+    const coverageDiscovery = createCoverageDiscoveryDiagnostics();
+    // Retrieve shared indexes while RSS and synthesis run, not after them.
+    const prefetchedSections = collectPublisherSections(COVERAGE_PUBLISHERS, coverageDiscovery.sections, AbortSignal.timeout(5000)).catch(() => {
+      coverageDiscovery.sections.filter(section => section.status === 'pending').forEach(section => { section.status = 'unavailable'; });
+      return [];
+    });
+    let modelNews: NewsItem[] = []; let rssNews: NewsItem[] = [];
+    // Publish verified results as they arrive, retaining the full collection budgets.
+    const [grounded, rss] = await Promise.allSettled([
+      fetchGroundedNewsFromGemini(tickers, profile, assets).then(news => { modelNews = news || []; emit(mergeVerifiedNews(modelNews, rssNews)); return modelNews; }),
+      getLiveVerifiedArgentineNews(tickers, diagnostics, assets, emit).then(news => { rssNews = news; emit(mergeVerifiedNews(modelNews, rssNews)); return news; })
+    ]);
+    if (!modelNews.length && rss.status === 'rejected') throw new Error('NEWS_SOURCES_UNAVAILABLE');
+    const news = await discoverMissingCoverage(mergeVerifiedNews(modelNews, rssNews), coverageDiscovery, { prefetchedSections });
+    const timestamp = Date.now();
+    newsCache[cacheKey] = { timestamp, news };
+    return { news, diagnostics, coverageDiscovery, fallback: grounded.status !== 'fulfilled' || !modelNews.length, timestamp, timingsMs: { firstNews, total: timestamp - startedAt } };
   });
-  return respondWithNews({ news, diagnostics, coverageDiscovery, cached: false, fallback: !modelNews.length, dateKey, hourKey,
-    checkedAt: new Date(newsCache[cacheKey].timestamp).toISOString() });
+  const unsubscribe = streaming ? job.subscribe(progress => writeFrame({ type: 'progress', ...progress, newsVersion: NEWS_CACHE_VERSION })) : () => {};
+  res.once('close', unsubscribe);
+  try {
+    const result = await job.promise;
+    trackEventNonBlocking('news_pulse_query', {
+      userId: user?.id,
+      metadata: { cached: false, usedGemini: !result.fallback, tickersCount: tickers.length, newsCount: result.news.length },
+      userAgent: req.get('user-agent')
+    });
+    return respondWithNews({ ...result, cached: false, dateKey, hourKey, checkedAt: new Date(result.timestamp).toISOString() });
+  } catch {
+    const error = { code: 'NEWS_SOURCES_UNAVAILABLE', error: 'No se pudieron consultar las fuentes. Intentá actualizar nuevamente.' };
+    if (streaming && res.headersSent) { writeFrame({ type: 'error', ...error }); return res.end(); }
+    return res.status(503).json(error);
+  } finally { unsubscribe(); }
+
 }));
 
 // --- CALENDAR ENDPOINTS ---

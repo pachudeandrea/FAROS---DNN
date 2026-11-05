@@ -568,7 +568,17 @@ export async function verifySourceUrl(
 ): Promise<VerifiedSourceResult> {
   if (signal?.aborted) return { verified: false, discardReason: 'Consulta cancelada' };
   const cacheKey = publisher ? `${publisher}|${rawUri}` : rawUri;
-  const cached = urlVerificationCache.get(cacheKey);
+  let cached = urlVerificationCache.get(cacheKey);
+  if (!cached && publisher) {
+    const reusable = urlVerificationCache.get(rawUri);
+    const belongs = (value: string) => {
+      try { const url = new URL(value); return !url.username && !url.password && !url.port && (url.hostname === publisher || url.hostname.endsWith(`.${publisher}`)); }
+      catch { return false; }
+    };
+    // A prior successful RSS verification can serve a scoped coverage check.
+    // Both input and final publication must belong to the requested publisher.
+    if (reusable?.result.verified && reusable.result.source?.sourceUrl.startsWith('https:') && belongs(rawUri) && belongs(reusable.result.source.sourceUrl)) cached = reusable;
+  }
   if (cached && Date.now() - cached.timestamp < (cached.result.verified ? VERIFICATION_CACHE_TTL_MS : 30000)) {
     return cached.result;
   }

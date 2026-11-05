@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import * as cheerio from 'cheerio';
 import { recognizeAssetIds } from './assetNews.js';
 import { analyzeNewsRelevance } from './newsRelevance.js';
@@ -254,7 +255,7 @@ export async function verifyNewsCandidates(
   userTickers: string[],
   diagnostics = createCollectionDiagnostics(),
   assets: Asset[] = ASSET_CATALOG,
-  options: { verify?: typeof verifySourceUrl; budgetMs?: number; concurrency?: number } = {}
+  options: { verify?: typeof verifySourceUrl; budgetMs?: number; concurrency?: number; onVerified?: (source: VerifiedSource) => void } = {}
 ): Promise<VerifiedSource[]> {
   const unique: RawFeedItem[] = [];
   const seenUrls = new Set<string>();
@@ -313,6 +314,7 @@ export async function verifyNewsCandidates(
       } else if (result.verified && result.source) {
         results[index] = result.source;
         publisher.verified++;
+        options.onVerified?.(result.source);
       } else {
         publisher.failed++;
         const reason = result.discardReason || '';
@@ -341,10 +343,20 @@ export async function verifyNewsCandidates(
   return verifiedSources;
 }
 
-export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], diagnostics = createCollectionDiagnostics(), assets: Asset[] = ASSET_CATALOG): Promise<NewsItem[]> {
+export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], diagnostics = createCollectionDiagnostics(), assets: Asset[] = ASSET_CATALOG, onProgress?: (news: NewsItem[]) => void): Promise<NewsItem[]> {
   const candidates = await fetchRssCandidates(100, diagnostics, assets);
-  const argInfo = getArgentinaDateInfo();
-  const verifiedSources = await verifyNewsCandidates(candidates, userTickers, diagnostics, assets);
+  const partial: VerifiedSource[] = [];
+  let lastProgress = 0;
+  let progressCount = 0;
+  const verifiedSources = await verifyNewsCandidates(candidates, userTickers, diagnostics, assets, {
+    onVerified: onProgress ? source => {
+      if (progressCount >= 3) return;
+      partial.push(source);
+      if (Date.now() - lastProgress < 500) return;
+      const news = buildVerifiedNews(partial, userTickers, assets);
+      if (news.length) { progressCount++; lastProgress = Date.now(); onProgress(news); }
+    } : undefined
+  });
 
   console.log(`[LIVE VERIFIER] Total successfully verified authentic sources: ${verifiedSources.length}`);
 
@@ -355,6 +367,12 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], d
     return [];
   }
 
+  return buildVerifiedNews(verifiedSources, userTickers, assets, diagnostics);
+}
+
+/** The progressive and final views use the same grounding, freshness and portfolio rules. */
+function buildVerifiedNews(verifiedSources: VerifiedSource[], userTickers: string[], assets: Asset[], diagnostics = createCollectionDiagnostics()): NewsItem[] {
+  const argInfo = getArgentinaDateInfo();
   // Group sources strictly by CONCRETE EVENT MATCH (Never by general category!)
   const clusters: EventCluster[] = [];
 
@@ -385,7 +403,6 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], d
 
   // Convert clusters to NewsItems
   const newsItems: NewsItem[] = [];
-  let itemCounter = 1;
 
   clusters.sort((a, b) => Number(b.tickers.some(id => userTickers.includes(id))) - Number(a.tickers.some(id => userTickers.includes(id))));
   for (const cluster of clusters) {
@@ -403,7 +420,7 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], d
       : `${cluster.headline}. Acontecimiento con cobertura periodística coincidente en ${mediaNames}.`;
 
     newsItems.push({
-      id: `live-news-${itemCounter++}`,
+      id: `live-news-${createHash('sha256').update(primarySource.sourceUrl).digest('hex').slice(0, 16)}`,
       headline: cluster.headline,
       briefSummary,
       fullSynthesis: [

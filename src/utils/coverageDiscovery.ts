@@ -83,7 +83,7 @@ export function coverageCandidateScore(anchor: string, candidate: string): numbe
   return overlap.length >= 2 ? overlap.length / Math.max(1, a.size) : 0;
 }
 
-interface DiscoveryOptions { publishers?: string[]; sections?: boolean; searchPaths?: string[]; searchBudgetMs?: number; verificationBudgetMs?: number }
+interface DiscoveryOptions { prefetchedSections?: Promise<PublicationCandidate[]>; publishers?: string[]; sections?: boolean; searchPaths?: string[]; searchBudgetMs?: number; verificationBudgetMs?: number }
 /** Every event is checked against shared publisher indexes, plus bounded searches. */
 export async function discoverMissingCoverage(news: NewsItem[], diagnostics = createCoverageDiscoveryDiagnostics(), options: DiscoveryOptions = {}): Promise<NewsItem[]> {
   diagnostics.summary.total = news.length;
@@ -100,7 +100,7 @@ export async function discoverMissingCoverage(news: NewsItem[], diagnostics = cr
   type Candidate = PublicationCandidate & { item: NewsItem; anchor: MediaCoverage; score: number };
   const candidates: Candidate[] = [];
   const searchSignal = AbortSignal.timeout(Math.max(1, options.searchBudgetMs ?? 5000));
-  const sectionsTask = options.sections === false ? Promise.resolve([] as PublicationCandidate[]) : collectPublisherSections(COVERAGE_PUBLISHERS.filter(publisher => publishers.includes(publisher.domain)), diagnostics.sections, searchSignal);
+  const sectionsTask = options.prefetchedSections || (options.sections === false ? Promise.resolve([] as PublicationCandidate[]) : collectPublisherSections(COVERAGE_PUBLISHERS.filter(publisher => publishers.includes(publisher.domain)), diagnostics.sections, searchSignal));
   // Round-robin across events first, instead of exhausting the first four cards.
   const queues = targets.map(item => publishers.filter(publisher => !item.sources.some(source => getPublisherKey(source) === publisher)).map(publisher => ({ item, anchor: item.sources[0], publisher })));
   queues.forEach((queue, index) => { reports.get(targets[index])!.searchesPlanned = queue.length; });
