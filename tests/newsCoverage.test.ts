@@ -73,10 +73,10 @@ before(async () => {
 });
 async function stop(child: ChildProcess) { if (child.exitCode !== null) return; const exit = once(child, 'exit'); child.kill('SIGTERM'); await exit; children.delete(child); }
 after(async () => { for (const child of children) await stop(child); if (artifact) await rm(artifact, { recursive: true, force: true }); });
-async function api(gemini = true, singleMedium = false, discovery = false) {
+async function api(gemini = true, singleMedium = false, discovery = false, section = false) {
   const child = fork(new URL('fixtures/native-api-server.mjs', import.meta.url), [pathToFileURL(path.join(artifact, 'api/index.js')).href], {
     cwd: root, execArgv: [], silent: true,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: '', POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '', FAROS_TEST_NEWS_DISCOVERY: discovery ? '1' : '' }
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: '', POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '', FAROS_TEST_NEWS_DISCOVERY: discovery ? '1' : '', FAROS_TEST_NEWS_SECTION: section ? '1' : '' }
   });
   children.add(child);
   let output = ''; child.stdout?.on('data', chunk => { output += chunk; }); child.stderr?.on('data', chunk => { output += chunk; });
@@ -198,4 +198,24 @@ test('la API encuentra otros medios aunque sus RSS no incluyan la publicación, 
   assert.deepEqual(reserves.sources.map((source: MediaCoverage) => source.mediaName).sort(), ['El Cronista', 'Infobae', 'Ámbito'].sort());
   assert.equal(result.coverageDiscovery.searches, 2);
   assert.equal(result.coverageDiscovery.added, 2);
+});
+
+
+test('una tarjeta reúne Ámbito RSS, Infobae sección y Cronista búsqueda con seguimiento', async () => {
+  const server = await api(false, false, true, true);
+  const result = await server.pulse({ portfolioId: 'section-and-search', tickers: ['AL30'], profile: 'moderado' });
+  const events = result.news.filter((item: NewsItem) => item.sources.some(source => source.sourceUrl === articles[0].url));
+  assert.equal(events.length, 1);
+  const event = events[0];
+  assert.equal(event.coverageCount, 3);
+  assert.deepEqual(event.sources.map((source: MediaCoverage) => source.mediaName).sort(), ['Ámbito', 'Infobae', 'El Cronista'].sort());
+  for (const article of articles.slice(0, 3)) {
+    const publication = event.sources.find((source: MediaCoverage) => source.sourceUrl === article.url);
+    assert.ok(publication); assert.equal(publication.originalHeadline, article.title);
+  }
+  assert.ok(event.affectedAssetIds.includes('AL30'));
+  assert.ok(event.portfolioImpactAnalysis.affectedHoldings.some((holding: any) => holding.symbol === 'AL30'));
+  assert.ok(result.diagnostics.sections.some((section: any) => section.accepted > 0));
+  assert.ok(result.coverageDiscovery.queries.some((query: any) => query.publisher === 'cronista.com' && query.accepted > 0));
+  assert.equal((await server.stats()).sections, 1);
 });

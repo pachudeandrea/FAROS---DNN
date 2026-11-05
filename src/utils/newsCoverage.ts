@@ -94,6 +94,19 @@ const publishedAt = (source: MediaCoverage) => typeof source.publishedTimestamp 
   ? source.publishedTimestamp : Date.parse(source.publishedDateIso || '');
 const argentinaDay = (at: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(at);
 
+// A narrow equivalence for daily Argentine sovereign spread quotations.
+// Require the movement next to this metric, never borrow it from bonds/stocks.
+function sovereignSpread(value: string) {
+  const text = value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const metric = /\b(?:riesgo pais|prima de riesgo argentina)\b/;
+  if (!metric.test(text)) return null;
+  const clause = text.split(/[,;:]|\by\b/).find(part => metric.test(part)) || '';
+  const level = clause.match(/\b(\d{1,3}(?:\.\d{3})*|\d+)\s*puntos\b/);
+  const movement = clause.match(/(?:riesgo pais|prima de riesgo argentina)\s+(?:(?:argentino|argentina|se)\s+)?(baja|bajo|cae|cayo|retrocede|retrocedio|sube|subio|aumenta|aumento|salta|salto)\b/);
+  if (!level || !movement || /\b(brasil|brasileno|chile|chileno|mexico|mexicano|colombia|colombiano|peru|peruano|ecuador|ecuatoriano)\b/.test(text)) return { valid: false, level: '', direction: '' };
+  return { valid: true, level: level[1].replaceAll('.', ''), direction: /^(baja|bajo|cae|cayo|retrocede|retrocedio)$/.test(movement[1]) ? 'down' : 'up' };
+}
+
 export function sourcesCoverSameEvent(primary: MediaCoverage, candidate: MediaCoverage): boolean {
   const a = eventText(primary.originalHeadline); const b = eventText(candidate.originalHeadline);
   if (!a || !b) return false;
@@ -118,6 +131,11 @@ export function sourcesCoverSameEvent(primary: MediaCoverage, candidate: MediaCo
     // Repeated daily quotes and reserve purchases are different daily events.
     const recurring = /\b(dolar|mep|ccl|blue|riesgo pais|wall street|bonos en dolares|reservas)\b/;
     if (recurring.test(a) && recurring.test(b) && argentinaDay(timeA) !== argentinaDay(timeB)) return false;
+  }
+  const spreadA = sovereignSpread(primary.originalHeadline); const spreadB = sovereignSpread(candidate.originalHeadline);
+  if (spreadA && spreadB) {
+    return spreadA.valid && spreadB.valid && spreadA.level === spreadB.level && spreadA.direction === spreadB.direction
+      && Number.isFinite(timeA) && Number.isFinite(timeB) && argentinaDay(timeA) === argentinaDay(timeB);
   }
   return areSourcesReportingSameEvent(a, b);
 }

@@ -129,19 +129,20 @@ async function fetchRssCandidates(maxPerFeed = 100, diagnostics = createCollecti
   const batches = await Promise.all(RSS_FEEDS.map(async (feed, index) => {
     const result = feedResults[index];
     const candidates: RawFeedItem[] = [];
+    const signal = AbortSignal.timeout(FEED_TIMEOUT_MS);
     try {
       const res = await fetch(feed.url, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
         },
-        signal: AbortSignal.timeout(FEED_TIMEOUT_MS)
+        signal
       });
-      if (!res.ok) { result.status = 'http_error'; return candidates; }
+      if (!res.ok) { result.status = 'http_error'; throw new Error('FEED_HTTP'); }
 
       const xml = await res.text();
       const $ = cheerio.load(xml, { xmlMode: true });
 
-      if (!$('rss, feed').length) { result.status = 'invalid_feed'; return candidates; }
+      if (!$('rss, feed').length) { result.status = 'invalid_feed'; throw new Error('FEED_INVALID'); }
       result.status = 'ok';
       let count = 0;
       $('item, entry').each((_, el) => {
@@ -162,18 +163,44 @@ async function fetchRssCandidates(maxPerFeed = 100, diagnostics = createCollecti
             });
             count++;
             result.accepted++;
-          } else diagnostics.discarded.notFinancial++;
+          } else if (DISALLOWED_PATH_PATTERNS.some(pattern => link.toLowerCase().includes(pattern)) || (feed.name === 'Infobae' && !link.includes('/economia/'))) diagnostics.discarded.section++;
+          else diagnostics.discarded.notFinancial++;
         } else diagnostics.discarded.invalidFeedItem++;
       });
     } catch (error) {
-      result.status = error instanceof Error && /timeout|abort/i.test(error.name) ? 'timeout' : 'connection_error';
+      if (result.status === 'unavailable') result.status = error instanceof Error && /timeout|abort/i.test(error.name) ? 'timeout' : 'connection_error';
+    }
+    if (feed.name === 'Infobae' && !candidates.length) {
+      const fallback = { name: 'Infobae Economía', status: 'unavailable', found: 0, accepted: 0 };
+      diagnostics.sections.push(fallback);
+      try {
+        const response = await fetch('https://www.infobae.com/economia/', { signal });
+        if (!response.ok) { fallback.status = 'http_error'; }
+        else {
+          const $ = cheerio.load(await response.text());
+          const seen = new Set<string>();
+          fallback.status = 'ok';
+          $('a[href]').each((_, node) => {
+            let url: URL;
+            try { url = new URL($(node).attr('href')!, 'https://www.infobae.com/economia/'); } catch { return; }
+            if (url.protocol !== 'https:' || url.username || url.password || url.port || !['infobae.com', 'www.infobae.com'].includes(url.hostname)) return;
+            if (!/^\/economia\/\d{4}\/\d{2}\/\d{2}\/[^/]+\/?$/.test(url.pathname)) { diagnostics.discarded.section++; return; }
+            url.hash = ''; url.search = '';
+            if (seen.has(url.href) || candidates.length >= maxPerFeed) return;
+            seen.add(url.href); fallback.found++;
+            const title = $(node).find('h2, h3').first().text().trim() || $(node).attr('title') || $(node).text().trim();
+            if (!isFinancialCandidate(title, url.href, assets)) { diagnostics.discarded.notFinancial++; return; }
+            candidates.push({ title, link: url.href, sourceFeed: feed.name }); fallback.accepted++;
+          });
+        }
+      } catch (error) { fallback.status = error instanceof Error && /timeout|abort/i.test(error.name) ? 'timeout' : 'connection_error'; }
     }
     return candidates;
   }));
 
   const candidates = batches.flat();
   diagnostics.candidates = candidates.length;
-  if (!diagnostics.feeds.some(feed => feed.status === 'ok')) {
+  if (!diagnostics.feeds.some(feed => feed.status === 'ok') && !diagnostics.sections.some(section => section.status === 'ok' && section.accepted > 0)) {
     console.info('[NEWS COLLECTION]', JSON.stringify(diagnostics));
     throw new Error('NEWS_SOURCES_UNAVAILABLE');
   }
@@ -213,10 +240,10 @@ export function analyzeArticleContext(headline: string, assets: Asset[] = ASSET_
  * If articles report on different events, they remain separate news items with their own authentic source.
  */
 export function createCollectionDiagnostics() {
-  return { feeds: [] as { name: string; status: string; found: number; accepted: number }[], candidates: 0, uniqueCandidates: 0, verified: 0,
+  return { sections: [] as { name: string; status: string; found: number; accepted: number }[], feeds: [] as { name: string; status: string; found: number; accepted: number }[], candidates: 0, uniqueCandidates: 0, verified: 0,
     sources: [] as { name: string; candidates: number; attempted: number; verified: number; failed: number; timedOut: number }[],
     verification: { concurrencyLimit: VERIFICATION_CONCURRENCY, peakConcurrency: 0, budgetExhausted: false, skipped: 0 },
-    discarded: { notFinancial: 0, invalidFeedItem: 0, connection: 0, missingMetadata: 0, invalidArticle: 0, duplicate: 0, stale: 0 }, news: 0, multiMedia: 0 };
+    discarded: { unrelated: 0, section: 0, notFinancial: 0, invalidFeedItem: 0, connection: 0, missingMetadata: 0, invalidArticle: 0, duplicate: 0, stale: 0 }, news: 0, multiMedia: 0 };
 }
 type VerificationResult = Awaited<ReturnType<typeof verifySourceUrl>>;
 type VerifiedSource = NonNullable<VerificationResult['source']>;
@@ -364,7 +391,7 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], d
   for (const cluster of clusters) {
     // Check ticker intersection if user provided tickers
     const matchesUserTickers = userTickers.length === 0 || cluster.tickers.some(t => userTickers.includes(t));
-    if (!matchesUserTickers) continue;
+    if (!matchesUserTickers) { diagnostics.discarded.unrelated++; continue; }
 
     const analysis = analyzeNewsRelevance(cluster.headline, assets);
     const primarySource = cluster.sources[0];

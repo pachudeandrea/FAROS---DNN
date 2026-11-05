@@ -1,6 +1,6 @@
 // Change this namespace when the news format or coverage pipeline changes.
 // Only news caches are invalidated; sessions and personal calendars are kept.
-export const NEWS_CACHE_VERSION = 'v9_targeted_coverage';
+export const NEWS_CACHE_VERSION = 'v10_verified_event_coverage';
 export const NEWS_CLIENT_CACHE_PREFIX = `faros_news_${NEWS_CACHE_VERSION}_`;
 
 export function newsCacheKey(portfolioId: string, hourKey: string): string {

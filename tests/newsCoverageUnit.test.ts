@@ -109,3 +109,14 @@ test('pipeline fixtures: deduplicate the exact publication URL and cap distinct 
   assert.equal(result[0].sources.length, 5);
   assert.equal(new Set(result[0].sources.map(source => source.mediaName)).size, 5);
 });
+
+test('equivalencia de prima argentina exige nivel, dirección propia y jornada verificada', () => {
+  const a = fixture('Los bonos suben y el riesgo país bajó a 830 puntos');
+  const b = fixture('La prima de riesgo argentina cayó a 830 puntos', 'cronista.com');
+  assert.equal(sourcesCoverSameEvent(a, b), true);
+  for (const title of ['La prima de riesgo argentina cayó a 831 puntos', 'La prima de riesgo argentina cayó a 1.830 puntos', 'Los bonos suben, la prima de riesgo argentina en 830 puntos', 'La prima de riesgo argentina subió a 830 puntos', 'Los bonos suben y la prima de riesgo argentina en 830 puntos', 'La prima de riesgo argentina cayó a 830 puntos y Brasil acompaña']) {
+    assert.equal(sourcesCoverSameEvent(a, fixture(title, 'cronista.com')), false, title);
+  }
+  assert.equal(sourcesCoverSameEvent(a, { ...b, publishedTimestamp: NaN, publishedDateIso: undefined }), false);
+  assert.equal(sourcesCoverSameEvent(a, { ...b, publishedTimestamp: Date.parse('2030-06-14T16:00:00Z') }), false);
+});

@@ -172,23 +172,41 @@ export interface ResolvedUrlResult {
  * using browser User-Agent and a 5-second timeout.
  * Returns response.url as the final canonical URL.
  */
-export async function resolveFinalUrl(uri: string, timeoutMs = 5000, signal?: AbortSignal): Promise<ResolvedUrlResult | null> {
+export async function resolveFinalUrl(uri: string, timeoutMs = 5000, signal?: AbortSignal, publisher?: string): Promise<ResolvedUrlResult | null> {
   if (!uri || typeof uri !== 'string' || !uri.startsWith('http')) {
     return null;
   }
 
   try {
-    const response = await fetch(uri, {
-      redirect: 'follow',
-      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
-      headers: {
-        'User-Agent': BROWSER_USER_AGENT,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'es-AR,es;q=0.9,en;q=0.8'
-      }
-    });
+    const requestSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs);
+    const allowed = (value: string) => {
+      try {
+        const url = new URL(value);
+        return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && !url.port
+          && (url.hostname === publisher || url.hostname.endsWith(`.${publisher}`));
+      } catch { return false; }
+    };
+    let current = uri;
+    let response: Response;
+    for (let hop = 0; ; hop++) {
+      if (publisher && !allowed(current)) return null;
+      response = await fetch(current, {
+        redirect: publisher ? 'manual' : 'follow',
+        signal: requestSignal,
+        headers: {
+          'User-Agent': BROWSER_USER_AGENT,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'es-AR,es;q=0.9,en;q=0.8'
+        }
+      });
 
-    const finalUrl = response.url || uri;
+      if (!publisher || ![301, 302, 303, 307, 308].includes(response.status)) break;
+      const location = response.headers.get('location');
+      await response.body?.cancel();
+      if (!location || hop >= 4) return null;
+      current = new URL(location, current).href;
+    }
+    const finalUrl = response.url || current;
     const responseStatus = response.status;
     const contentType = response.headers.get('content-type') || '';
     const html = await response.text();
@@ -545,16 +563,18 @@ const VERIFICATION_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 export async function verifySourceUrl(
   rawUri: string,
   rawTitle?: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  publisher?: string
 ): Promise<VerifiedSourceResult> {
   if (signal?.aborted) return { verified: false, discardReason: 'Consulta cancelada' };
-  const cached = urlVerificationCache.get(rawUri);
+  const cacheKey = publisher ? `${publisher}|${rawUri}` : rawUri;
+  const cached = urlVerificationCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < (cached.result.verified ? VERIFICATION_CACHE_TTL_MS : 30000)) {
     return cached.result;
   }
 
   // 1. Resolve final URL (following redirects)
-  const resolved = await resolveFinalUrl(rawUri, 5000, signal);
+  const resolved = await resolveFinalUrl(rawUri, 5000, signal, publisher);
   if (signal?.aborted) return { verified: false, discardReason: 'Consulta cancelada' };
   if (!resolved) {
     const fail: VerifiedSourceResult = {
@@ -562,7 +582,7 @@ export async function verifySourceUrl(
       discardReason: 'Fallo de conexión o timeout al resolver la URL'
     };
     console.info('[SOURCE DISCARDED] Article verification failed.');
-    urlVerificationCache.set(rawUri, { result: fail, timestamp: Date.now() });
+    urlVerificationCache.set(cacheKey, { result: fail, timestamp: Date.now() });
     return fail;
   }
 
@@ -576,7 +596,7 @@ export async function verifySourceUrl(
       discardReason: validation.reason
     };
     console.info('[SOURCE DISCARDED] Article verification failed.');
-    urlVerificationCache.set(rawUri, { result: fail, timestamp: Date.now() });
+    urlVerificationCache.set(cacheKey, { result: fail, timestamp: Date.now() });
     return fail;
   }
 
@@ -588,7 +608,7 @@ export async function verifySourceUrl(
       discardReason: 'No se pudo extraer titular válido del HTML de la nota'
     };
     console.info('[SOURCE DISCARDED] Article verification failed.');
-    urlVerificationCache.set(rawUri, { result: fail, timestamp: Date.now() });
+    urlVerificationCache.set(cacheKey, { result: fail, timestamp: Date.now() });
     return fail;
   }
 
@@ -599,7 +619,7 @@ export async function verifySourceUrl(
       discardReason: 'No se pudo extraer la fecha de publicación del HTML de la nota'
     };
     console.info('[SOURCE DISCARDED] Article verification failed.');
-    urlVerificationCache.set(rawUri, { result: fail, timestamp: Date.now() });
+    urlVerificationCache.set(cacheKey, { result: fail, timestamp: Date.now() });
     return fail;
   }
 
@@ -618,7 +638,7 @@ export async function verifySourceUrl(
   };
 
   console.info('[SOURCE ACCEPTED] Verified article metadata.');
-  urlVerificationCache.set(rawUri, { result: success, timestamp: Date.now() });
+  urlVerificationCache.set(cacheKey, { result: success, timestamp: Date.now() });
   urlVerificationCache.set(finalUrl, { result: success, timestamp: Date.now() });
   urlVerificationCache.set(meta.canonicalUrl, { result: success, timestamp: Date.now() });
 

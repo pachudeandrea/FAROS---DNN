@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { NewsItem } from '../src/types/index.js';
-import { discoverMissingCoverage, createCoverageDiscoveryDiagnostics } from '../src/utils/coverageDiscovery.js';
+import { discoverMissingCoverage, createCoverageDiscoveryDiagnostics, coverageCandidateUrl, coverageEventQueries } from '../src/utils/coverageDiscovery.js';
 import { purgeUrlVerificationCache } from '../src/utils/urlResolver.js';
 
 const title = 'El BCRA compró USD 125 millones y elevó sus reservas';
@@ -75,10 +75,58 @@ test('no acepta el titular del buscador si el artículo verificado informa otro 
   assert.deepEqual(result[0].sources, input.sources);
 });
 
-test('no hace búsquedas adicionales cuando ya hay varios medios', async t => {
+test('busca el tercer medio cuando ya hay dos editoriales', async t => {
   const original = globalThis.fetch;
-  t.after(() => { globalThis.fetch = original; });
-  globalThis.fetch = async () => { throw new Error('No se debe consultar'); };
+  purgeUrlVerificationCache();
+  t.after(() => { globalThis.fetch = original; purgeUrlVerificationCache(); });
+  const queries: string[] = [];
+  globalThis.fetch = async input => {
+    const url = new URL(String(input));
+    if (url.hostname === 'www.bing.com') {
+      queries.push(url.searchParams.get('q')!);
+      const target = source(title, 'infobae.com').sourceUrl;
+      return new Response(`<rss><channel><item><link>https://www.bing.com/ck/a?u=a1${Buffer.from(target).toString('base64url')}</link></item></channel></rss>`);
+    }
+    return new Response(`<html><head><meta property="og:title" content="${title}"><meta property="article:published_time" content="${new Date().toISOString()}"></head><body><h1>${title}</h1></body></html>`, { headers: { 'content-type': 'text/html' } });
+  };
   const input = item(); input.sources.push(source(title, 'cronista.com')); input.coverageCount = 2;
-  assert.equal(await discoverMissingCoverage([input]).then(news => news[0]), input);
+  const result = await discoverMissingCoverage([input]);
+  assert.equal(queries.length, 1); assert.match(queries[0], /^site:infobae.com /);
+  assert.equal(result[0].coverageCount, 3);
+});
+
+test('decodifica formatos Bing conocidos y rechaza destinos impostores o arbitrarios', () => {
+  const target = 'https://www.cronista.com/economia/articulo/';
+  assert.equal(coverageCandidateUrl(`https://www.bing.com/ck/a?u=a1${Buffer.from(target).toString('base64url')}`, 'cronista.com'), target);
+  assert.equal(coverageCandidateUrl(`https://www.bing.com/news/apiclick.aspx?url=${encodeURIComponent(target)}`, 'cronista.com'), target);
+  assert.equal(coverageCandidateUrl('http://www.cronista.com/economia/articulo/', 'cronista.com'), 'http://www.cronista.com/economia/articulo/');
+  for (const url of ['https://cronista.com.evil.test/a', 'https://evil.test/a', 'https://www.bing.com/redirect?url='+target, 'https://cronista.com@evil.test/a', 'https://www.cronista.com:444/a', 'javascript:alert(1)']) assert.equal(coverageCandidateUrl(url, 'cronista.com'), null, url);
+});
+
+test('intenta una consulta breve alternativa y distingue RSS vacío de descartes', async t => {
+  const original = globalThis.fetch; t.after(() => { globalThis.fetch = original; });
+  globalThis.fetch = async () => new Response('<rss><channel><item><link>https://evil.test/falso</link></item></channel></rss>');
+  const diagnostics = createCoverageDiscoveryDiagnostics();
+  await discoverMissingCoverage([item()], diagnostics);
+  assert.equal(diagnostics.searches, 4); assert.equal(diagnostics.unavailable, 0);
+  assert.ok(diagnostics.queries.every(query => query.raw === 1 && query.rejected === 1 && query.accepted === 0));
+  assert.equal(coverageEventQueries(title).length, 2);
+});
+
+test('un candidato HTTP puede subir a HTTPS, pero nunca se sigue una redirección a otro dominio', async t => {
+  const { verifySourceUrl } = await import('../src/utils/urlResolver.js');
+  const original = globalThis.fetch; purgeUrlVerificationCache();
+  t.after(() => { globalThis.fetch = original; purgeUrlVerificationCache(); });
+  const calls: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    const url = String(input); calls.push(url);
+    assert.equal(init?.redirect, 'manual');
+    if (url.startsWith('http:')) return new Response(null, { status: 301, headers: { location: url.replace('http:', 'https:') } });
+    if (url.endsWith('unsafe')) return new Response(null, { status: 302, headers: { location: 'https://evil.test/private' } });
+    return new Response(`<html><head><meta property="og:title" content="${title}"><meta property="article:published_time" content="${new Date().toISOString()}"></head><body><h1>${title}</h1></body></html>`, { headers: { 'content-type': 'text/html' } });
+  };
+  const valid = await verifySourceUrl('http://www.cronista.com/economia/http-fixture', title, undefined, 'cronista.com');
+  assert.equal(valid.verified, true); assert.match(valid.source!.sourceUrl, /^https:/);
+  assert.equal((await verifySourceUrl('https://www.cronista.com/economia/unsafe', title, undefined, 'cronista.com')).verified, false);
+  assert.ok(calls.every(url => new URL(url).hostname === 'www.cronista.com'));
 });

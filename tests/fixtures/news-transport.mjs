@@ -20,7 +20,7 @@ export const articles = [
 ];
 
 export function installNewsTransport() {
-  const stats = { searches: 0, extractions: 0, publications: 0, feeds: 0, prompts: [] };
+  const stats = { sections: 0, searches: 0, extractions: 0, publications: 0, feeds: 0, prompts: [] };
   globalThis.fetch = async (input, init) => {
     const url = String(input instanceof Request ? input.url : input);
     if (url.includes('generativelanguage.googleapis.com/')) {
@@ -43,7 +43,12 @@ export function installNewsTransport() {
       const query = new URL(url).searchParams.get('q') || '';
       const publisher = query.match(/^site:(\S+)/)?.[1];
       const found = process.env.FAROS_TEST_NEWS_DISCOVERY === '1' ? articles.filter(article => new URL(article.url).hostname === `www.${publisher}`) : [];
-      return new Response(`<rss><channel>${found.map(article => `<item><title>${article.title}</title><link>${article.url}</link></item>`).join('')}</channel></rss>`);
+      return new Response(`<rss><channel>${found.map(article => `<item><title>${article.title}</title><link>${process.env.FAROS_TEST_NEWS_SECTION === '1' ? 'https://www.bing.com/ck/a?u=a1' + Buffer.from(article.url).toString('base64url') : article.url}</link></item>`).join('')}</channel></rss>`);
+    }
+    if (url === 'https://www.infobae.com/economia/') {
+      stats.sections++;
+      const found = process.env.FAROS_TEST_NEWS_SECTION === '1' ? articles.filter(article => article.media === 'Infobae') : [];
+      return new Response(`<html><body>${found.map(article => `<a href="${new URL(article.url).pathname}"><h2>${article.title}</h2></a>`).join('')}</body></html>`, { headers: { 'content-type': 'text/html' } });
     }
     const feed = url.includes('/rss/') || url.includes('/outboundfeeds/');
     if (feed) {

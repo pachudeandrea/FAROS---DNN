@@ -21,7 +21,8 @@ test('una consulta RSS válida puede completar sin candidatos financieros y expl
   try {
     assert.deepEqual(await getLiveVerifiedArgentineNews([], diagnostics), []);
     assert.equal(diagnostics.feeds.length, 4);
-    assert.equal(diagnostics.discarded.notFinancial, 4);
+    assert.equal(diagnostics.discarded.notFinancial, 3);
+    assert.equal(diagnostics.discarded.section, 1);
     assert.equal(diagnostics.verified, 0);
   } finally { globalThis.fetch = original; }
 });
@@ -51,7 +52,7 @@ test('consulta todos los RSS en paralelo y conserva los medios disponibles si ot
   try {
     const collecting = getLiveVerifiedArgentineNews([], diagnostics);
     await new Promise(resolve => setImmediate(resolve));
-    assert.equal(started, 4, 'Un RSS pendiente no impide iniciar los demás medios');
+    assert.equal(started, 5, 'Un RSS pendiente no impide iniciar los demás medios y la alternativa de Infobae');
     release!(new Response('<rss><channel></channel></rss>'));
     assert.deepEqual(await collecting, []);
     assert.deepEqual(diagnostics.feeds.map(feed => feed.status), ['ok', 'http_error', 'ok', 'ok']);
@@ -217,4 +218,31 @@ test('no corta el RSS antes de encontrar una nota relevante situada después de 
   assert.equal(news.length, 1);
   assert.equal(news[0].coverageCount, 3);
   assert.ok(requested.slice(0, 3).every(url => url.endsWith('-16')), 'Prioriza la nota relevante de cada medio antes de las generales');
+});
+
+test('la sección Infobae deduplica enlaces relativos, rechaza impostores y verifica la publicación original', async t => {
+  const original = globalThis.fetch; purgeUrlVerificationCache();
+  t.after(() => { globalThis.fetch = original; purgeUrlVerificationCache(); });
+  const diagnostics = createCollectionDiagnostics();
+  const headline = 'El BCRA compró USD 125 millones y sumó reservas';
+  const pathname = '/economia/2030/01/01/section-fixture/';
+  let rssSignal: AbortSignal | null | undefined; let sectionSignal: AbortSignal | null | undefined; let publications = 0;
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    if (url.pathname === '/economia/') {
+      sectionSignal = init?.signal;
+      return new Response(`<html><a href="${pathname}"><h2>${headline}</h2></a><a href="${pathname}?utm_source=duplicate">${headline}</a><a href="https://www.infobae.com.evil.test${pathname}">${headline}</a><a href="/politica/2030/01/01/fake/">${headline}</a></html>`);
+    }
+    if (url.pathname === pathname) {
+      publications++;
+      return new Response(`<html><head><meta property="og:title" content="${headline}"><meta property="article:published_time" content="${new Date().toISOString()}"></head><body><h1>${headline}</h1></body></html>`, { headers: { 'content-type': 'text/html' } });
+    }
+    if (url.hostname === 'www.infobae.com') rssSignal = init?.signal;
+    return new Response('<rss><channel></channel></rss>');
+  };
+  const news = await getLiveVerifiedArgentineNews(['AL30'], diagnostics);
+  assert.equal(news.length, 1); assert.equal(publications, 1);
+  assert.equal(news[0].sources[0].sourceUrl, `https://www.infobae.com${pathname}`);
+  assert.equal(diagnostics.sections[0].accepted, 1); assert.ok(diagnostics.discarded.section > 0);
+  assert.ok(rssSignal); assert.equal(sectionSignal, rssSignal, 'RSS y sección comparten el mismo plazo');
 });
