@@ -25,6 +25,11 @@ test('los tres titulares de producción no pierden el rebote y la variación del
 test('reconoce rebotes, alias del emisor y verbos de mercado sin convertir costos, rumores o negaciones en precios', () => {
   const cases = [
     ['AL30 rebota en la Bolsa', 'AL30', 'favorable'],
+    ['AL30 vuelve a subir en la Bolsa', 'AL30', 'favorable'],
+    ['Los bonos soberanos borran subas iniciales y el riesgo país vuelve a saltar por encima de los 900 puntos', 'AL30', 'alerta'],
+    ['El riesgo país volvió a bajar', 'AL30', 'favorable'],
+    ['No vuelve a subir el riesgo país', 'AL30', 'neutral'],
+    ['El riesgo país podría volver a saltar', 'AL30', 'neutral'],
     ['AL30 se hundió en la Bolsa', 'AL30', 'alerta'],
     ['Nvidia salta 5% en Wall Street', 'NVDA', 'favorable'],
     ['Banco Galicia cae en Wall Street', 'GGAL', 'alerta'],

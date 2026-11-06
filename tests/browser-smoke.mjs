@@ -837,7 +837,7 @@ try {
         portfolioImpactAnalysis: { directExplanation: analysis.explanation, affectedHoldings: Object.entries(analysis.assetImpacts).map(([symbol, impactDirection]) => ({ symbol, impactDirection, relationshipDetail: analysis.relationships[symbol] })) } };
     });
     for (const position of ['long', 'short']) {
-      const { context, page } = await setup({ legacyNews: 'v13_news_tracking_coverage', newsOverride: classified,
+      const { context, page } = await setup({ legacyNews: position === 'long' ? 'v13_news_tracking_coverage' : 'v14_directional_classification', newsOverride: classified,
         portfolioOverride: { ...MOCK_PORTFOLIOS[0], assetIds: ['AL30'], assetPositions: { AL30: position } } });
       await clickVisible(page, 'Ahora no');
       const group = page.getByRole('group', { name: 'Filtrar noticias por impacto', exact: true });
@@ -851,7 +851,7 @@ try {
       await page.getByRole('button', { name: 'Cerrar detalle y detener audio', exact: true }).click();
       await group.getByRole('button', { name: `Alertas: ${position === 'long' ? 1 : 2} noticias`, exact: true }).click();
       await page.waitForFunction(expected => document.querySelectorAll('#news-feed-section article').length === expected, position === 'long' ? 1 : 2);
-      assert.equal(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('faros_news_v13_')).length), 0, 'No reutiliza la clasificación neutral antigua');
+      assert.equal(await page.evaluate(() => Object.keys(localStorage).filter(key => /^faros_news_v(?:13|14)_/.test(key)).length), 0, 'No reutiliza la clasificación neutral antigua');
       assert.equal(await page.evaluate(() => localStorage.getItem('faros_session_token')), 'browser-test-existing-session', 'La renovación de noticias conserva la sesión');
       assert.equal(await page.getByRole('button', { name: 'Noticias anteriores', exact: true }).count(), 0);
       await fits(page, `Clasificación en móvil ${position}`);

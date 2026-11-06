@@ -63,4 +63,4 @@ El rebote o caída explícitos del conjunto de bonos soberanos en dólares y la 
 
 Reservas, tasas o niveles de riesgo sin variación explícita siguen siendo contexto neutral. Rumores y negaciones no reciben dirección por estas reglas. Las posiciones SHORT invierten el efecto y las carteras con efectos contrapuestos siguen sin tener un saldo neto supuesto.
 
-La caché `v14_directional_classification` retira las clasificaciones anteriores tanto en navegador como en servidor, sin modificar sesiones, carteras, preferencias ni las copias completas de Guardadas.
+La caché `v15_directional_classification` retira las clasificaciones anteriores tanto en navegador como en servidor, sin modificar sesiones, carteras, preferencias ni las copias completas de Guardadas.

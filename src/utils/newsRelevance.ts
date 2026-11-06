@@ -25,8 +25,11 @@ const lowerRating = /\b(rebaj\w*|reduc\w*|recort\w*)\b.{0,45}\bcalificacion\b|\b
 const higherRating = /\b(elev\w*|mejor\w*)\b.{0,45}\bcalificacion\b|\bcalificacion\b.{0,35}\b(elev\w*|mejor\w*)\b/;
 const deniedRating = /\bno\b.{0,20}\b(mejor\w*|elev\w*|reduc\w*|rebaj\w*|recort\w*)\b.{0,45}\bcalificacion\b|\bcalificacion\b.{0,40}\bno\b.{0,20}\b(mejor\w*|elev\w*|reduc\w*|rebaj\w*|recort\w*)\b/;
 const payment = /(?<!el )(?<!del )\b(paga|pagara|pago|abona|abonara|abono|anuncia|anuncio|declara|declaro|confirma|confirmo)\b.{0,45}\b(cupon|dividendos?|amortizacion)\b/;
-const up = '(?:sube|suben|subio|subieron|subiendo|trepa|trepan|trepo|treparon|avanza|avanzan|avanzo|avanzaron|repunta|repuntan|repunto|rebota|rebotan|reboto|rebotaron|salta|saltan|salto|saltaron|aumenta|aumentan|aumento|aumentaron|se recupera|se recuperan|se recupero|se recuperaron|se dispara|se disparan|se disparo|se dispararon)';
-const down = '(?:cae|caen|cayo|cayeron|cayendo|baja|bajan|bajo|bajaron|bajando|retrocede|retroceden|retrocedio|retrocedieron|se hunde|se hunden|se hundio|se hundieron|se desploma|se desploman|se desplomo|se desplomaron|se derrumba|se derrumban|se derrumbo|se derrumbaron)';
+const upSimple = '(?:sube|suben|subio|subieron|subiendo|trepa|trepan|trepo|treparon|avanza|avanzan|avanzo|avanzaron|repunta|repuntan|repunto|rebota|rebotan|reboto|rebotaron|salta|saltan|salto|saltaron|aumenta|aumentan|aumento|aumentaron|se recupera|se recuperan|se recupero|se recuperaron|se dispara|se disparan|se disparo|se dispararon)';
+const downSimple = '(?:cae|caen|cayo|cayeron|cayendo|baja|bajan|bajo|bajaron|bajando|retrocede|retroceden|retrocedio|retrocedieron|se hunde|se hunden|se hundio|se hundieron|se desploma|se desploman|se desplomo|se desplomaron|se derrumba|se derrumban|se derrumbo|se derrumbaron)';
+// A repeated observed movement is still a fact, unlike "podría volver a subir".
+const up = `(?:${upSimple}|(?:vuelve|volvio|vuelven|volvieron) a (?:subir|trepar|avanzar|repuntar|rebotar|saltar|aumentar|recuperarse|dispararse))`;
+const down = `(?:${downSimple}|(?:vuelve|volvio|vuelven|volvieron) a (?:caer|bajar|retroceder|hundirse|desplomarse|derrumbarse))`;
 // A percentage between the verb and its commercial object is not a quote:
 // "Apple subió un 5% el precio del iPhone", "YPF bajó 9% su producción".
 const commercialObject = /^\s*(?:(?:un|una|en|hasta|cerca de|mas de|menos de|al menos|aproximadamente|nuevamente|de nuevo)\s+)*(?:[-+]?\d+(?:[.,]\d+)?\s*(?:%|por ciento)\s*)?(?:(?:el|la|los|las|su|sus)\s+)?(?:riesgo|inflacion|tasas?|tir|rendimientos?|costos?|ventas?|ingresos?|ganancias?|beneficios?|margenes?|produccion|reservas|salarios|precios?|tarifas?|inversion|deuda)\b/;
