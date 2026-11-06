@@ -27,7 +27,7 @@ export function recognizeAssetIds(headline: string, assets: Asset[] = ASSET_CATA
   const caseText = headline.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
   const hasFinance = finance.test(text);
   const domesticDebtContext = !foreignSovereign.test(text) || /\b(argentina|argentinos?|argentinas?|bcra)\b/.test(text);
-  const sovereignWords = /\b(bonos soberanos|deuda soberana|bonos argentinos|bonos en dolares|riesgo pais)\b/;
+  const sovereignWords = /\b(bonos soberanos|deuda soberana|bonos argentinos|bonos en dolares|titulos publicos|riesgo pais)\b/;
   const sovereignContext = !foreignSovereign.test(text) ? sovereignWords.test(text) : text.split(/\s+(?:mientras(?: que)?|pero|en tanto|y)\s+/).some(clause => sovereignWords.test(clause) && (!foreignSovereign.test(clause) || /\b(argentina|argentinos?|argentinas?)\b/.test(clause)));
   return assets.filter(asset => {
     const symbol = normalizeAssetText(asset.symbol);

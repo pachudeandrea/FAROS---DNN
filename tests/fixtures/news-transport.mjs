@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 // Local provider/publication fixtures. An unexpected URL fails rather than
 // making a network request. This module is loaded only by the test API process.
 const published = new Date(Date.now() - 30 * 60000).toISOString();
@@ -18,6 +19,12 @@ export const articles = [
 
 
 ];
+
+// Public verified headlines reproduced locally; no production request is made.
+if (process.env.FAROS_TEST_NEWS_DIRECTIONAL === '1') {
+  const publications = JSON.parse(readFileSync(new URL('./classification-production-2026-11-06.json', import.meta.url), 'utf8'));
+  articles.splice(0, articles.length, ...publications.map(item => ({ media: item.sources[0].mediaName, url: item.sources[0].sourceUrl, title: item.headline })));
+}
 
 export function installNewsTransport() {
   let releaseCoverage;

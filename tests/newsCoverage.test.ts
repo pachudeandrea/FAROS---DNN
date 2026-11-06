@@ -78,10 +78,10 @@ before(async () => {
 });
 async function stop(child: ChildProcess) { if (child.exitCode !== null) return; const exit = once(child, 'exit'); child.kill('SIGTERM'); await exit; children.delete(child); }
 after(async () => { for (const child of children) await stop(child); if (artifact) await rm(artifact, { recursive: true, force: true }); });
-async function api(gemini = true, singleMedium = false, discovery = false, section = false, gated = false, databaseUrl = '') {
+async function api(gemini = true, singleMedium = false, discovery = false, section = false, gated = false, databaseUrl = '', directional = false) {
   const child = fork(new URL('fixtures/native-api-server.mjs', import.meta.url), [pathToFileURL(path.join(artifact, 'api/index.js')).href], {
     cwd: root, execArgv: [], silent: true,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: databaseUrl, POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '', FAROS_TEST_NEWS_DISCOVERY: discovery ? '1' : '', FAROS_TEST_NEWS_SECTION: section ? '1' : '', FAROS_TEST_NEWS_GATED: gated ? '1' : '' }
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: databaseUrl, POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NEWS_DIRECTIONAL: directional ? '1' : '', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '', FAROS_TEST_NEWS_DISCOVERY: discovery ? '1' : '', FAROS_TEST_NEWS_SECTION: section ? '1' : '', FAROS_TEST_NEWS_GATED: gated ? '1' : '' }
   });
   children.add(child);
   let output = ''; child.stdout?.on('data', chunk => { output += chunk; }); child.stderr?.on('data', chunk => { output += chunk; });
@@ -300,4 +300,29 @@ test('el caché completo sobrevive entre instancias y carteras equivalentes, sin
   assert.equal((await db.query('SELECT * FROM faros_news_pulse_cache')).rowCount, countBeforeFailure);
   await fourth.pulse({ ...args, tickers: ['MSFT'], forceRefresh: true });
   assert.equal((await db.query('SELECT * FROM faros_news_pulse_cache')).rowCount, countBeforeFailure + 1, 'Una lectura fallida no impide escribir el resultado de la siguiente colección completada');
+});
+
+
+test('los titulares reales conservan clasificación favorable/alerta en RSS, Gemini y caché completa', { timeout: 30000 }, async () => {
+  for (const gemini of [false, true]) {
+    const server = await api(gemini, false, false, false, false, '', true);
+    const args = { portfolioId: 'public-direction-fixture', tickers: ['AL30', 'GD30'], profile: 'moderado' };
+    const result = await server.pulse(args);
+    assert.equal(result.cached, false); assert.equal(result.news.length, 3);
+    const expected = new Map([
+      ['Los bonos en dólares rebotan y el riesgo país se sostiene por debajo de los 900 puntos', 'favorable'],
+      ['El riesgo país saltó 8,6% y superó los 900 puntos, mientras el MSCI Merval tuvo su peor caída diaria desde junio', 'alerta'],
+      ['Cae el riesgo país argentino, pero sigue sobre los 900 puntos, mientras Wall Street insinúa un rebote', 'favorable']
+    ]);
+    for (const item of result.news) {
+      assert.equal(item.impact, expected.get(item.headline), item.headline);
+      assert.equal(item.relevanceType, 'valoracion_mercado');
+      for (const holding of item.portfolioImpactAnalysis.affectedHoldings) assert.equal(holding.impactDirection, item.impact);
+      assert.equal(item.sources[0].originalHeadline, item.headline);
+      assert.match(item.portfolioImpactAnalysis.directExplanation, /sin afirmar una cotización individual/);
+    }
+    if (gemini) assert.ok((await server.stats()).extractions > 0);
+    const cached = await server.pulse(args);
+    assert.equal(cached.cached, true); assert.deepEqual(cached.news, result.news);
+  }
 });

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { analyzeNewsRelevance } from '../src/utils/newsRelevance.ts';
 import { publicationUrls, publicationDay, samePublication } from '../src/utils/newsLibrary.ts';
 // Isolated UI checks: every API and external request is intercepted. The push
 // transport is simulated; the actual service worker and Notification API run.
@@ -66,13 +68,13 @@ let checks = 0;
 async function check(name, run) { if (process.env.BROWSER_CHECK && !name.includes(process.env.BROWSER_CHECK)) return; await run(); checks++; console.log(`ok ${checks} - ${name}`); }
 async function setup({ anonymous = false, admin = false, permission = 'granted', longName = false, legacyNews = false, portfolioOverride, newsOverride, audioMode = 'ok', audioDelay = 0, progressiveNews = false, ...options } = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, ...options });
-  if (legacyNews) await context.addInitScript(({ item, portfolioId }) => {
+  if (legacyNews) await context.addInitScript(({ item, portfolioId, version }) => {
     const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const hour = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', hour12: false }).format(new Date());
-    localStorage.setItem(`faros_news_v4_coverage_${portfolioId}_${date}_${hour}`, JSON.stringify([{ ...item, sources: item.sources.slice(0, 1), coverageCount: 1 }]));
+    localStorage.setItem(`faros_news_${version}_${portfolioId}_${date}_${hour}`, JSON.stringify([{ ...item, sources: item.sources.slice(0, 1), coverageCount: 1 }]));
     localStorage.setItem('faros_session_token', 'browser-test-existing-session');
     localStorage.setItem('faros_custom_events:usr_browser_test', '[]');
-  }, { item: news[0], portfolioId: fixture.portfolio.id });
+  }, { item: news[0], portfolioId: fixture.portfolio.id, version: typeof legacyNews === 'string' ? legacyNews : 'v4_coverage' });
   // Permission state and subscriptions are simulated, so no push service is
   // contacted. Permission requests still have to originate from a button.
   await context.addInitScript(({ permission, subscription }) => {
@@ -822,6 +824,40 @@ try {
     await clickVisible(page, 'Noticias');
     await page.getByRole('button', { name: 'Ver única fuente verificada', exact: true }).waitFor();
     await context.close();
+  });
+  await check('Clasificación real: señales de bonos y riesgo, contador, filtro, detalle y LONG/SHORT', async () => {
+    const publications = JSON.parse(readFileSync(new URL('./fixtures/classification-production-2026-11-06.json', import.meta.url), 'utf8'));
+    const headlines = [...publications.map(item => item.headline), 'El BCRA compró dólares y sumó reservas'];
+    const classified = headlines.map((headline, index) => {
+      const analysis = analyzeNewsRelevance(headline);
+      const item = structuredClone(news[0]);
+      return { ...item, id: `classification-${index}`, headline, impact: analysis.impact, relevanceType: analysis.relevanceType,
+        affectedAssetIds: analysis.affectedAssetIds, briefSummary: headline, fullSynthesis: [analysis.explanation],
+        sources: [{ ...item.sources[0], originalHeadline: headline }], coverageCount: 1,
+        portfolioImpactAnalysis: { directExplanation: analysis.explanation, affectedHoldings: Object.entries(analysis.assetImpacts).map(([symbol, impactDirection]) => ({ symbol, impactDirection, relationshipDetail: analysis.relationships[symbol] })) } };
+    });
+    for (const position of ['long', 'short']) {
+      const { context, page } = await setup({ legacyNews: 'v13_news_tracking_coverage', newsOverride: classified,
+        portfolioOverride: { ...MOCK_PORTFOLIOS[0], assetIds: ['AL30'], assetPositions: { AL30: position } } });
+      await clickVisible(page, 'Ahora no');
+      const group = page.getByRole('group', { name: 'Filtrar noticias por impacto', exact: true });
+      await group.getByRole('button', { name: `Favorables: ${position === 'long' ? 2 : 1} noticias`, exact: true }).waitFor();
+      await group.getByRole('button', { name: `Alertas: ${position === 'long' ? 1 : 2} noticias`, exact: true }).waitFor();
+      await group.getByRole('button', { name: 'Neutrales: 1 noticias', exact: true }).waitFor();
+      const card = page.locator('article').filter({ has: page.getByRole('button', { name: headlines[1], exact: true }) });
+      await card.getByText(position === 'long' ? 'Alerta' : 'Favorable', { exact: true }).waitFor();
+      await card.getByRole('button', { name: headlines[1], exact: true }).click();
+      await page.getByText(position === 'long' ? 'Desfavorable para posición Long (condicional)' : 'Favorable para posición Short (condicional)', { exact: true }).waitFor();
+      await page.getByRole('button', { name: 'Cerrar detalle y detener audio', exact: true }).click();
+      await group.getByRole('button', { name: `Alertas: ${position === 'long' ? 1 : 2} noticias`, exact: true }).click();
+      await page.waitForFunction(expected => document.querySelectorAll('#news-feed-section article').length === expected, position === 'long' ? 1 : 2);
+      assert.equal(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('faros_news_v13_')).length), 0, 'No reutiliza la clasificación neutral antigua');
+      assert.equal(await page.evaluate(() => localStorage.getItem('faros_session_token')), 'browser-test-existing-session', 'La renovación de noticias conserva la sesión');
+      assert.equal(await page.getByRole('button', { name: 'Noticias anteriores', exact: true }).count(), 0);
+      await fits(page, `Clasificación en móvil ${position}`);
+      await page.screenshot({ path: path.join(artifacts, `classification-${position}.png`), fullPage: true });
+      await context.close();
+    }
   });
   await check('Contadores visibles de impacto filtran inmediatamente la lista y permiten quitar el filtro', async () => {
     const { context, page, state } = await setup({ viewport: { width: 1440, height: 900 } });

@@ -55,3 +55,12 @@ npm run test:browser
 Las pruebas de base de datos solo usan PostgreSQL local y esquemas descartables; las pruebas de publicaciones/Gemini/RSS y push usan transportes explícitos de prueba. No sustituyen comprobaciones de proveedores en vivo. Chromium prueba selección, guardado, recuperación, lista completa sin carga manual, selección de opciones posteriores a la posición 60, cambios del feed y distribución en 390, 768 y 1440 px, además de la regresión existente de cuenta, noticias, audio, calendario y alertas.
 
 La publicación habitual es un push normal a `main`, seguido del despliegue Vercel y del workflow `deployment-health.yml`. Este cambio no requiere migraciones nuevas. Para comprobar producción debe coincidir el SHA en `/api/version`, responder `/api/health` con PostgreSQL y cargarse el bundle de ese mismo SHA (`scripts/check-deployment.mjs`). Un push exitoso no demuestra que Vercel haya completado el despliegue.
+
+
+## Corrección de señales direccionales (noviembre de 2026)
+
+El rebote o caída explícitos del conjunto de bonos soberanos en dólares y la variación explícita del riesgo país argentino se reconocen como señales de `valoracion_mercado`. Un spread que sube es una señal adversa para deuda soberana; un spread que baja es favorable. No se afirma que cada especie haya variado de precio. Las relaciones por activo explican ese alcance. Un movimiento atribuido directamente a AL30 prevalece sobre la señal general del conjunto. BOPREAL, bonos de otros emisores, acciones y monedas no heredan automáticamente esa señal.
+
+Reservas, tasas o niveles de riesgo sin variación explícita siguen siendo contexto neutral. Rumores y negaciones no reciben dirección por estas reglas. Las posiciones SHORT invierten el efecto y las carteras con efectos contrapuestos siguen sin tener un saldo neto supuesto.
+
+La caché `v14_directional_classification` retira las clasificaciones anteriores tanto en navegador como en servidor, sin modificar sesiones, carteras, preferencias ni las copias completas de Guardadas.

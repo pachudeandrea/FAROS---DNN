@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { analyzeNewsRelevance } from '../src/utils/newsRelevance';
 
 test('reservas y tasas son contexto, no movimientos observados de todos los bonos', () => {
-  for (const headline of ['El BCRA compró dólares y aumentó sus reservas', 'El BCRA no compró dólares y sus reservas bajaron', 'El BCRA subió las tasas de interés', 'Baja el riesgo país de los bonos soberanos']) {
+  for (const headline of ['El BCRA compró dólares y aumentó sus reservas', 'El BCRA no compró dólares y sus reservas bajaron', 'El BCRA subió las tasas de interés']) {
     const result = analyzeNewsRelevance(headline);
     assert.equal(result.relevanceType, 'contexto_macro', headline);
     assert.equal(result.impact, 'neutral', headline);
@@ -18,7 +18,10 @@ test('movimientos atribuidos al instrumento, sin mezclar monedas ni verbos macro
   assert.equal(result.assetImpacts.AL30D, 'neutral', 'La variación de la especie ARS no prueba el precio de la especie USD');
   assert.equal(analyzeNewsRelevance('AL30 cae en la Bolsa').assetImpacts.AL30, 'alerta');
   assert.equal(analyzeNewsRelevance('MSFT +5% en la Bolsa').assetImpacts.MSFT, 'favorable');
-  assert.equal(analyzeNewsRelevance('AL30: baja el riesgo país').assetImpacts.AL30, 'neutral');
+  const spread = analyzeNewsRelevance('AL30: baja el riesgo país');
+  assert.equal(spread.assetImpacts.AL30, 'favorable');
+  assert.equal(spread.relevanceType, 'valoracion_mercado', 'La señal de riesgo no se presenta como una cotización');
+  assert.match(spread.relationships.AL30, /no demuestra la cotización/);
 });
 
 test('titulares de dos emisores atribuyen direcciones locales y conservan resultado global neutral', () => {

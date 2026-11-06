@@ -25,13 +25,13 @@ const lowerRating = /\b(rebaj\w*|reduc\w*|recort\w*)\b.{0,45}\bcalificacion\b|\b
 const higherRating = /\b(elev\w*|mejor\w*)\b.{0,45}\bcalificacion\b|\bcalificacion\b.{0,35}\b(elev\w*|mejor\w*)\b/;
 const deniedRating = /\bno\b.{0,20}\b(mejor\w*|elev\w*|reduc\w*|rebaj\w*|recort\w*)\b.{0,45}\bcalificacion\b|\bcalificacion\b.{0,40}\bno\b.{0,20}\b(mejor\w*|elev\w*|reduc\w*|rebaj\w*|recort\w*)\b/;
 const payment = /(?<!el )(?<!del )\b(paga|pagara|pago|abona|abonara|abono|anuncia|anuncio|declara|declaro|confirma|confirmo)\b.{0,45}\b(cupon|dividendos?|amortizacion)\b/;
-const up = '(?:sube|suben|subio|subieron|trepa|trepan|trepo|avanza|avanzan|avanzo|repunta|repuntan|repunto|se dispara|se disparan|se disparo)';
-const down = '(?:cae|caen|cayo|cayeron|baja|bajan|bajo|bajaron|retrocede|retroceden|retrocedio|se desploma|se desploman|se desplomo)';
+const up = '(?:sube|suben|subio|subieron|subiendo|trepa|trepan|trepo|treparon|avanza|avanzan|avanzo|avanzaron|repunta|repuntan|repunto|rebota|rebotan|reboto|rebotaron|salta|saltan|salto|saltaron|aumenta|aumentan|aumento|aumentaron|se recupera|se recuperan|se recupero|se recuperaron|se dispara|se disparan|se disparo|se dispararon)';
+const down = '(?:cae|caen|cayo|cayeron|cayendo|baja|bajan|bajo|bajaron|bajando|retrocede|retroceden|retrocedio|retrocedieron|se hunde|se hunden|se hundio|se hundieron|se desploma|se desploman|se desplomo|se desplomaron|se derrumba|se derrumban|se derrumbo|se derrumbaron)';
 // A percentage between the verb and its commercial object is not a quote:
 // "Apple subió un 5% el precio del iPhone", "YPF bajó 9% su producción".
 const commercialObject = /^\s*(?:(?:un|una|en|hasta|cerca de|mas de|menos de|al menos|aproximadamente|nuevamente|de nuevo)\s+)*(?:[-+]?\d+(?:[.,]\d+)?\s*(?:%|por ciento)\s*)?(?:(?:el|la|los|las|su|sus)\s+)?(?:riesgo|inflacion|tasas?|tir|rendimientos?|costos?|ventas?|ingresos?|ganancias?|beneficios?|margenes?|produccion|reservas|salarios|precios?|tarifas?|inversion|deuda)\b/;
 
-const deniedMovement = /\bno (?:ha |han |habia |habian )?(?:cae|caen|cayo|cayeron|baja|bajan|bajo|sube|suben|subio|subieron|retrocede|retrocedio)\b/;
+const deniedMovement = new RegExp(`\\bno (?:ha |han |habia |habian )?(?:${up}|${down})\\b`);
 const stockLike = (asset: Asset) => asset.category === 'acciones' || asset.category === 'cedears' || asset.category === 'fondos';
 
 function issuerIn(text: string, asset: Asset): boolean {
@@ -55,7 +55,7 @@ function creditBelongsTo(clause: string, asset: Asset, affected: Asset[]): boole
 function priceDirections(text: string, asset: Asset): ('favorable' | 'alerta')[] {
   if (deniedMovement.test(text)) return [];
   const names = [asset.symbol];
-  if (stockLike(asset) && asset.instrumentType !== 'CEDEAR de ETF') names.push(asset.issuer || '');
+  if (stockLike(asset) && asset.instrumentType !== 'CEDEAR de ETF') names.push(asset.issuer || '', ...(asset.aliases || []));
   const found = new Set<'favorable' | 'alerta'>();
   for (const name of names.filter(Boolean)) {
     const subject = escape(normalizeAssetText(name));
@@ -81,6 +81,31 @@ function priceDirections(text: string, asset: Asset): ('favorable' | 'alerta')[]
   return [...found];
 }
 
+type MarketSignal = { direction: 'favorable' | 'alerta'; kind: 'spread' | 'family' };
+const sovereignBond = (asset: Asset) => asset.category === 'bonos' && asset.issuer === 'República Argentina';
+// Read the verb attached to this metric/group, never a direction from another
+// clause. A sector signal is a valuation input, not an individual species quote.
+function sovereignMarketSignals(clause: string): MarketSignal[] {
+  if (/\b(brasil|brazil|chile|uruguay|paraguay|peru|colombia|venezuela|ecuador|mexico|estados unidos|eeuu|espana|italia|alemania|francia|japon|china)\b/.test(clause)) return [];
+  const metric = 'riesgo pais(?: (?:argentino|de (?:la )?argentina))?';
+  const family = '(?:bonos (?:soberanos(?: argentinos)?|argentinos|en dolares(?: argentinos)?)|titulos publicos(?: argentinos)?)';
+  const modifiers = '(?:\\s+(?:ya|hoy|sigue|siguio|continua|continuo|vuelve a|volvio a|nuevamente|de nuevo))*';
+  const signals: MarketSignal[] = [];
+  for (const [subject, kind] of [[metric, 'spread'], [family, 'family']] as const) {
+    for (const [movement, direction] of [[up, 'favorable'], [down, 'alerta']] as const) {
+      const patterns = [new RegExp(`\\b${subject}${modifiers}\\s+${movement}\\b([^;!?]*)`, 'gu'), new RegExp(`\\b${movement}\\s+(?:(?:el|la|los|las)\\s+)?${subject}\\b([^;!?]*)`, 'gu')];
+      for (const pattern of patterns) for (const match of clause.matchAll(pattern)) {
+        const before = clause.slice(0, match.index);
+        if (/\b(?:no|sin|evita|evito|descarta|descarto|niega|nego)(?:\s+\w+){0,3}\s*$/.test(before)) continue;
+        if (commercialObject.test(match[1]) || /^\s+(?:presion|ley|analisis)\b/.test(match[1])) continue;
+        // Rising sovereign risk is adverse; a falling spread is favorable.
+        signals.push({ kind, direction: kind === 'spread' ? direction === 'favorable' ? 'alerta' : 'favorable' : direction });
+      }
+    }
+  }
+  return signals;
+}
+
 export function analyzeNewsRelevance(headline: string, assets: Asset[] = ASSET_CATALOG): NewsRelevanceAnalysis {
   const text = normalizeAssetText(headline);
   const affectedAssetIds = [...new Set(recognizeAssetIds(headline, assets))];
@@ -90,6 +115,8 @@ export function analyzeNewsRelevance(headline: string, assets: Asset[] = ASSET_C
   const assetImpacts: Record<string, NewsImpact> = {};
   let priceObserved = false;
   let materialEvent = false;
+  const marketSignals: Record<string, MarketSignal[]> = {};
+  const sovereignSignals = !isUncertain && affected.some(sovereignBond) ? clauses.flatMap(sovereignMarketSignals) : [];
   for (const asset of affected) {
     const directions = new Set<NewsImpact>();
     for (const clause of clauses.filter(clause => relatedClause(clause, asset))) {
@@ -108,11 +135,18 @@ export function analyzeNewsRelevance(headline: string, assets: Asset[] = ASSET_C
         if (creditUp) directions.add('favorable');
       }
     }
+    // Directly attributed movements/credit facts take precedence over a broad
+    // group signal (AL30 can fall on a day when other sovereign bonds rebound).
+    if (!directions.size && !isUncertain && sovereignBond(asset)) {
+      const signals = sovereignSignals;
+      if (signals.length) { marketSignals[asset.id] = signals; signals.forEach(signal => directions.add(signal.direction)); }
+    }
     assetImpacts[asset.id] = directions.size === 1 ? [...directions][0] : 'neutral';
   }
   let relevanceType: RelevanceType;
   if (isUncertain) relevanceType = 'ruido';
   else if (affected.length && (priceObserved || materialEvent)) relevanceType = 'impacto_precio';
+  else if (Object.keys(marketSignals).length) relevanceType = 'valoracion_mercado';
   else if (macro.test(text) && !affected.some(asset => stockLike(asset) && issuerIn(text, asset))) relevanceType = 'contexto_macro';
   else if (affected.length && (corporate.test(text) || payment.test(text))) relevanceType = 'valoracion_mercado';
   else relevanceType = 'ruido';
@@ -123,11 +157,17 @@ export function analyzeNewsRelevance(headline: string, assets: Asset[] = ASSET_C
     ? priceObserved ? 'El titular informa una variación de cotización de instrumentos identificados. Esa observación no establece su evolución futura.'
       : 'El titular informa un hecho de pago o de crédito relacionado con instrumentos identificados. No informa por sí solo una variación de cotización.'
     : relevanceType === 'valoracion_mercado'
-      ? 'El titular aporta información sobre el emisor o su actividad, sin demostrar una variación del precio de sus instrumentos.'
+      ? Object.keys(marketSignals).length
+        ? 'El titular informa un movimiento del conjunto de bonos soberanos o de su prima de riesgo. Se clasifica la señal de valoración favorable o adversa para esa deuda, sin afirmar una cotización individual ni anticipar precios.'
+        : 'El titular aporta información sobre el emisor o su actividad, sin demostrar una variación del precio de sus instrumentos.'
       : relevanceType === 'contexto_macro'
         ? 'El titular describe una variable macroeconómica. Su relación con los instrumentos es contextual y no prueba una dirección de precio.'
         : 'El titular no aporta evidencia suficiente de un efecto direccional sobre los instrumentos; las opiniones o expectativas no se tratan como hechos confirmados.';
   const relationships = Object.fromEntries(affected.map(asset => {
+    if (marketSignals[asset.id]?.length) {
+      const signal = marketSignals[asset.id].some(item => item.kind === 'family') ? 'un movimiento del conjunto de bonos soberanos en dólares' : 'una variación del riesgo país argentino';
+      return [asset.id, `El titular informa ${signal}, una referencia de valoración para ${asset.symbol}. La clasificación refleja esa señal del conjunto; no demuestra la cotización ni una variación del precio de esta especie.`];
+    }
     const exact = hasName(text, asset.symbol);
     const namedIssuer = !!asset.issuer && hasName(text, asset.issuer);
     const pairedSpecies = asset.category === 'bonos' && asset.aliases?.some(alias => /^[A-Z]{2}\d{2}D?$/.test(alias) && hasName(text, alias));
