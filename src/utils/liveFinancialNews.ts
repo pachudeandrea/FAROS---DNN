@@ -122,7 +122,7 @@ export function isFinancialCandidate(title: string, link: string, assets: Asset[
 /**
  * Fetches real candidate articles directly from Argentine financial RSS feeds.
  */
-async function fetchRssCandidates(maxPerFeed = 100, diagnostics = createCollectionDiagnostics(), assets: Asset[] = ASSET_CATALOG): Promise<RawFeedItem[]> {
+async function fetchRssCandidates(maxPerFeed = 100, diagnostics = createCollectionDiagnostics(), assets: Asset[] = ASSET_CATALOG, onBatch?: (items: RawFeedItem[]) => void): Promise<RawFeedItem[]> {
   // Push diagnostics before launching requests to keep their order stable even
   // if a slow or unavailable feed finishes last.
   const feedResults = RSS_FEEDS.map(feed => ({ name: feed.name, status: 'unavailable', found: 0, accepted: 0 }));
@@ -196,6 +196,7 @@ async function fetchRssCandidates(maxPerFeed = 100, diagnostics = createCollecti
         }
       } catch (error) { fallback.status = error instanceof Error && /timeout|abort/i.test(error.name) ? 'timeout' : 'connection_error'; }
     }
+    if (candidates.length) onBatch?.(candidates);
     return candidates;
   }));
 
@@ -344,11 +345,40 @@ export async function verifyNewsCandidates(
 }
 
 export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], diagnostics = createCollectionDiagnostics(), assets: Asset[] = ASSET_CATALOG, onProgress?: (news: NewsItem[]) => void): Promise<NewsItem[]> {
-  const candidates = await fetchRssCandidates(100, diagnostics, assets);
+  // Verify one early candidate while slower feeds finish. The full fair collection
+  // still runs afterwards and reuses this URL verification cache.
+  let earlyStarted = false;
+  let verifying = 0;
+  const waiting: (() => void)[] = [];
+  const requests = new Map<string, ReturnType<typeof verifySourceUrl>>();
+  const verify: typeof verifySourceUrl = (url, title) => {
+    const existing = requests.get(url);
+    if (existing) return existing;
+    const request = (async () => {
+      if (verifying >= VERIFICATION_CONCURRENCY) await new Promise<void>(resolve => waiting.push(resolve));
+      else verifying++;
+      try { return await verifySourceUrl(url, title); }
+      finally { const resume = waiting.shift(); if (resume) resume(); else verifying--; }
+    })();
+    requests.set(url, request);
+    return request;
+  };
+  const candidates = await fetchRssCandidates(100, diagnostics, assets, onProgress ? batch => {
+    if (earlyStarted) return;
+    earlyStarted = true;
+    void verifyNewsCandidates(batch.slice(0, 1), userTickers, createCollectionDiagnostics(), assets, {
+      verify,
+      onVerified: source => {
+        const news = buildVerifiedNews([source], userTickers, assets);
+        if (news.length) onProgress(news);
+      }
+    }).catch(() => { /* The full collection below records verification failures. */ });
+  } : undefined);
   const partial: VerifiedSource[] = [];
   let lastProgress = 0;
   let progressCount = 0;
   const verifiedSources = await verifyNewsCandidates(candidates, userTickers, diagnostics, assets, {
+    verify,
     onVerified: onProgress ? source => {
       if (progressCount >= 3) return;
       partial.push(source);

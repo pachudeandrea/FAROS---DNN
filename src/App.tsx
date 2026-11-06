@@ -94,9 +94,8 @@ export default function App() {
   const [isTourActive, setIsTourActive] = useState<boolean>(false);
   const [showWelcomeOnboardingModal, setShowWelcomeOnboardingModal] = useState<boolean>(false);
 
-  const [newsView, setNewsView] = useState<'latest' | 'saved' | 'history'>('latest');
-  const [historyDay, setHistoryDay] = useState('');
-  const library = useNewsLibrary(currentUser?.id, newsView, historyDay);
+  const [newsView, setNewsView] = useState<'latest' | 'saved'>('latest');
+  const library = useNewsLibrary(currentUser?.id, newsView);
   usePendingChanges(accountSaves > 0 || library.busy.length > 0);
   const showSavedOnly = newsView === 'saved';
 
@@ -205,7 +204,6 @@ export default function App() {
   const [newsList, setNewsList] = useState<NewsItem[]>([]);
   const newsOwner = useRef('');
   const [queryState, setQueryState] = useState<NewsQueryState>({ status: 'idle', checkedAt: null });
-  useEffect(() => { if (newsOwner.current === currentUser?.id && (queryState.status === 'success' || queryState.status === 'cached')) library.remember(newsList); }, [newsList, queryState.status, queryState.checkedAt, library.remember, currentUser?.id]);
   const [isLoadingNews, setIsLoadingNews] = useState(false);
   const newsRequest = useRef<AbortController | null>(null);
   const newsPortfolio = useRef('');
@@ -438,7 +436,7 @@ export default function App() {
       localStorage.removeItem('faros_registered_accounts_vault_v1');
       localStorage.removeItem('faros_onboarding_draft');
     } catch {}
-    setNewsView('latest'); setHistoryDay('');
+    setNewsView('latest');
     setCurrentUser(null);
     setPortfolios(MOCK_PORTFOLIOS);
     setActivePortfolioId(MOCK_PORTFOLIOS[0].id);
@@ -495,9 +493,9 @@ export default function App() {
     trackUsageEvent('bookmark_saved', { newsId: news.id, action: library.isSaved(news) ? 'unsaved' : 'saved' });
     void library.toggle(news);
   };
-  const selectNewsView = (view: 'latest' | 'saved' | 'history') => {
+  const selectNewsView = (view: 'latest' | 'saved') => {
     requestAnimationFrame(() => document.getElementById('news-feed-section')?.scrollIntoView({ block: 'start' }));
-    setNewsView(view); setHistoryDay(''); setSearchQuery(''); setRelevanceTypeFilter('todas'); setImpactFilter('todos'); setAssetFilter('todos');
+    setNewsView(view); setSearchQuery(''); setRelevanceTypeFilter('todas'); setImpactFilter('todos'); setAssetFilter('todos');
   };
 
   // Play audio for an individual news item with real dynamic word-based duration
@@ -805,10 +803,10 @@ export default function App() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h3 data-tour="feed-title" className="text-xl sm:text-2xl font-bold text-ink-900 tracking-tight">
-                    {newsView === 'saved' ? 'Noticias guardadas' : newsView === 'history' ? 'Noticias anteriores' : 'Noticias Clasificadas'}
+                    {newsView === 'saved' ? 'Noticias guardadas' : 'Noticias Clasificadas'}
                   </h3>
                   <p className="text-xs sm:text-sm text-muted mt-0.5">
-                    {newsView === 'latest' ? 'Información filtrada para tu cartera con análisis de impacto directo.' : 'Noticias conservadas con sus titulares, fuentes y fechas originales.'}
+                    {newsView === 'latest' ? 'Información filtrada para tu cartera con análisis de impacto directo.' : 'Cada noticia se conserva durante 24 horas desde que la guardás.'}
                   </p>
                 </div>
 
@@ -863,18 +861,14 @@ export default function App() {
                     <Bookmark className="w-3.5 h-3.5" />
                     <span>Guardadas{library.ready || library.savedCount ? ` (${library.savedCount})` : ''}</span>
                   </button>
-                  <button type="button" onClick={() => selectNewsView(newsView === 'history' ? 'latest' : 'history')} aria-pressed={newsView === 'history'} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold ${newsView === 'history' ? 'bg-brand-950 text-paper' : 'bg-paper border border-ink-200 text-muted hover:bg-ink-50'}`}>
-                    <span>Noticias anteriores</span>
-                  </button>
                 </div>
               </div>
 
               {newsView !== 'latest' && <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-ink-200 bg-paper p-4">
-                <div><h3 className="font-bold text-ink-900">{showSavedOnly ? 'Tus noticias guardadas' : 'Noticias de días anteriores'}</h3><p className="text-xs text-muted">{showSavedOnly ? 'Conservadas en tu cuenta, aunque ya no estén en el pulso actual.' : 'Historial de noticias consultadas. Se conserva desde que empezaste a usar esta función.'}</p></div>
-                <label className="flex items-center gap-2 text-sm">Fecha<select aria-label="Fecha de noticias" value={historyDay} onChange={event => setHistoryDay(event.target.value)} className="max-w-full rounded-xl border border-ink-200 p-2 bg-paper"><option value="">Todas las fechas</option>{library.days.filter(day => newsView === 'saved' || day < library.today).map(day => <option key={day} value={day}>{new Intl.DateTimeFormat('es-AR', { timeZone: 'UTC', dateStyle: 'long' }).format(new Date(day + 'T12:00:00Z'))}</option>)}</select></label>
+                <div><h3 className="font-bold text-ink-900">Tus noticias guardadas</h3><p className="text-xs text-muted">Disponibles por 24 horas desde que las guardás, aunque cambies el pulso o cierres sesión.</p></div>
                 <button type="button" onClick={() => selectNewsView('latest')} className="px-3 py-2 rounded-xl bg-ink-100 text-sm font-bold">Volver al pulso actual</button>
               </div>}
-              {library.error && <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl border border-danger-200 bg-danger-50 p-3 text-sm text-danger-800"><span>{library.error}</span><button type="button" onClick={() => library.reload()} className="font-bold underline">Reintentar archivo</button></div>}
+              {library.error && <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl border border-danger-200 bg-danger-50 p-3 text-sm text-danger-800"><span>{library.error}</span><button type="button" onClick={() => library.reload()} className="font-bold underline">Recargar guardadas</button></div>}
 
               {/* SLIM STICKY FILTER BAR: Minimal height (~46px) so it never obstructs reading */}
               <div data-tour="feed-filters" className="sticky top-16 z-20 bg-paper/95 backdrop-blur-md py-2 px-3 sm:px-4 rounded-2xl border border-ink-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-2.5">
@@ -1053,10 +1047,10 @@ export default function App() {
                       <BrandLogo size="lg" />
                     </div>
                     <h4 className="text-lg font-bold text-ink-900 tracking-tight">
-                      {newsView !== 'latest' ? library.loading ? 'Cargando tus noticias…' : library.error ? 'No se pudo cargar todo tu archivo' : showSavedOnly ? library.savedCount ? 'No hay guardadas con estos filtros' : 'Todavía no guardaste noticias' : 'No hay noticias anteriores con estos filtros' : isLoadingNews ? 'Buscando noticias…' : queryState.status === 'error' ? 'No pudimos actualizar las noticias' : newsList.length ? 'No hay noticias con estos filtros' : 'Sin novedades verificadas'}
+                      {newsView !== 'latest' ? library.loading ? 'Cargando tus noticias…' : library.error ? 'No se pudieron cargar tus guardadas' : library.savedCount ? 'No hay guardadas con estos filtros' : 'Todavía no guardaste noticias' : isLoadingNews ? 'Buscando noticias…' : queryState.status === 'error' ? 'No pudimos actualizar las noticias' : newsList.length ? 'No hay noticias con estos filtros' : 'Sin novedades verificadas'}
                     </h4>
                     <p className="text-xs sm:text-sm text-muted max-w-md mx-auto mt-2 leading-relaxed">
-                      {newsView !== 'latest' ? showSavedOnly && !library.savedCount ? 'Tocá el marcador de una noticia para conservarla completa y volver a leerla otro día.' : 'Podés cambiar la fecha o restablecer los filtros. Solo se muestran noticias conservadas en tu archivo.' : impactFilter !== 'todos' && assetFilter !== 'todos'
+                      {newsView !== 'latest' ? showSavedOnly && !library.savedCount ? 'Tocá el marcador de una noticia para conservarla completa durante 24 horas.' : 'Podés restablecer los filtros. Las guardadas vencen a las 24 horas de guardarlas.' : impactFilter !== 'todos' && assetFilter !== 'todos'
                         ? `No se encontraron noticias clasificadas como "${getQualitativeImpactLabel(impactFilter)}" para el activo ${assetFilter}.`
                         : impactFilter !== 'todos'
                         ? `No hay noticias recientes clasificadas con impacto "${getQualitativeImpactLabel(impactFilter)}" en tu cartera.`
@@ -1073,14 +1067,13 @@ export default function App() {
                           <span>Mostrar todos los impactos</span>
                         </button>
                       )}
-                      {(assetFilter !== 'todos' || relevanceTypeFilter !== 'todas' || searchQuery || showSavedOnly || historyDay) && (
+                      {(assetFilter !== 'todos' || relevanceTypeFilter !== 'todas' || searchQuery || showSavedOnly) && (
                         <button
                           onClick={() => {
                             setImpactFilter('todos');
                             setAssetFilter('todos');
                             setRelevanceTypeFilter('todas');
                             setSearchQuery('');
-                            setHistoryDay('');
                           }}
                           className="inline-flex items-center gap-1.5 px-4 py-2 bg-ink-100 text-muted hover:bg-ink-200 text-xs font-bold rounded-xl transition-colors cursor-pointer active:scale-95"
                         >

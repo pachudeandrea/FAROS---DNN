@@ -246,3 +246,39 @@ test('la sección Infobae deduplica enlaces relativos, rechaza impostores y veri
   assert.equal(diagnostics.sections[0].accepted, 1); assert.ok(diagnostics.discarded.section > 0);
   assert.ok(rssSignal); assert.equal(sectionSignal, rssSignal, 'RSS y sección comparten el mismo plazo');
 });
+
+test('el primer RSS verificado se muestra mientras otro feed sigue pendiente, sin volver a descargar la fuente', async () => {
+  const original = globalThis.fetch;
+  purgeUrlVerificationCache();
+  const title = 'El BCRA compró USD 125 millones y elevó sus reservas';
+  const article = 'https://www.ambito.com/economia/early-reservas-fixture';
+  const published = new Date().toISOString();
+  const rss = `<rss><channel><item><title>${title}</title><link>${article}</link><pubDate>${published}</pubDate></item></channel></rss>`;
+  let articleCalls = 0;
+  let firstMs: number | undefined;
+  let totalMs = 0;
+  let slowFinished = false;
+  const started = performance.now();
+  globalThis.fetch = async input => {
+    const url = String(input);
+    if (url === article) {
+      articleCalls++;
+      return new Response(`<html><head><meta property="og:title" content="${title}"><meta property="article:published_time" content="${published}"></head><body><h1>${title}</h1></body></html>`, { headers: { 'content-type': 'text/html' } });
+    }
+    if (url.includes('cronista.com')) {
+      await new Promise(resolve => setTimeout(resolve, 300)); slowFinished = true;
+      return new Response('<rss><channel></channel></rss>');
+    }
+    return new Response(rss);
+  };
+  try {
+    const result = await getLiveVerifiedArgentineNews([], undefined, undefined, items => {
+      assert.ok(items.length);
+      if (firstMs === undefined) { firstMs = performance.now() - started; assert.equal(slowFinished, false); }
+    });
+    totalMs = performance.now() - started;
+    assert.ok(result.length); assert.ok(firstMs !== undefined && firstMs < totalMs);
+    assert.equal(articleCalls, 1, 'El resultado final reutiliza la verificación temprana');
+    console.log(`[CONTROLLED RSS TIMING] first=${firstMs!.toFixed(1)}ms total=${totalMs.toFixed(1)}ms slowFeed=300ms`);
+  } finally { globalThis.fetch = original; purgeUrlVerificationCache(); }
+});

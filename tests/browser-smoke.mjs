@@ -514,7 +514,7 @@ try {
     await fits(page, 'Instrucciones de iPhone');
     await context.close();
   });
-  await check('Guardadas y anteriores: conserva noticias completas fuera del pulso, por fecha y tras recargar', async () => {
+  await check('Guardadas: conserva noticias completas 24 horas fuera del pulso y tras recargar', async () => {
     const old = [1,2].map((days, index) => {
       const item = structuredClone(news[0]); const at = new Date(Date.now() - days * 86400000).toISOString();
       item.id = `past-${index}`; item.headline = `Noticia anterior conservada ${index + 1}`;
@@ -541,13 +541,18 @@ try {
     const card = page.locator('article').filter({ has: page.getByRole('button', { name: old[0].headline, exact: true }) });
     await card.getByRole('button', { name: 'Quitar de guardadas', exact: true }).click();
     await page.getByRole('button', { name: 'Guardadas (1)', exact: true }).waitFor();
-    await clickVisible(page, 'Noticias anteriores');
-    await page.getByRole('button', { name: old[0].headline, exact: true }).waitFor();
-    await page.getByLabel('Fecha de noticias').selectOption(publicationDay(old[1]));
-    await page.getByRole('button', { name: old[1].headline, exact: true }).waitFor();
-    assert.equal(await page.getByRole('button', { name: old[0].headline, exact: true }).count(), 0);
-    await fits(page, 'Archivo de noticias en móvil');
-    await page.screenshot({ path: path.join(artifacts, 'news-archive-mobile.png'), fullPage: true });
+    assert.equal(await page.getByRole('button', { name: 'Noticias anteriores', exact: true }).count(), 0);
+    assert.equal(await page.getByLabel('Fecha de noticias').count(), 0);
+    assert.equal(state.calls.filter(call => call.path.endsWith('/history')).length, 0);
+    await fits(page, 'Guardadas en móvil');
+    await page.clock.install();
+    const savedAt = Date.parse(state.libraries.get(state.user.id).find(entry => entry.savedAt).savedAt);
+    await page.clock.setSystemTime(savedAt + 86400000 - 1000);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.getByRole('button', { name: 'Guardadas (1)', exact: true }).waitFor();
+    await page.clock.runFor(1000);
+    await page.getByRole('button', { name: 'Guardadas (0)', exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: old[1].headline, exact: true }).count(), 0);
     state.user.id = 'another-library-account'; state.user.email = 'another-library@example.test';
     await page.reload({ waitUntil: 'networkidle' }); await clickVisible(page, 'Guardadas (0)');
     assert.equal(await page.getByRole('button', { name: old[1].headline, exact: true }).count(), 0, 'No filtrar noticias guardadas de otra cuenta');

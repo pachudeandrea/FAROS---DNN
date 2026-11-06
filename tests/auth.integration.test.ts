@@ -303,7 +303,7 @@ test('autenticación PostgreSQL entre instancias y reinicios', { timeout: 60000 
 });
 
 
-test('archivo de noticias: guardadas permanentes, historial por día y aislamiento de cuentas', { timeout: 60000 }, async t => {
+test('guardadas temporales: 24 horas desde el guardado, persistencia y aislamiento', { timeout: 60000 }, async t => {
   const value = process.env.TEST_DATABASE_URL!; const url = new URL(value);
   assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)); assert.match(url.pathname, /test/i);
   const admin = new Pool(databaseConfig(value)); const schema = `library_test_${randomBytes(6).toString('hex')}`;
@@ -322,8 +322,17 @@ test('archivo de noticias: guardadas permanentes, historial por día y aislamien
   const save = await request(first.url, '/api/news/library/bookmark', 'PUT', { news: old, saved: true, expectedUserId: a.data.user.id }, a.data.token);
   assert.equal(save.status, 200, JSON.stringify(save.data)); assert.equal(save.data.saved.length, 1);
   const id = save.data.item.id;
+  await db.query(`INSERT INTO faros_news_library(id,user_id,news,source_urls,published_day,saved_at)
+    SELECT id || '-history',user_id,news,source_urls,published_day,NULL FROM faros_news_library WHERE id=$1`, [id]);
+  await db.query(`INSERT INTO faros_news_library(id,user_id,news,source_urls,published_day,saved_at)
+    SELECT id || '-expired',user_id,news,source_urls,published_day,NOW()-INTERVAL '25 hours' FROM faros_news_library WHERE id=$1`, [id]);
+  await migrate(url.toString());
+  assert.equal((await db.query('SELECT id FROM faros_news_library')).rowCount, 1, 'La migración elimina históricos y vencidas, conserva la guardada vigente');
+  assert.equal((await db.query('SELECT id FROM faros_users')).rowCount, 2, 'La migración preserva las cuentas');
   const changed = { ...old, id: 'another-transient-id', headline: 'Titular actualizado en el pulso' };
-  await request(first.url, '/api/news/library/history', 'POST', { news: [changed] }, a.data.token);
+  assert.equal((await request(first.url, '/api/news/library/history', 'POST', { news: [changed] }, a.data.token)).status, 404);
+  const repeated = await request(first.url, '/api/news/library/bookmark', 'PUT', { news: changed, saved: true }, a.data.token);
+  assert.equal(repeated.data.item.savedAt, save.data.item.savedAt, 'Guardar otra vez no renueva el vencimiento');
   const saved = await request(second.url, '/api/news/library?view=saved', 'GET', undefined, a.data.token);
   assert.equal(saved.data.saved.length, 1); assert.equal(saved.data.items.length, 1);
   assert.equal(saved.data.items[0].id, id); assert.equal(saved.data.items[0].news.headline, old.headline);
@@ -331,22 +340,31 @@ test('archivo de noticias: guardadas permanentes, historial por día y aislamien
   assert.equal((await request(second.url, '/api/news/library?view=saved', 'GET', undefined, b.data.token)).data.items.length, 0);
   assert.equal((await request(first.url, '/api/news/library')).status, 401);
   assert.equal((await request(first.url, `/api/news/library?expectedUserId=${b.data.user.id}`, 'GET', undefined, a.data.token)).status, 409);
-  assert.equal((await request(first.url, '/api/news/library?view=history&day=2020-02-31', 'GET', undefined, a.data.token)).status, 400);
-  const anotherDay = { ...changed, sources: [{ ...old.sources[0], publishedDateIso: '2020-01-04T20:00:00Z', publishedTimestamp: Date.parse('2020-01-04T20:00:00Z') }] };
-  await request(first.url, '/api/news/library/history', 'POST', { news: [anotherDay] }, a.data.token);
-  assert.equal((await request(second.url, '/api/news/library?view=history&day=2020-01-03', 'GET', undefined, a.data.token)).data.items[0].news.headline, old.headline);
-  assert.equal((await request(second.url, '/api/news/library?view=history&day=2020-01-04', 'GET', undefined, a.data.token)).data.items.length, 1);
   await stop(second.child); second = await start(url.toString());
   assert.equal((await request(second.url, '/api/news/library?view=saved', 'GET', undefined, a.data.token)).data.saved.length, 1, 'Sobrevive a reinicios');
-  const many = Array.from({ length: 51 }, (_, index) => ({ ...old, id: `previous-${index}`, sources: [{ ...old.sources[0], sourceUrl: `https://www.ambito.com/finanzas/archive-${index}`, canonicalUrl: `https://www.ambito.com/finanzas/archive-${index}` }] }));
-  assert.equal((await request(first.url, '/api/news/library/history', 'POST', { news: many }, a.data.token)).status, 200);
-  const page = await request(first.url, '/api/news/library?view=history&day=2020-01-03', 'GET', undefined, a.data.token);
-  assert.equal(page.data.items.length, 50); assert.equal(page.data.next, 50);
-  assert.equal((await request(first.url, '/api/news/library?view=history&day=2020-01-03&offset=50', 'GET', undefined, a.data.token)).data.items.length, 2);
+  await db.query("UPDATE faros_news_library SET saved_at=NOW()-INTERVAL '23 hours 59 minutes' WHERE id=$1", [id]);
+  assert.equal((await request(first.url, '/api/news/library', 'GET', undefined, a.data.token)).data.saved.length, 1);
+  await db.query("UPDATE faros_news_library SET saved_at=NOW()-INTERVAL '24 hours' WHERE id=$1", [id]);
+  const expired = await request(first.url, '/api/news/library', 'GET', undefined, a.data.token);
+  assert.equal(expired.data.saved.length, 0); assert.equal(expired.data.items.length, 0);
+  assert.equal((await db.query('SELECT id FROM faros_news_library WHERE id=$1', [id])).rowCount, 0);
+  const resaved = await request(first.url, '/api/news/library/bookmark', 'PUT', { news: changed, saved: true }, a.data.token);
+  assert.notEqual(resaved.data.item.id, id); assert.equal(resaved.data.item.news.headline, changed.headline);
   const removed = await request(second.url, '/api/news/library/bookmark', 'PUT', { news: changed, saved: false }, a.data.token);
   assert.equal(removed.data.saved.length, 0);
-  assert.equal((await request(first.url, '/api/news/library?view=history&day=2020-01-03', 'GET', undefined, a.data.token)).data.items.length, 50, 'Quitar el marcador no borra el historial');
+  assert.equal((await db.query('SELECT id FROM faros_news_library WHERE user_id=$1', [a.data.user.id])).rowCount, 0, 'Quitar elimina la copia');
+  // A database write failure must return an error, never a confirmed bookmark.
+  await db.query('ALTER TABLE faros_news_library ADD CONSTRAINT reject_test_write CHECK (false) NOT VALID');
+  assert.equal((await request(first.url, '/api/news/library/bookmark', 'PUT', { news: old, saved: true }, a.data.token)).status, 503);
+  await db.query('ALTER TABLE faros_news_library DROP CONSTRAINT reject_test_write');
   assert.equal((await request(first.url, '/api/news/library/bookmark', 'PUT', { news: { ...old, sources: [] }, saved: true }, a.data.token)).status, 400);
+  for (let index = 0; index < 51; index++) {
+    const news = { ...old, sources: [{ ...old.sources[0], sourceUrl: `https://www.ambito.com/finanzas/saved-page-${index}` }] };
+    assert.equal((await request(first.url, '/api/news/library/bookmark', 'PUT', { news, saved: true }, a.data.token)).status, 200);
+  }
+  const page = await request(first.url, '/api/news/library', 'GET', undefined, a.data.token);
+  assert.equal(page.data.items.length, 50); assert.equal(page.data.saved.length, 51); assert.equal(page.data.next, 50);
+  assert.equal((await request(first.url, '/api/news/library?offset=50', 'GET', undefined, a.data.token)).data.items.length, 1);
   assert.equal((await request(first.url, '/api/auth/account', 'DELETE', undefined, a.data.token)).status, 200);
   assert.equal((await db.query('SELECT id FROM faros_news_library WHERE user_id=$1', [a.data.user.id])).rowCount, 0, 'Eliminar la cuenta elimina su archivo');
 });

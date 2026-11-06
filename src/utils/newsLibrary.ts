@@ -47,3 +47,9 @@ export function mergeLibrary(entries: LibraryEntry[], incoming: LibraryEntry[]):
   }
   return merged;
 }
+
+export const SAVED_NEWS_TTL_MS = 24 * 60 * 60 * 1000;
+export function isActiveSaved(savedAt: string | null, now = Date.now()): boolean {
+  const timestamp = Date.parse(savedAt || "");
+  return Number.isFinite(timestamp) && timestamp <= now && now - timestamp < SAVED_NEWS_TTL_MS;
+}
