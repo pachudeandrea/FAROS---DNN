@@ -1,3 +1,4 @@
+import { REAL_GROUNDED_NEWS } from '../src/data/groundedRealNews.js';
 import { createManualAsset } from '../src/utils/manualAssets';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -299,4 +300,53 @@ test('autenticación PostgreSQL entre instancias y reinicios', { timeout: 60000 
     assert.deepEqual((await db.query('SELECT id, data FROM faros_users ORDER BY id')).rows, before.rows);
     assert.deepEqual((await db.query('SELECT * FROM faros_sessions ORDER BY token')).rows, sessions.rows);
   });
+});
+
+
+test('archivo de noticias: guardadas permanentes, historial por día y aislamiento de cuentas', { timeout: 60000 }, async t => {
+  const value = process.env.TEST_DATABASE_URL!; const url = new URL(value);
+  assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)); assert.match(url.pathname, /test/i);
+  const admin = new Pool(databaseConfig(value)); const schema = `library_test_${randomBytes(6).toString('hex')}`;
+  await admin.query(`CREATE SCHEMA "${schema}"`); url.searchParams.set('options', `-c search_path=${schema}`);
+  const db = new Pool(databaseConfig(url.toString()));
+  t.after(async () => { for (const child of children) await stop(child); await db.end(); await admin.query(`DROP SCHEMA "${schema}" CASCADE`); await admin.end(); });
+  await migrate(url.toString()); await migrate(url.toString());
+  const first = await start(url.toString()); let second = await start(url.toString());
+  const signup = (email: string) => request(first.url, '/api/auth/register', 'POST', { name: 'Archivo de prueba', email, password: 'PruebaSegura42!', recoveryKey: '0042', termsAccepted: true, profile: 'moderado', assets: [] });
+  const a = await signup('archive-a@example.test'); const b = await signup('archive-b@example.test');
+  assert.equal(a.status, 201); assert.equal(b.status, 201);
+  const old = structuredClone(REAL_GROUNDED_NEWS[0]);
+  old.id = 'temporary-original-id'; old.headline = 'Noticia anterior conservada';
+  old.sources = [{ ...old.sources[0], sourceUrl: 'https://www.ambito.com/finanzas/archive-fixture', canonicalUrl: 'https://www.ambito.com/finanzas/archive-fixture', publishedDateIso: '2020-01-03T20:00:00Z', publishedTimestamp: Date.parse('2020-01-03T20:00:00Z') }];
+  old.coverageCount = 1;
+  const save = await request(first.url, '/api/news/library/bookmark', 'PUT', { news: old, saved: true, expectedUserId: a.data.user.id }, a.data.token);
+  assert.equal(save.status, 200, JSON.stringify(save.data)); assert.equal(save.data.saved.length, 1);
+  const id = save.data.item.id;
+  const changed = { ...old, id: 'another-transient-id', headline: 'Titular actualizado en el pulso' };
+  await request(first.url, '/api/news/library/history', 'POST', { news: [changed] }, a.data.token);
+  const saved = await request(second.url, '/api/news/library?view=saved', 'GET', undefined, a.data.token);
+  assert.equal(saved.data.saved.length, 1); assert.equal(saved.data.items.length, 1);
+  assert.equal(saved.data.items[0].id, id); assert.equal(saved.data.items[0].news.headline, old.headline);
+  assert.deepEqual(saved.data.items[0].news.sources, old.sources, 'Los enlaces y fechas guardados permanecen intactos');
+  assert.equal((await request(second.url, '/api/news/library?view=saved', 'GET', undefined, b.data.token)).data.items.length, 0);
+  assert.equal((await request(first.url, '/api/news/library')).status, 401);
+  assert.equal((await request(first.url, `/api/news/library?expectedUserId=${b.data.user.id}`, 'GET', undefined, a.data.token)).status, 409);
+  assert.equal((await request(first.url, '/api/news/library?view=history&day=2020-02-31', 'GET', undefined, a.data.token)).status, 400);
+  const anotherDay = { ...changed, sources: [{ ...old.sources[0], publishedDateIso: '2020-01-04T20:00:00Z', publishedTimestamp: Date.parse('2020-01-04T20:00:00Z') }] };
+  await request(first.url, '/api/news/library/history', 'POST', { news: [anotherDay] }, a.data.token);
+  assert.equal((await request(second.url, '/api/news/library?view=history&day=2020-01-03', 'GET', undefined, a.data.token)).data.items[0].news.headline, old.headline);
+  assert.equal((await request(second.url, '/api/news/library?view=history&day=2020-01-04', 'GET', undefined, a.data.token)).data.items.length, 1);
+  await stop(second.child); second = await start(url.toString());
+  assert.equal((await request(second.url, '/api/news/library?view=saved', 'GET', undefined, a.data.token)).data.saved.length, 1, 'Sobrevive a reinicios');
+  const many = Array.from({ length: 51 }, (_, index) => ({ ...old, id: `previous-${index}`, sources: [{ ...old.sources[0], sourceUrl: `https://www.ambito.com/finanzas/archive-${index}`, canonicalUrl: `https://www.ambito.com/finanzas/archive-${index}` }] }));
+  assert.equal((await request(first.url, '/api/news/library/history', 'POST', { news: many }, a.data.token)).status, 200);
+  const page = await request(first.url, '/api/news/library?view=history&day=2020-01-03', 'GET', undefined, a.data.token);
+  assert.equal(page.data.items.length, 50); assert.equal(page.data.next, 50);
+  assert.equal((await request(first.url, '/api/news/library?view=history&day=2020-01-03&offset=50', 'GET', undefined, a.data.token)).data.items.length, 2);
+  const removed = await request(second.url, '/api/news/library/bookmark', 'PUT', { news: changed, saved: false }, a.data.token);
+  assert.equal(removed.data.saved.length, 0);
+  assert.equal((await request(first.url, '/api/news/library?view=history&day=2020-01-03', 'GET', undefined, a.data.token)).data.items.length, 50, 'Quitar el marcador no borra el historial');
+  assert.equal((await request(first.url, '/api/news/library/bookmark', 'PUT', { news: { ...old, sources: [] }, saved: true }, a.data.token)).status, 400);
+  assert.equal((await request(first.url, '/api/auth/account', 'DELETE', undefined, a.data.token)).status, 200);
+  assert.equal((await db.query('SELECT id FROM faros_news_library WHERE user_id=$1', [a.data.user.id])).rowCount, 0, 'Eliminar la cuenta elimina su archivo');
 });

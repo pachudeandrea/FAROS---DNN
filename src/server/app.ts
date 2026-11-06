@@ -1,3 +1,4 @@
+import { registerNewsLibraryRoutes } from './newsLibraryRoutes.js';
 import { COVERAGE_PUBLISHERS, collectPublisherSections } from '../utils/publisherSections.js';
 import { NewsJobs } from './newsJobs.js';
 import { portfolioAssets, normalizeAssetText } from '../data/assetCatalog.js';
@@ -96,6 +97,7 @@ app.get('/api/health', asyncRoute(async (_req, res) => {
   await query('SELECT id FROM faros_users LIMIT 0');
   await query('SELECT token FROM faros_sessions LIMIT 0');
   await query('SELECT token_hash FROM faros_auth_flows LIMIT 0');
+  await query('SELECT id FROM faros_news_library LIMIT 0');
   res.json({ status: 'ok', database: 'postgresql' });
 }));
 
@@ -107,6 +109,7 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use('/api/news/library', express.json({ limit: '2mb' }));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -586,6 +589,7 @@ app.post('/api/date/simulate-offset', asyncRoute(async (req, res) => {
 
 // --- AUTHENTICATION & ACCOUNT ROUTES ---
 registerNotificationRoutes(app);
+registerNewsLibraryRoutes(app);
 
 app.get('/api/auth/me', asyncRoute(handleGetMe));
 app.post('/api/auth/register', asyncRoute(handleRegister));

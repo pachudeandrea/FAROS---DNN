@@ -1,3 +1,4 @@
+import { publicationUrls, publicationDay, samePublication } from '../src/utils/newsLibrary.ts';
 // Isolated UI checks: every API and external request is intercepted. The push
 // transport is simulated; the actual service worker and Notification API run.
 import assert from 'node:assert/strict';
@@ -86,7 +87,8 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
     PushManager.prototype.getSubscription = async () => local();
     PushManager.prototype.subscribe = async () => { localStorage.setItem('test_push', 'yes'); return local(); };
   }, { permission, subscription });
-  const state = { user: structuredClone(fixture), active: false, calls: [], events: [], newsData: news, newsMode: 'ok', revision: null, saveFailure: false, delayNews: 0, audioMode, audioDelay };
+  const libraries = new Map();
+  const state = { librarySaveFailure: false, libraries, user: structuredClone(fixture), active: false, calls: [], events: [], newsData: news, newsMode: 'ok', revision: null, saveFailure: false, delayNews: 0, audioMode, audioDelay };
   if (portfolioOverride) state.user.portfolio = structuredClone(portfolioOverride);
   if (newsOverride) state.newsData = structuredClone(newsOverride);
   if (admin) state.user.isAdmin = true;
@@ -104,6 +106,28 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
       if (state.delayNews) await new Promise(resolve => setTimeout(resolve, state.delayNews));
       status = state.newsMode === 'error' ? 503 : 200;
       data = state.newsMode === 'error' ? { error: 'Fuentes no disponibles.' } : { news: state.newsMode === 'empty' ? [] : state.newsData, checkedAt: '2026-11-01T14:23:00.000Z' };
+    }
+    if (url.pathname === '/api/news/library' || url.pathname.startsWith('/api/news/library/')) {
+      const owner = state.user.id;
+      if (!libraries.has(owner)) libraries.set(owner, []);
+      const entries = libraries.get(owner);
+      const refs = () => entries.filter(entry => entry.savedAt).map(entry => ({ id: entry.id, day: entry.day, urls: entry.urls, savedAt: entry.savedAt }));
+      const put = (item, saved) => {
+        const day = publicationDay(item);
+        const old = entries.find(entry => entry.day === day && samePublication(entry.news, item));
+        const entry = { id: old?.id || `library-${owner}-${entries.length}`, news: old?.savedAt ? old.news : item, urls: [...new Set([...(old?.urls || []), ...publicationUrls(item)])], day, seenAt: new Date().toISOString(), savedAt: saved === undefined ? old?.savedAt || null : saved ? old?.savedAt || new Date().toISOString() : null };
+        if (old) entries[entries.indexOf(old)] = entry; else entries.push(entry);
+        return entry;
+      };
+      if (url.pathname.endsWith('/bookmark')) {
+        if (state.librarySaveFailure) { status = 503; data = { error: 'No se pudo guardar la noticia de prueba.' }; }
+        else data = { item: put(body.news, body.saved), saved: refs() };
+      } else if (url.pathname.endsWith('/history')) data = { items: body.news.map(item => put(item)) };
+      else {
+        const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
+        const items = entries.filter(entry => url.searchParams.get('view') === 'saved' ? entry.savedAt : entry.day < today).filter(entry => !url.searchParams.get('day') || entry.day === url.searchParams.get('day')).sort((a,b) => b.day.localeCompare(a.day));
+        data = { items, saved: refs(), days: [...new Set(entries.map(entry => entry.day))].sort().reverse(), next: null };
+      }
     }
     if (url.pathname === '/api/version') data = { revision: state.revision, newsVersion: 'v4_coverage' };
     if (url.pathname === '/api/auth/user') {
@@ -488,6 +512,59 @@ try {
     assert.equal(await page.getByRole('button', { name: 'Activar alertas', exact: true }).count(), 0);
     assert.equal(await page.evaluate(() => window.__permissionRequests), 0);
     await fits(page, 'Instrucciones de iPhone');
+    await context.close();
+  });
+  await check('Guardadas y anteriores: conserva noticias completas fuera del pulso, por fecha y tras recargar', async () => {
+    const old = [1,2].map((days, index) => {
+      const item = structuredClone(news[0]); const at = new Date(Date.now() - days * 86400000).toISOString();
+      item.id = `past-${index}`; item.headline = `Noticia anterior conservada ${index + 1}`;
+      item.sources = item.sources.map(source => ({ ...source, publishedDateIso: at, publishedTimestamp: Date.parse(at) }));
+      return item;
+    });
+    const { context, page, state } = await setup({ newsOverride: old });
+    await clickVisible(page, 'Ahora no');
+    await page.getByRole('button', { name: 'Guardadas (0)', exact: true }).waitFor();
+    for (const item of old) {
+      const card = page.locator('article').filter({ has: page.getByRole('button', { name: item.headline, exact: true }) });
+      await card.getByRole('button', { name: 'Guardar noticia', exact: true }).click();
+      await card.getByRole('button', { name: 'Quitar de guardadas', exact: true }).waitFor();
+    }
+    await page.getByRole('button', { name: 'Guardadas (2)', exact: true }).waitFor();
+    state.newsMode = 'empty';
+    await clickVisible(page, 'Actualizar pulso');
+    await page.getByText('Sin novedades verificadas en esta consulta.', { exact: false }).waitFor();
+    await clickVisible(page, 'Guardadas (2)');
+    for (const item of old) await page.getByRole('button', { name: item.headline, exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Quitar de guardadas', exact: true }).count(), 2);
+    await page.reload({ waitUntil: 'networkidle' }); await clickVisible(page, 'Guardadas (2)');
+    for (const item of old) await page.getByRole('button', { name: item.headline, exact: true }).waitFor();
+    const card = page.locator('article').filter({ has: page.getByRole('button', { name: old[0].headline, exact: true }) });
+    await card.getByRole('button', { name: 'Quitar de guardadas', exact: true }).click();
+    await page.getByRole('button', { name: 'Guardadas (1)', exact: true }).waitFor();
+    await clickVisible(page, 'Noticias anteriores');
+    await page.getByRole('button', { name: old[0].headline, exact: true }).waitFor();
+    await page.getByLabel('Fecha de noticias').selectOption(publicationDay(old[1]));
+    await page.getByRole('button', { name: old[1].headline, exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: old[0].headline, exact: true }).count(), 0);
+    await fits(page, 'Archivo de noticias en móvil');
+    await page.screenshot({ path: path.join(artifacts, 'news-archive-mobile.png'), fullPage: true });
+    state.user.id = 'another-library-account'; state.user.email = 'another-library@example.test';
+    await page.reload({ waitUntil: 'networkidle' }); await clickVisible(page, 'Guardadas (0)');
+    assert.equal(await page.getByRole('button', { name: old[1].headline, exact: true }).count(), 0, 'No filtrar noticias guardadas de otra cuenta');
+    await context.close();
+  });
+  await check('Guardadas: un fallo de almacenamiento no infla el contador ni marca una noticia como guardada', async () => {
+    const { context, page, state } = await setup(); await clickVisible(page, 'Ahora no');
+    await page.getByRole('button', { name: 'Guardadas (0)', exact: true }).waitFor();
+    state.librarySaveFailure = true;
+    const card = page.locator('article').first();
+    await card.getByRole('button', { name: 'Guardar noticia', exact: true }).click();
+    await page.getByText('No se pudo guardar la noticia de prueba.', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Guardadas (0)', exact: true }).waitFor();
+    await card.getByRole('button', { name: 'Guardar noticia', exact: true }).waitFor();
+    state.librarySaveFailure = false;
+    await card.getByRole('button', { name: 'Guardar noticia', exact: true }).click();
+    await page.getByRole('button', { name: 'Guardadas (1)', exact: true }).waitFor();
     await context.close();
   });
   await check('Carga progresiva: muestra noticias y habilita audio antes de completar medios; solo guarda el resultado final', async () => {

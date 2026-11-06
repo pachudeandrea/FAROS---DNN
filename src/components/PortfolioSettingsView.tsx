@@ -805,7 +805,7 @@ export const PortfolioSettingsView: React.FC<PortfolioSettingsViewProps> = ({
                 <span>Privacidad y Cumplimiento de Datos Financieros</span>
               </div>
               <p className="text-[11px] text-muted leading-relaxed">
-                FAROS almacena únicamente los tickers seleccionados y tus preferencias de notificación para calibrar el feed periodístico y el calendario de vencimientos. Tus contraseñas están resguardadas mediante hash criptográfico (bcrypt) y las sesiones utilizan cookies seguras HttpOnly con SameSite. Nunca compartimos tu cartera con terceros.
+                FAROS conserva tu selección de activos, preferencias, noticias guardadas e historial de consultas para personalizar tu experiencia. Tus contraseñas están resguardadas mediante hash criptográfico (bcrypt) y las sesiones utilizan cookies seguras HttpOnly con SameSite. Nunca compartimos tu cartera con terceros.
               </p>
             </div>
 

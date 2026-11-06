@@ -1,3 +1,5 @@
+import { useNewsLibrary } from './hooks/useNewsLibrary';
+import { publicationDay, publicationUrls, libraryStorageKey } from './utils/newsLibrary';
 import { readNewsResponse } from './utils/newsResponse';
 import { portfolioNewsScope } from './utils/newsCache';
 import { getPortfolioAffectedAssetIds, getPortfolioNewsImpact } from './utils/portfolioNews';
@@ -72,7 +74,6 @@ export default function App() {
   // User Authentication & Session State
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [accountSaves, setAccountSaves] = useState(0);
-  usePendingChanges(accountSaves > 0);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [isSessionLoading, setIsSessionLoading] = useState<boolean>(true);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
@@ -93,8 +94,11 @@ export default function App() {
   const [isTourActive, setIsTourActive] = useState<boolean>(false);
   const [showWelcomeOnboardingModal, setShowWelcomeOnboardingModal] = useState<boolean>(false);
 
-  // Saved news state
-  const [savedNewsIds, setSavedNewsIds] = useState<string[]>(['real-01', 'real-02']);
+  const [newsView, setNewsView] = useState<'latest' | 'saved' | 'history'>('latest');
+  const [historyDay, setHistoryDay] = useState('');
+  const library = useNewsLibrary(currentUser?.id, newsView, historyDay);
+  usePendingChanges(accountSaves > 0 || library.busy.length > 0);
+  const showSavedOnly = newsView === 'saved';
 
   // Feed filtering state
   const [isSearchExpanded, setIsSearchExpanded] = useState<boolean>(false);
@@ -102,7 +106,6 @@ export default function App() {
   const [relevanceTypeFilter, setRelevanceTypeFilter] = useState<'todas' | RelevanceType>('todas');
   const [impactFilter, setImpactFilter] = useState<'todos' | NewsImpact>('todos');
   const [assetFilter, setAssetFilter] = useState<string>('todos');
-  const [showSavedOnly, setShowSavedOnly] = useState<boolean>(false);
 
   // Admin Panel view state synced with URL pathname /admin and hash #admin
   const [isAdminView, setIsAdminView] = useState<boolean>(() => {
@@ -200,15 +203,17 @@ export default function App() {
   }, []);
 
   const [newsList, setNewsList] = useState<NewsItem[]>([]);
+  const newsOwner = useRef('');
   const [queryState, setQueryState] = useState<NewsQueryState>({ status: 'idle', checkedAt: null });
+  useEffect(() => { if (newsOwner.current === currentUser?.id && (queryState.status === 'success' || queryState.status === 'cached')) library.remember(newsList); }, [newsList, queryState.status, queryState.checkedAt, library.remember, currentUser?.id]);
   const [isLoadingNews, setIsLoadingNews] = useState(false);
   const newsRequest = useRef<AbortController | null>(null);
   const newsPortfolio = useRef('');
   const visibleNews = useRef<NewsItem[]>([]);
   useEffect(() => {
     visibleNews.current = newsList;
-    setSelectedNews(current => current ? newsList.find(item => item.sources.some(source => current.sources.some(previous => previous.sourceUrl === source.sourceUrl))) || current : current);
-  }, [newsList]);
+    if (newsView === 'latest') setSelectedNews(current => current ? newsList.find(item => item.sources.some(source => current.sources.some(previous => previous.sourceUrl === source.sourceUrl))) || current : current);
+  }, [newsList, newsView]);
   const [comparisonFirst, setComparisonFirst] = useState(false);
   const [pendingRemindersCount, setPendingRemindersCount] = useState<number>(0);
 
@@ -304,6 +309,7 @@ export default function App() {
 
     const scope = `${activePortfolio.id}_${portfolioNewsScope(activePortfolio.assetIds, activePortfolio.profile, activePortfolio.assetPositions, activePortfolio.customAssets)}`;
     const cacheKey = newsClientCacheKey(scope, hourKey);
+    newsOwner.current = currentUser?.id || '';
 
     newsRequest.current?.abort();
     const controller = new AbortController();
@@ -360,13 +366,13 @@ export default function App() {
       clearTimeout(timeout);
       if (newsRequest.current === controller) setIsLoadingNews(false);
     }
-  }, [activePortfolio.id, activePortfolio.assetIds, activePortfolio.profile, activePortfolio.assetPositions, activePortfolio.customAssets, getArgentinaTodayKey, purgeOldClientCache]);
+  }, [currentUser?.id, activePortfolio.id, activePortfolio.assetIds, activePortfolio.profile, activePortfolio.assetPositions, activePortfolio.customAssets, getArgentinaTodayKey, purgeOldClientCache]);
 
   useEffect(() => {
-    if (isSessionLoading) return;
+    if (isSessionLoading || !currentUser) return;
     fetchPulseNews(false);
     return () => newsRequest.current?.abort();
-  }, [fetchPulseNews, isSessionLoading]);
+  }, [fetchPulseNews, isSessionLoading, currentUser?.id]);
 
   const handleSessionSuccess = useCallback((user: UserAccount, token?: string, isNewRegistration: boolean = false) => {
     setCurrentUser(user);
@@ -422,6 +428,9 @@ export default function App() {
   }, [handleSessionSuccess]);
 
   const clearSessionView = () => {
+    newsRequest.current?.abort(); newsRequest.current = null; newsPortfolio.current = ''; newsOwner.current = '';
+    visibleNews.current = []; setNewsList([]); setSelectedNews(null);
+    setQueryState({ status: 'idle', checkedAt: null });
     audioController.stopAll('logout');
     try {
       localStorage.removeItem('faros_session_token');
@@ -429,6 +438,7 @@ export default function App() {
       localStorage.removeItem('faros_registered_accounts_vault_v1');
       localStorage.removeItem('faros_onboarding_draft');
     } catch {}
+    setNewsView('latest'); setHistoryDay('');
     setCurrentUser(null);
     setPortfolios(MOCK_PORTFOLIOS);
     setActivePortfolioId(MOCK_PORTFOLIOS[0].id);
@@ -455,6 +465,7 @@ export default function App() {
         await alerts.disconnect().catch(() => {});
         await apiRequest('/api/auth/account', { method: 'DELETE' });
       }
+      try { if (currentUser?.id) localStorage.removeItem(libraryStorageKey(currentUser.id)); } catch {}
       clearSessionView();
     } catch (error) {
       setAccountError(error instanceof Error ? error.message : 'No se pudo eliminar la cuenta.');
@@ -480,13 +491,13 @@ export default function App() {
     return notifications.filter(n => !n.read).length;
   }, [notifications]);
 
-  // Toggle Save News
-  const handleToggleSave = (newsId: string) => {
-    setSavedNewsIds(prev => {
-      const isSaving = !prev.includes(newsId);
-      trackUsageEvent('bookmark_saved', { newsId, action: isSaving ? 'saved' : 'unsaved' });
-      return isSaving ? [...prev, newsId] : prev.filter(id => id !== newsId);
-    });
+  const handleToggleSave = (news: NewsItem) => {
+    trackUsageEvent('bookmark_saved', { newsId: news.id, action: library.isSaved(news) ? 'unsaved' : 'saved' });
+    void library.toggle(news);
+  };
+  const selectNewsView = (view: 'latest' | 'saved' | 'history') => {
+    requestAnimationFrame(() => document.getElementById('news-feed-section')?.scrollIntoView({ block: 'start' }));
+    setNewsView(view); setHistoryDay(''); setSearchQuery(''); setRelevanceTypeFilter('todas'); setImpactFilter('todos'); setAssetFilter('todos');
   };
 
   // Play audio for an individual news item with real dynamic word-based duration
@@ -547,16 +558,15 @@ export default function App() {
 
   // Filtered News stream (based on verified grounded newsList)
   const filteredNews = useMemo(() => {
-    return newsList.filter(item => {
-      // 1. Saved filter
-      if (showSavedOnly && !savedNewsIds.includes(item.id)) return false;
+    const items = newsView === 'latest' ? newsList : library.items.map(entry => entry.news);
+    return items.filter(item => {
 
       // 2. Search query filter
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         const matchesHeadline = item.headline.toLowerCase().includes(query);
         const matchesSummary = item.briefSummary.toLowerCase().includes(query);
-        const matchesAssets = getPortfolioAffectedAssetIds(item, activePortfolio.assetIds).some(aid => aid.toLowerCase().includes(query));
+        const matchesAssets = (newsView === 'latest' ? getPortfolioAffectedAssetIds(item, activePortfolio.assetIds) : item.affectedAssetIds).some(aid => aid.toLowerCase().includes(query));
         if (!matchesHeadline && !matchesSummary && !matchesAssets) return false;
       }
 
@@ -586,12 +596,13 @@ export default function App() {
       }
 
       // 6. User preferences check (if disabled in settings)
-      if (!preferences.enabledRelevanceTypes.includes(item.relevanceType)) {
+      if (newsView === 'latest' && !preferences.enabledRelevanceTypes.includes(item.relevanceType)) {
         return false;
       }
 
       return true;
     }).sort((a, b) => {
+      if (newsView !== 'latest') return publicationDay(b).localeCompare(publicationDay(a));
       // Prioritize news touching active portfolio assets
       const aImpactCount = a.affectedAssetIds.filter(aid => activePortfolio.assetIds.includes(aid)).length;
       const bImpactCount = b.affectedAssetIds.filter(aid => activePortfolio.assetIds.includes(aid)).length;
@@ -612,7 +623,7 @@ export default function App() {
     impactFilter, 
     assetFilter,
     showSavedOnly, 
-    savedNewsIds, 
+    newsView, library.items,
     preferences
   ]);
 
@@ -772,7 +783,7 @@ export default function App() {
         {currentTab === 'feed' && (
           <div className="space-y-8">
             {/* In-App Executive Dashboard Card */}
-            <FeedSummaryHero
+            {newsView === 'latest' && <FeedSummaryHero
               query={queryState}
               portfolio={activePortfolio}
               newsList={newsList}
@@ -786,18 +797,18 @@ export default function App() {
               onRefreshNews={() => fetchPulseNews(true)}
               dailySummaryDurationText={dailySummaryDurationText}
               isPlayingDailySummary={audioState.isPlaying && !!audioState.currentTrack?.id?.startsWith('daily-summary')}
-            />
+            />}
 
             {/* Bottom: Classified News Section */}
-            <section id="news-feed-section" data-tour="feed-news-section" className="space-y-3 pt-2">
+            <section id="news-feed-section" data-tour="feed-news-section" className="space-y-3 pt-2 scroll-mt-20">
               {/* Natural Document Flow Header: Title, Description, Search, Saved button */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h3 data-tour="feed-title" className="text-xl sm:text-2xl font-bold text-ink-900 tracking-tight">
-                    Noticias Clasificadas
+                    {newsView === 'saved' ? 'Noticias guardadas' : newsView === 'history' ? 'Noticias anteriores' : 'Noticias Clasificadas'}
                   </h3>
                   <p className="text-xs sm:text-sm text-muted mt-0.5">
-                    Información filtrada para tu cartera con análisis de impacto directo.
+                    {newsView === 'latest' ? 'Información filtrada para tu cartera con análisis de impacto directo.' : 'Noticias conservadas con sus titulares, fuentes y fechas originales.'}
                   </p>
                 </div>
 
@@ -841,7 +852,8 @@ export default function App() {
 
                   {/* Saved news toggle */}
                   <button
-                    onClick={() => setShowSavedOnly(!showSavedOnly)}
+                    onClick={() => selectNewsView(showSavedOnly ? 'latest' : 'saved')}
+                    aria-pressed={showSavedOnly}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer ${
                       showSavedOnly
                         ? 'bg-brand-950 text-paper'
@@ -849,10 +861,20 @@ export default function App() {
                     }`}
                   >
                     <Bookmark className="w-3.5 h-3.5" />
-                    <span>Guardadas ({savedNewsIds.length})</span>
+                    <span>Guardadas{library.ready || library.savedCount ? ` (${library.savedCount})` : ''}</span>
+                  </button>
+                  <button type="button" onClick={() => selectNewsView(newsView === 'history' ? 'latest' : 'history')} aria-pressed={newsView === 'history'} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold ${newsView === 'history' ? 'bg-brand-950 text-paper' : 'bg-paper border border-ink-200 text-muted hover:bg-ink-50'}`}>
+                    <span>Noticias anteriores</span>
                   </button>
                 </div>
               </div>
+
+              {newsView !== 'latest' && <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-ink-200 bg-paper p-4">
+                <div><h3 className="font-bold text-ink-900">{showSavedOnly ? 'Tus noticias guardadas' : 'Noticias de días anteriores'}</h3><p className="text-xs text-muted">{showSavedOnly ? 'Conservadas en tu cuenta, aunque ya no estén en el pulso actual.' : 'Historial de noticias consultadas. Se conserva desde que empezaste a usar esta función.'}</p></div>
+                <label className="flex items-center gap-2 text-sm">Fecha<select aria-label="Fecha de noticias" value={historyDay} onChange={event => setHistoryDay(event.target.value)} className="max-w-full rounded-xl border border-ink-200 p-2 bg-paper"><option value="">Todas las fechas</option>{library.days.filter(day => newsView === 'saved' || day < library.today).map(day => <option key={day} value={day}>{new Intl.DateTimeFormat('es-AR', { timeZone: 'UTC', dateStyle: 'long' }).format(new Date(day + 'T12:00:00Z'))}</option>)}</select></label>
+                <button type="button" onClick={() => selectNewsView('latest')} className="px-3 py-2 rounded-xl bg-ink-100 text-sm font-bold">Volver al pulso actual</button>
+              </div>}
+              {library.error && <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl border border-danger-200 bg-danger-50 p-3 text-sm text-danger-800"><span>{library.error}</span><button type="button" onClick={() => library.reload()} className="font-bold underline">Reintentar archivo</button></div>}
 
               {/* SLIM STICKY FILTER BAR: Minimal height (~46px) so it never obstructs reading */}
               <div data-tour="feed-filters" className="sticky top-16 z-20 bg-paper/95 backdrop-blur-md py-2 px-3 sm:px-4 rounded-2xl border border-ink-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-2.5">
@@ -1031,10 +1053,10 @@ export default function App() {
                       <BrandLogo size="lg" />
                     </div>
                     <h4 className="text-lg font-bold text-ink-900 tracking-tight">
-                      {isLoadingNews ? 'Buscando noticias…' : queryState.status === 'error' ? 'No pudimos actualizar las noticias' : newsList.length ? 'No hay noticias con estos filtros' : 'Sin novedades verificadas'}
+                      {newsView !== 'latest' ? library.loading ? 'Cargando tus noticias…' : library.error ? 'No se pudo cargar todo tu archivo' : showSavedOnly ? library.savedCount ? 'No hay guardadas con estos filtros' : 'Todavía no guardaste noticias' : 'No hay noticias anteriores con estos filtros' : isLoadingNews ? 'Buscando noticias…' : queryState.status === 'error' ? 'No pudimos actualizar las noticias' : newsList.length ? 'No hay noticias con estos filtros' : 'Sin novedades verificadas'}
                     </h4>
                     <p className="text-xs sm:text-sm text-muted max-w-md mx-auto mt-2 leading-relaxed">
-                      {impactFilter !== 'todos' && assetFilter !== 'todos'
+                      {newsView !== 'latest' ? showSavedOnly && !library.savedCount ? 'Tocá el marcador de una noticia para conservarla completa y volver a leerla otro día.' : 'Podés cambiar la fecha o restablecer los filtros. Solo se muestran noticias conservadas en tu archivo.' : impactFilter !== 'todos' && assetFilter !== 'todos'
                         ? `No se encontraron noticias clasificadas como "${getQualitativeImpactLabel(impactFilter)}" para el activo ${assetFilter}.`
                         : impactFilter !== 'todos'
                         ? `No hay noticias recientes clasificadas con impacto "${getQualitativeImpactLabel(impactFilter)}" en tu cartera.`
@@ -1051,14 +1073,14 @@ export default function App() {
                           <span>Mostrar todos los impactos</span>
                         </button>
                       )}
-                      {(assetFilter !== 'todos' || relevanceTypeFilter !== 'todas' || searchQuery || showSavedOnly) && (
+                      {(assetFilter !== 'todos' || relevanceTypeFilter !== 'todas' || searchQuery || showSavedOnly || historyDay) && (
                         <button
                           onClick={() => {
                             setImpactFilter('todos');
                             setAssetFilter('todos');
                             setRelevanceTypeFilter('todas');
                             setSearchQuery('');
-                            setShowSavedOnly(false);
+                            setHistoryDay('');
                           }}
                           className="inline-flex items-center gap-1.5 px-4 py-2 bg-ink-100 text-muted hover:bg-ink-200 text-xs font-bold rounded-xl transition-colors cursor-pointer active:scale-95"
                         >
@@ -1072,20 +1094,23 @@ export default function App() {
                 <div className="space-y-4 pt-2 text-muted transition-all duration-300 animate-in fade-in">
                   {filteredNews.map((news) => (
                     <NewsCard
-                      key={news.id}
+                      key={newsView === 'latest' ? news.id : publicationDay(news) + publicationUrls(news).join('|')}
+                      archived={newsView !== 'latest'}
+                      savePending={library.busy.includes(publicationUrls(news)[0])}
                       news={news}
                       assetsMap={assetsMap}
                       onSelect={(n) => { setComparisonFirst(false); setSelectedNews(n); }}
                       onCompare={(n) => { setComparisonFirst(true); setSelectedNews(n); }}
                       onPlayAudio={handlePlayNewsAudio}
                       onToggleSave={handleToggleSave}
-                      isSaved={savedNewsIds.includes(news.id)}
+                      isSaved={library.isSaved(news)}
                       portfolioAssetIds={activePortfolio.assetIds}
                       assetPositions={activePortfolio.assetPositions}
                     />
                   ))}
                 </div>
               )}
+              {newsView !== 'latest' && library.next !== null && <button type="button" disabled={library.loading} onClick={() => library.loadMore()} className="px-4 py-3 rounded-xl bg-brand-950 text-paper font-bold disabled:opacity-50">{library.loading ? 'Cargando…' : 'Ver más noticias'}</button>}
             </section>
           </div>
         )}

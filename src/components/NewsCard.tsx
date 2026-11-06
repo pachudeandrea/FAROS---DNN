@@ -19,7 +19,9 @@ interface NewsCardProps {
   onCompare: (news: NewsItem) => void;
   onSelect: (news: NewsItem) => void;
   onPlayAudio: (news: NewsItem) => void;
-  onToggleSave: (newsId: string) => void;
+  onToggleSave: (news: NewsItem) => void;
+  archived?: boolean;
+  savePending?: boolean;
   isSaved?: boolean;
   portfolioAssetIds: string[];
   assetPositions?: Record<string, AssetPosition>;
@@ -46,6 +48,8 @@ export const NewsCard: React.FC<NewsCardProps> = ({
   onPlayAudio,
   onToggleSave,
   isSaved = false,
+  archived = false,
+  savePending = false,
   portfolioAssetIds,
   assetPositions,
 }) => {
@@ -106,20 +110,21 @@ export const NewsCard: React.FC<NewsCardProps> = ({
               {getRelevanceLabel(news.relevanceType)}
             </span>
             <span aria-hidden="true" className="text-ink-300 font-bold">·</span>
-            <span className="font-medium text-muted">{news.publishedAgo}</span>
+            <span className="font-medium text-muted">{archived ? (() => { const source = news.sources[0]; const at = source?.publishedTimestamp ?? Date.parse(source?.publishedDateIso || ''); return Number.isFinite(at) ? new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: 'numeric', month: 'long', year: 'numeric' }).format(at) : 'Fecha no disponible'; })() : news.publishedAgo}</span>
           </div>
 
           <button
             data-tour="feed-card-bookmark"
+            disabled={savePending}
             onClick={(e) => {
               e.stopPropagation();
-              onToggleSave(news.id);
+              onToggleSave(news);
             }}
             title={isSaved ? "Quitar de guardadas" : "Guardar noticia"}
             className={`p-2 rounded-full hover:bg-ink-100 transition-colors ${
               isSaved ? "text-brand-900 bg-brand-100/70" : "text-muted hover:text-muted"
             }`}
-            aria-label={isSaved ? "Quitar de guardadas" : "Guardar noticia"}
+            aria-label={savePending ? "Guardando noticia" : isSaved ? "Quitar de guardadas" : "Guardar noticia"}
             aria-pressed={isSaved}
           >
             <Bookmark className="w-4 h-4 fill-current" />
