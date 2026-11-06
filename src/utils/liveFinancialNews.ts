@@ -344,59 +344,145 @@ export async function verifyNewsCandidates(
   return verifiedSources;
 }
 
-export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], diagnostics = createCollectionDiagnostics(), assets: Asset[] = ASSET_CATALOG, onProgress?: (news: NewsItem[]) => void): Promise<NewsItem[]> {
-  // Verify one early candidate while slower feeds finish. The full fair collection
-  // still runs afterwards and reuses this URL verification cache.
-  let earlyStarted = false;
-  let verifying = 0;
-  const waiting: (() => void)[] = [];
-  const requests = new Map<string, ReturnType<typeof verifySourceUrl>>();
-  const verify: typeof verifySourceUrl = (url, title) => {
-    const existing = requests.get(url);
-    if (existing) return existing;
-    const request = (async () => {
-      if (verifying >= VERIFICATION_CONCURRENCY) await new Promise<void>(resolve => waiting.push(resolve));
-      else verifying++;
-      try { return await verifySourceUrl(url, title); }
-      finally { const resume = waiting.shift(); if (resume) resume(); else verifying--; }
-    })();
-    requests.set(url, request);
-    return request;
+/** Start verifying available feeds immediately, sharing one fair queue and deadline. */
+export function incrementalNewsVerification(
+  userTickers: string[],
+  diagnostics = createCollectionDiagnostics(),
+  assets: Asset[] = ASSET_CATALOG,
+  options: { verify?: typeof verifySourceUrl; budgetMs?: number; onVerified?: (source: VerifiedSource) => void } = {}
+) {
+  const queues = new Map<string, RawFeedItem[]>();
+  const sources = new Map<string, typeof diagnostics.sources[number]>();
+  const seen = new Set<string>();
+  const results = new Map<string, VerifiedSource>();
+  const verify = options.verify || verifySourceUrl;
+  const controller = new AbortController();
+  const expired = Symbol('verification-deadline');
+  let expire!: (value: typeof expired) => void;
+  const deadlineResult = new Promise<typeof expired>(resolve => { expire = resolve; });
+  let deadline = Infinity;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let active = 0;
+  let attempted = 0;
+  let closed = false;
+  let finished = false;
+  let scheduled = false;
+  let lastPublisher = '';
+  let resolveDone!: (value: VerifiedSource[]) => void;
+  const done = new Promise<VerifiedSource[]>(resolve => { resolveDone = resolve; });
+  const nextCandidate = () => {
+    const publishers = [...queues.keys()];
+    const last = publishers.indexOf(lastPublisher);
+    for (let turn = 1; turn <= publishers.length; turn++) {
+      const publisher = publishers[(last + turn) % publishers.length];
+      const candidate = queues.get(publisher)!.shift();
+      if (candidate) { lastPublisher = publisher; return { candidate, publisher }; }
+    }
   };
-  const candidates = await fetchRssCandidates(100, diagnostics, assets, onProgress ? batch => {
-    if (earlyStarted) return;
-    earlyStarted = true;
-    void verifyNewsCandidates(batch.slice(0, 1), userTickers, createCollectionDiagnostics(), assets, {
-      verify,
-      onVerified: source => {
-        const news = buildVerifiedNews([source], userTickers, assets);
-        if (news.length) onProgress(news);
+  const settle = () => {
+    if (finished || !closed || active || (!diagnostics.verification.budgetExhausted && [...queues.values()].some(queue => queue.length))) return;
+    if (timer) clearTimeout(timer);
+    diagnostics.verification.skipped = seen.size - attempted;
+    const canonical = new Set<string>();
+    // Discovery order keeps the original source as the event's anchor.
+    const verified = [...seen].flatMap(url => {
+      const source = results.get(url);
+      if (!source) return [];
+      const key = candidateUrlKey(source.canonicalUrl || source.sourceUrl) || source.sourceUrl;
+      if (canonical.has(key)) { diagnostics.discarded.duplicate++; return []; }
+      canonical.add(key); return [source];
+    });
+    finished = true; resolveDone(verified);
+  };
+  const pump = () => {
+    scheduled = false;
+    while (active < VERIFICATION_CONCURRENCY && !diagnostics.verification.budgetExhausted) {
+      if (Date.now() >= deadline) { diagnostics.verification.budgetExhausted = true; break; }
+      const next = nextCandidate();
+      if (!next) break;
+      if (!timer) {
+        const budget = Math.max(0, options.budgetMs ?? VERIFICATION_BUDGET_MS);
+        deadline = Date.now() + budget;
+        timer = setTimeout(() => {
+          diagnostics.verification.budgetExhausted = true;
+          controller.abort(); expire(expired); settle();
+        }, budget);
       }
-    }).catch(() => { /* The full collection below records verification failures. */ });
-  } : undefined);
+      const { candidate, publisher } = next;
+      const report = sources.get(publisher)!;
+      report.attempted++; attempted++; active++;
+      diagnostics.verification.peakConcurrency = Math.max(diagnostics.verification.peakConcurrency, active);
+      void (async () => {
+        const result = await Promise.race([
+          Promise.resolve().then(() => verify(candidate.link, candidate.title, controller.signal)).catch((): VerificationResult => ({ verified: false, discardReason: 'Fallo de conexión' })),
+          deadlineResult
+        ]);
+        if (result === expired) {
+          report.failed++; report.timedOut++; diagnostics.discarded.connection++;
+        } else if (result.verified && result.source) {
+          report.verified++; results.set(candidate.link, result.source);
+          options.onVerified?.(result.source);
+        } else {
+          report.failed++;
+          const reason = result.discardReason || '';
+          if (/conexión|timeout|HTTP status (?:401|403|408|429|5\d\d)/i.test(reason)) diagnostics.discarded.connection++;
+          else if (/extraer|titular|fecha/i.test(reason)) diagnostics.discarded.missingMetadata++;
+          else diagnostics.discarded.invalidArticle++;
+        }
+      })().finally(() => { active--; pump(); }).catch(() => { /* A disconnected reader must not stop collection. */ });
+    }
+    settle();
+  };
+  return {
+    add(batch: RawFeedItem[]) {
+      const changed = new Set<string>();
+      for (const item of batch) {
+        const url = candidateUrlKey(item.link);
+        if (!url) { diagnostics.discarded.invalidFeedItem++; continue; }
+        if (seen.has(url)) { diagnostics.discarded.duplicate++; continue; }
+        seen.add(url);
+        const candidate = { ...item, link: url };
+        const publisher = publisherFor(candidate);
+        if (!sources.has(publisher)) {
+          const report = { name: publisher, candidates: 0, attempted: 0, verified: 0, failed: 0, timedOut: 0 };
+          sources.set(publisher, report); diagnostics.sources.push(report);
+        }
+        sources.get(publisher)!.candidates++;
+        const queue = queues.get(publisher) || [];
+        queue.push(candidate); queues.set(publisher, queue); changed.add(publisher);
+      }
+      for (const publisher of changed) queues.set(publisher, fairCandidateOrder(queues.get(publisher)!, userTickers, assets));
+      diagnostics.uniqueCandidates = seen.size;
+      if (!scheduled) { scheduled = true; queueMicrotask(pump); }
+    },
+    finish() { closed = true; pump(); return done; }
+  };
+}
+
+export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], diagnostics = createCollectionDiagnostics(), assets: Asset[] = ASSET_CATALOG, onProgress?: (news: NewsItem[]) => void): Promise<NewsItem[]> {
   const partial: VerifiedSource[] = [];
   let lastProgress = 0;
-  let progressCount = 0;
-  const verifiedSources = await verifyNewsCandidates(candidates, userTickers, diagnostics, assets, {
-    verify,
-    onVerified: onProgress ? source => {
-      if (progressCount >= 3) return;
-      partial.push(source);
-      if (Date.now() - lastProgress < 500) return;
-      const news = buildVerifiedNews(partial, userTickers, assets);
-      if (news.length) { progressCount++; lastProgress = Date.now(); onProgress(news); }
-    } : undefined
-  });
+  const onVerified = onProgress ? (source: VerifiedSource) => {
+    partial.push(source);
+    if (Date.now() - lastProgress < 500) return;
+    const news = buildVerifiedNews(partial, userTickers, assets);
+    if (news.length) { lastProgress = Date.now(); onProgress(news); }
+  } : undefined;
+  // One queue tries relevant alternatives when the first source is stale,
+  // unavailable or unrelated, while slower feeds can still add other media.
+  const incremental = onProgress ? incrementalNewsVerification(userTickers, diagnostics, assets, { onVerified }) : undefined;
+  let candidates: RawFeedItem[];
+  try { candidates = await fetchRssCandidates(100, diagnostics, assets, incremental?.add); }
+  catch (error) { if (incremental) await incremental.finish(); throw error; }
+  const verifiedSources = incremental ? await incremental.finish() : await verifyNewsCandidates(candidates, userTickers, diagnostics, assets);
 
   console.log(`[LIVE VERIFIER] Total successfully verified authentic sources: ${verifiedSources.length}`);
-
   diagnostics.verified = verifiedSources.length;
   if (verifiedSources.length === 0) {
     console.info('[NEWS COLLECTION]', JSON.stringify(diagnostics));
     if (diagnostics.uniqueCandidates && diagnostics.discarded.connection + diagnostics.verification.skipped === diagnostics.uniqueCandidates) throw new Error('NEWS_SOURCES_UNAVAILABLE');
     return [];
   }
-
   return buildVerifiedNews(verifiedSources, userTickers, assets, diagnostics);
 }
 

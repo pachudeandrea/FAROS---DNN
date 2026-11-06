@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getLiveVerifiedArgentineNews, createCollectionDiagnostics, verifyNewsCandidates, type RawFeedItem } from '../src/utils/liveFinancialNews.ts';
+import { getLiveVerifiedArgentineNews, createCollectionDiagnostics, verifyNewsCandidates, incrementalNewsVerification, type RawFeedItem } from '../src/utils/liveFinancialNews.ts';
 import { purgeUrlVerificationCache } from '../src/utils/urlResolver.ts';
 
 test('una caída de todas las fuentes no se convierte en una consulta sin novedades', async () => {
@@ -187,6 +187,10 @@ test('agrupa el mismo hecho en tres medios, evita duplicados de RSS y separa hec
     assert.equal(articleRequests.length, 6, 'Los dos RSS de Ámbito no repiten la verificación');
     assert.equal(diagnostics.discarded.duplicate, 3);
     assert.equal(diagnostics.multiMedia, 1);
+    purgeUrlVerificationCache();
+    const progressive = await getLiveVerifiedArgentineNews(['AL30', 'YPFD'], undefined, undefined, () => {});
+    const publications = (items: typeof news) => items.map(item => item.sources.map(source => source.sourceUrl).sort().join('|')).sort();
+    assert.deepEqual(publications(progressive), publications(news), 'La verificación incremental conserva la comparación final y separa los mismos acontecimientos');
     const sovereignOnly = await getLiveVerifiedArgentineNews(['AL30']);
     assert.equal(sovereignOnly.length, 1);
     assert.ok(sovereignOnly[0].headline.includes('BCRA'));
@@ -281,4 +285,81 @@ test('el primer RSS verificado se muestra mientras otro feed sigue pendiente, si
     assert.equal(articleCalls, 1, 'El resultado final reutiliza la verificación temprana');
     console.log(`[CONTROLLED RSS TIMING] first=${firstMs!.toFixed(1)}ms total=${totalMs.toFixed(1)}ms slowFeed=300ms`);
   } finally { globalThis.fetch = original; purgeUrlVerificationCache(); }
+});
+
+test('la cola incremental comparte cuatro verificaciones y da turno a un medio que llega después, sin repetir URLs', async () => {
+  const diagnostics = createCollectionDiagnostics();
+  const calls: string[] = [];
+  const pending: (() => void)[] = [];
+  let active = 0; let peak = 0;
+  const queue = incrementalNewsVerification([], diagnostics, undefined, { budgetMs: 1000, verify: (url, title) => {
+    calls.push(url); active++; peak = Math.max(peak, active);
+    return new Promise(resolve => pending.push(() => { active--; resolve(fixtureVerified({ link: url, title: title!, sourceFeed: new URL(url).hostname })); }));
+  } });
+  const first = Array.from({ length: 6 }, (_, index) => fixtureCandidate('ambito.com', index));
+  queue.add(first);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls.length, 4);
+  queue.add([fixtureCandidate('cronista.com', 1), fixtureCandidate('cronista.com', 2), { ...first[0], link: first[0].link + '?utm_source=duplicate' }]);
+  pending.shift()!();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(calls[4].includes('cronista.com'), 'Un feed posterior recibe turno antes de agotar el primer medio');
+  let finished = false;
+  const done = queue.finish().then(value => { finished = true; return value; });
+  while (!finished) {
+    for (const release of pending.splice(0)) release();
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  assert.equal((await done).length, 8); assert.equal(calls.length, 8); assert.equal(new Set(calls).size, 8);
+  assert.equal(peak, 4); assert.equal(diagnostics.verification.peakConcurrency, 4);
+  assert.equal(diagnostics.uniqueCandidates, 8); assert.equal(diagnostics.discarded.duplicate, 1);
+  assert.equal(diagnostics.verification.skipped, 0);
+});
+
+test('feeds posteriores no reinician el presupuesto incremental ni inician solicitudes al agotarlo', async () => {
+  const diagnostics = createCollectionDiagnostics(); let calls = 0;
+  const queue = incrementalNewsVerification([], diagnostics, undefined, { budgetMs: 20, verify: async () => { calls++; return new Promise(() => {}); } });
+  queue.add(Array.from({ length: 8 }, (_, index) => fixtureCandidate('ambito.com', index)));
+  await new Promise(resolve => setTimeout(resolve, 30));
+  queue.add(Array.from({ length: 4 }, (_, index) => fixtureCandidate('cronista.com', index)));
+  assert.deepEqual(await queue.finish(), []);
+  assert.equal(calls, 4); assert.equal(diagnostics.verification.budgetExhausted, true);
+  assert.equal(diagnostics.verification.skipped, 8);
+  assert.equal(diagnostics.sources.reduce((count, source) => count + source.timedOut, 0), 4);
+});
+
+test('una primera publicación ajena o vencida no impide mostrar otra relevante antes del RSS lento', { timeout: 5000 }, async () => {
+  const original = globalThis.fetch; purgeUrlVerificationCache();
+  const article = (index: number) => `https://www.ambito.com/economia/incremental-fixture-${index}`;
+  const titles = ['Microsoft presentó su balance trimestral', 'El BCRA subió la tasa de interés', ...Array.from({ length: 16 }, (_, index) => `Microsoft presentó su balance trimestral número ${index}`), 'El BCRA compró USD 125 millones y elevó sus reservas'];
+  const rss = `<rss><channel>${titles.map((title, index) => `<item><title>${title}</title><link>${article(index)}</link></item>`).join('')}</channel></rss>`;
+  let release!: () => void; const slow = new Promise<void>(resolve => { release = resolve; });
+  let progress!: () => void; const firstNews = new Promise<void>(resolve => { progress = resolve; });
+  let slowFinished = false; let firstSeen = false; const calls: string[] = [];
+  globalThis.fetch = async input => {
+    const url = String(input);
+    if (url.includes('cronista.com')) { await slow; slowFinished = true; return new Response('<rss><channel></channel></rss>'); }
+    if (url.includes('/rss/')) return new Response(rss);
+    if (url.includes('/outboundfeeds/')) return new Response('<rss><channel></channel></rss>');
+    if (url === 'https://www.infobae.com/economia/') return new Response('<html></html>');
+    const index = titles.findIndex((_, index) => article(index) === url);
+    assert.ok(index >= 0); calls.push(url);
+    const published = new Date(Date.now() - (index === 1 ? 72 * 3600000 : 0)).toISOString();
+    return new Response(`<html><head><meta property="og:title" content="${titles[index]}"><meta property="article:published_time" content="${published}"></head><body><h1>${titles[index]}</h1></body></html>`, { headers: { 'content-type': 'text/html' } });
+  };
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const result = getLiveVerifiedArgentineNews(['AL30'], undefined, undefined, items => {
+      if (firstSeen) return; firstSeen = true;
+      assert.equal(slowFinished, false);
+      assert.ok(items.some(item => item.headline === titles.at(-1)));
+      assert.ok(items.every(item => item.headline !== titles[0] && item.headline !== titles[1]));
+      progress();
+    });
+    await Promise.race([firstNews, new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('La publicación relevante sigue esperando al RSS lento')), 3000); })]);
+    release();
+    const news = await result;
+    assert.equal(news.length, 1); assert.equal(news[0].headline, titles.at(-1));
+    assert.equal(calls.length, new Set(calls).size, 'Los dos feeds de Ámbito comparten verificaciones');
+  } finally { if (timeout) clearTimeout(timeout); release(); globalThis.fetch = original; purgeUrlVerificationCache(); }
 });

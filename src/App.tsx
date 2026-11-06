@@ -23,7 +23,7 @@ import {
 import { useAlerts } from './hooks/useAlerts';
 import { NEWS_CLIENT_CACHE_PREFIX, newsClientCacheKey } from './utils/newsCache';
 import { REAL_GROUNDED_NEWS } from './data/groundedRealNews';
-import { readNewsSnapshot, findRecentNewsSnapshot, type NewsQueryState } from './utils/newsQuery';
+import { readNewsSnapshot, findRecentNewsSnapshot, pruneNewsSnapshotCache, type NewsQueryState } from './utils/newsQuery';
 import { ScreenBoundary } from './components/ScreenBoundary';
 import { usePendingChanges } from './hooks/usePendingChanges';
 import { VersionNotice } from './components/VersionNotice';
@@ -184,21 +184,9 @@ export default function App() {
     }
   }, []);
 
-  // Helper to purge cache entries from previous days and older incompatible grouping formats
+  // Keep recent completed snapshots across midnight for immediate fallback.
   const purgeOldClientCache = useCallback((todayKey: string) => {
-    try {
-      const keysToRemove: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith('faros_news_')) {
-          // Invalidate legacy unversioned caches and older days immediately
-          if (!k.startsWith(NEWS_CLIENT_CACHE_PREFIX) || !k.includes(todayKey)) {
-            keysToRemove.push(k);
-          }
-        }
-      }
-      keysToRemove.forEach(k => localStorage.removeItem(k));
-    } catch {}
+    try { pruneNewsSnapshotCache(localStorage, NEWS_CLIENT_CACHE_PREFIX, todayKey); } catch {}
   }, []);
 
   const [newsList, setNewsList] = useState<NewsItem[]>([]);
@@ -231,6 +219,10 @@ export default function App() {
   const activePortfolio = useMemo(() => {
     return portfolios.find(p => p.id === activePortfolioId) || portfolios[0];
   }, [portfolios, activePortfolioId]);
+
+  // Equivalent server responses often reconstruct arrays/objects. Only an actual
+  // selection change should cancel a pulse that is still producing verified news.
+  const newsScope = `${activePortfolio.id}_${portfolioNewsScope(activePortfolio.assetIds, activePortfolio.profile, activePortfolio.assetPositions, activePortfolio.customAssets)}`;
 
   useEffect(() => {
     if (assetFilter !== 'todos' && !activePortfolio.assetIds.includes(assetFilter)) setAssetFilter('todos');
@@ -305,7 +297,7 @@ export default function App() {
       hourKey = `${todayKey}_${hourStr}`;
     } catch {}
 
-    const scope = `${activePortfolio.id}_${portfolioNewsScope(activePortfolio.assetIds, activePortfolio.profile, activePortfolio.assetPositions, activePortfolio.customAssets)}`;
+    const scope = newsScope;
     const cacheKey = newsClientCacheKey(scope, hourKey);
     newsOwner.current = currentUser?.id || '';
 
@@ -364,7 +356,7 @@ export default function App() {
       clearTimeout(timeout);
       if (newsRequest.current === controller) setIsLoadingNews(false);
     }
-  }, [currentUser?.id, activePortfolio.id, activePortfolio.assetIds, activePortfolio.profile, activePortfolio.assetPositions, activePortfolio.customAssets, getArgentinaTodayKey, purgeOldClientCache]);
+  }, [currentUser?.id, newsScope, getArgentinaTodayKey, purgeOldClientCache]);
 
   useEffect(() => {
     if (isSessionLoading || !currentUser) return;
@@ -637,9 +629,8 @@ export default function App() {
       } else {
         setPortfolios(prev => prev.map(p => p.id === updated.id ? updated : p));
       }
-      try {
-        for (const key of Object.keys(localStorage)) if (key.startsWith(NEWS_CLIENT_CACHE_PREFIX + updated.id + '_')) localStorage.removeItem(key);
-      } catch {}
+      // News keys already include every relevant selection field. Keeping them
+      // allows unchanged saves and returning selections to reuse verified data.
       return true;
     } catch (error) {
       setAccountError(error instanceof Error ? error.message : 'No se pudo guardar la cartera.');

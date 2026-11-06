@@ -588,6 +588,34 @@ try {
     assert.equal(await page.evaluate(() => window.__newsStarts), 0, 'La visita siguiente recupera la consulta completa sin esperar la red');
     await context.close();
   });
+  await check('Una selección idéntica no reinicia el pulso pendiente ni elimina su caché', async () => {
+    const { context, page, state } = await setup({ progressiveNews: true });
+    await clickVisible(page, 'Ahora no');
+    assert.equal(await page.evaluate(() => window.__newsStarts), 1);
+    await clickVisible(page, 'Mi cartera'); await clickVisible(page, 'Preferencias');
+    for (let index = 0; index < 2; index++) {
+      await Promise.all([
+        page.waitForResponse(response => new URL(response.url()).pathname === '/api/auth/user' && response.request().method() === 'PUT'),
+        page.getByRole('radio', { name: 'Moderado', exact: true }).click()
+      ]);
+      // The response and a render must complete before checking request identity.
+      await page.waitForFunction(() => document.querySelector('[role="radio"][aria-label="Moderado"]')?.getAttribute('aria-checked') === 'true');
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      assert.equal(await page.evaluate(() => window.__newsStarts), 1, 'No se debe abortar y repetir una consulta por nuevas referencias de la misma selección');
+    }
+    await clickVisible(page, 'Noticias');
+    await page.evaluate(() => window.__finishNews());
+    await page.getByText('Actualización completada.', { exact: false }).first().waitFor();
+    await clickVisible(page, 'Mi cartera'); await clickVisible(page, 'Preferencias');
+    await Promise.all([
+      page.waitForResponse(response => new URL(response.url()).pathname === '/api/auth/user' && response.request().method() === 'PUT'),
+      page.getByRole('radio', { name: 'Moderado', exact: true }).click()
+    ]);
+    await page.reload({ waitUntil: 'networkidle' });
+    assert.equal(await page.evaluate(() => window.__newsStarts), 0, 'Guardar la misma selección conserva la caché completa para la próxima visita');
+    assert.ok(state.calls.filter(call => call.path === '/api/auth/user').length >= 3);
+    await context.close();
+  });
   await check('Una carga progresiva interrumpida conserva noticias verificadas y permite reintentar', async () => {
     const { context, page } = await setup({ progressiveNews: true });
     await clickVisible(page, 'Ahora no');

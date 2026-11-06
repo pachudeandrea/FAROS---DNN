@@ -1,3 +1,7 @@
+import { Pool } from 'pg';
+import { randomBytes } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { databaseConfig } from '../src/server/database.js';
 import { readNewsResponse } from '../src/utils/newsResponse.js';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -74,10 +78,10 @@ before(async () => {
 });
 async function stop(child: ChildProcess) { if (child.exitCode !== null) return; const exit = once(child, 'exit'); child.kill('SIGTERM'); await exit; children.delete(child); }
 after(async () => { for (const child of children) await stop(child); if (artifact) await rm(artifact, { recursive: true, force: true }); });
-async function api(gemini = true, singleMedium = false, discovery = false, section = false, gated = false) {
+async function api(gemini = true, singleMedium = false, discovery = false, section = false, gated = false, databaseUrl = '') {
   const child = fork(new URL('fixtures/native-api-server.mjs', import.meta.url), [pathToFileURL(path.join(artifact, 'api/index.js')).href], {
     cwd: root, execArgv: [], silent: true,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: '', POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '', FAROS_TEST_NEWS_DISCOVERY: discovery ? '1' : '', FAROS_TEST_NEWS_SECTION: section ? '1' : '', FAROS_TEST_NEWS_GATED: gated ? '1' : '' }
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: databaseUrl, POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '', FAROS_TEST_NEWS_DISCOVERY: discovery ? '1' : '', FAROS_TEST_NEWS_SECTION: section ? '1' : '', FAROS_TEST_NEWS_GATED: gated ? '1' : '' }
   });
   children.add(child);
   let output = ''; child.stdout?.on('data', chunk => { output += chunk; }); child.stderr?.on('data', chunk => { output += chunk; });
@@ -249,4 +253,51 @@ test('la API entrega noticias verificadas antes de acabar la cobertura y compart
   assert.ok(a.news.some(item => item.sources.length === 3), 'El resultado completo conserva la cobertura de tres medios');
   const cached = await server.pulse({ ...body, forceRefresh: false });
   assert.equal(cached.cached, true); assert.deepEqual(cached.news, a.news);
+});
+
+
+test('el caché completo sobrevive entre instancias y carteras equivalentes, sin convertir un respaldo horario en final', { timeout: 30000 }, async t => {
+  const value = process.env.TEST_DATABASE_URL;
+  assert.ok(value, 'Se requiere TEST_DATABASE_URL local para verificar persistencia real');
+  const url = new URL(value); assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)); assert.match(url.pathname, /test/i);
+  const admin = new Pool(databaseConfig(value)); const schema = `pulse_cache_${randomBytes(6).toString('hex')}`;
+  await admin.query(`CREATE SCHEMA "${schema}"`); url.searchParams.set('options', `-c search_path=${schema}`);
+  const db = new Pool(databaseConfig(url.toString()));
+  t.after(async () => { for (const child of children) await stop(child); await db.end(); await admin.query(`DROP SCHEMA "${schema}" CASCADE`); await admin.end(); });
+  const migration = await readFile(new URL('../migrations/008_news_pulse_cache.sql', import.meta.url), 'utf8');
+  await db.query(migration); await db.query(migration);
+  const first = await api(false, false, false, false, false, url.toString());
+  const args = { portfolioId: 'first-account-id', tickers: ['AL30'], profile: 'moderado' };
+  const fresh = await first.pulse(args); assert.equal(fresh.cached, false);
+  assert.equal((await db.query('SELECT * FROM faros_news_pulse_cache')).rowCount, 1);
+  const second = await api(false, false, false, false, false, url.toString());
+  const shared = await second.pulse({ ...args, portfolioId: 'another-account-id' });
+  assert.equal(shared.cached, true); assert.deepEqual(shared.news, fresh.news); assert.equal(shared.checkedAt, fresh.checkedAt);
+  assert.equal((await second.stats()).feeds, 0, 'Una instancia nueva no descarga otra vez los medios para la misma selección');
+  const other = await second.pulse({ ...args, tickers: ['YPFD'] });
+  assert.equal(other.cached, false, 'Otra selección no recibe análisis de AL30');
+  assert.ok((await second.stats()).feeds > 0);
+  // Seed a previous-hour snapshot without changing its real check time. A new
+  // instance must publish it early, then complete a genuinely refreshed query.
+  await db.query("UPDATE faros_news_pulse_cache SET hour_key='previous-hour', checked_at=NOW()-INTERVAL '30 minutes'");
+  const third = await api(false, false, false, false, false, url.toString());
+  const progress: any[] = [];
+  const refreshed = await readNewsResponse(await third.stream(args), frame => progress.push(frame));
+  assert.equal(progress[0].cached, true); assert.ok(progress[0].news.length);
+  assert.ok(Date.parse(progress[0].checkedAt) < Date.parse(refreshed.checkedAt!));
+  assert.equal(refreshed.cached, false); assert.ok((await third.stats()).feeds > 0);
+  const countBeforeFailure = (await db.query('SELECT * FROM faros_news_pulse_cache')).rowCount!;
+  const fourth = await api(false, false, false, false, false, url.toString());
+  const lock = await db.connect();
+  try {
+    await lock.query('BEGIN'); await lock.query('LOCK TABLE faros_news_pulse_cache IN ACCESS EXCLUSIVE MODE');
+    const started = performance.now();
+    const available = await fourth.pulse({ ...args, tickers: ['MSFT'] });
+    assert.equal(available.cached, false); assert.ok(available.news.length);
+    assert.ok((await fourth.stats()).feeds > 0, 'Un caché bloqueado no impide consultar fuentes');
+    assert.ok(performance.now() - started < 4000, 'La consulta opcional de caché no hereda el timeout de 8 segundos de la base principal');
+  } finally { await lock.query('ROLLBACK'); lock.release(); }
+  assert.equal((await db.query('SELECT * FROM faros_news_pulse_cache')).rowCount, countBeforeFailure);
+  await fourth.pulse({ ...args, tickers: ['MSFT'], forceRefresh: true });
+  assert.equal((await db.query('SELECT * FROM faros_news_pulse_cache')).rowCount, countBeforeFailure + 1, 'Una lectura fallida no impide escribir el resultado de la siguiente colección completada');
 });

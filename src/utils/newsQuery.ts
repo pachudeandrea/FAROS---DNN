@@ -37,3 +37,19 @@ export function findRecentNewsSnapshot(storage: Pick<Storage, 'length' | 'key' |
   }
   return latest;
 }
+
+/** Remove obsolete formats and old data without discarding the midnight fallback. */
+export function pruneNewsSnapshotCache(storage: Pick<Storage, 'length' | 'key' | 'getItem' | 'removeItem'>, currentPrefix: string, todayKey: string, now = Date.now()): void {
+  const remove: string[] = [];
+  for (let index = 0; index < storage.length; index++) {
+    const key = storage.key(index);
+    if (!key?.startsWith('faros_news_')) continue;
+    const day = key.match(/_(\d{4}-\d{2}-\d{2})_\d{2}$/)?.[1];
+    if (key.startsWith(currentPrefix) && day === todayKey) continue;
+    const snapshot = key.startsWith(currentPrefix) ? readNewsSnapshot(storage.getItem(key)) : null;
+    const checked = snapshot?.checkedAt ? Date.parse(snapshot.checkedAt) : NaN;
+    if (day && Number.isFinite(checked) && checked <= now && now - checked <= 2 * 3600000) continue;
+    remove.push(key);
+  }
+  remove.forEach(key => storage.removeItem(key));
+}

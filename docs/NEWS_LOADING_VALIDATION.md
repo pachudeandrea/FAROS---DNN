@@ -28,3 +28,49 @@ La medición de navegador incluye navegación, espera del runner y cierre del av
 ## Límite de validación externa
 
 El acceso a `https://faros-dnn.vercel.app/api/version` recibió `CONNECT 403` del proxy. No hay una medición de latencia real de producción ni confirmación de despliegue derivada de estas pruebas. El borrador del entorno añade el dominio de producción y los dominios de los medios; necesita que el usuario guarde la configuración para aplicarlos. Publicar en GitHub y confirmar el despliegue en Vercel son resultados distintos.
+
+## Nueva investigación con acceso a producción — 6 de noviembre de 2026
+
+El bloqueo de red de la revisión anterior quedó resuelto al publicar el entorno. Se comprobó que producción sirve `8cf9efff344811540c1ca04c7c524dd515e97d27`: `scripts/check-deployment.mjs` confirmó SHA, salud PostgreSQL y bundle correspondiente. Al realizar estas mediciones, los cambios siguientes permanecían locales, sin push ni publicación, a la espera de autorización.
+
+### Causas corregidas
+
+- Guardar una cartera con la misma selección reconstruía sus arrays/objetos: el efecto del pulso abortaba y reiniciaba la petición. Ahora depende de la selección semántica; cambiar activos, posiciones, perfil o metadatos sigue actualizando. Guardar sin cambios tampoco elimina su caché completa.
+- La limpieza borraba el respaldo del día anterior antes de poder reutilizarlo, incluso a minutos de medianoche. Ahora conserva el respaldo completo de hasta dos horas.
+- El avance RSS probaba una sola candidata temprana; si era antigua, irrelevante o inaccesible, esperaba los demás feeds. Ahora una cola verifica las disponibles, prioriza la cartera y da turnos a los medios que van llegando. Mantiene cuatro verificaciones simultáneas, un presupuesto compartido de 18 segundos y la comparación final.
+- La caché del servidor vivía solo en la memoria de cada instancia y dependía del ID de cartera. La nueva migración `008_news_pulse_cache.sql` permite reutilizar consultas completas entre instancias por selección exacta. Incluye activos, perfil, posiciones, metadatos y versión; no almacena cuentas ni sesiones. Un respaldo de otra hora se entrega como avance mientras se actualiza. La base opcional tiene tiempos acotados y sus fallos no bloquean el recolector. No se modifica la versión de caché `v13_news_tracking_coverage` ni el comportamiento de Guardadas.
+
+### Mediciones reales, con sus límites
+
+Todas son muestras individuales del mismo día; la red, la ubicación y el calentamiento de los servicios varían. No son percentiles ni garantizan esos tiempos en otros equipos.
+
+| Escenario | Primera noticia | Consulta completa |
+| --- | ---: | ---: |
+| Producción actual, POST forzando actualización, cliente Node | 1,00 s | 10,64 s |
+| Producción actual, Chromium y actualización nueva | 4,30 s desde la petición | 17,18 s desde la petición |
+| Corrección local, Chromium y actualización nueva con medios reales | 0,97 s desde la petición | 20,84 s desde la petición |
+| Segunda instancia local sin memoria previa, caché persistente de la selección | 0,060 s desde la petición | 0,239 s hasta observar finalización |
+
+La consulta completa local puede tardar más que la muestra de producción: la comparación externa sigue ejecutándose después de mostrar las primeras noticias. No se afirma que toda la consulta termine en menos de un segundo. En el último caso, el POST y la respuesta se completaron antes de que el runner registrara la finalización visual; el tiempo incluye comprobaciones del navegador.
+
+Para el navegador de producción y los locales se utilizó el frontend real y el pulso real, con una identidad de demo simulada solo en el navegador. No se crearon ni modificaron cuentas de producción. Se registró la primera tarjeta mediante observación del DOM y requestAnimationFrame, sin introducir una espera artificial de cobertura. Esta prueba no mide el tiempo de autenticación de una cuenta real. En la prueba local no había clave Gemini; utilizó fuentes RSS verificadas y búsqueda de cobertura disponible bajo la política de red del entorno.
+
+También se comparó el recolector anterior y el corregido desde la misma máquina, vaciando la caché de verificación en cada ejecución y usando medios reales:
+
+| Recolector RSS | Primera emisión verificada | Finalización | Resultado |
+| --- | ---: | ---: | --- |
+| `8cf9eff` | 4,158 s | 15,572 s | 65 fuentes verificadas, 3 noticias |
+| Corrección local | 0,261 s | 10,125 s | 65 fuentes verificadas, 3 noticias |
+
+Las ejecuciones fueron secuenciales; los servidores externos pueden estar más calientes en la segunda. La prueba de regresión con fuentes controladas verifica además que una primera candidata irrelevante o vencida no impide mostrar otra relevante mientras un feed permanece pendiente, y que el resultado final conserva los grupos de publicaciones.
+
+### Validación de esta corrección
+
+- `npm run lint`: aprobado.
+- `TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:55432/faros_test npm test`: 189 aprobadas, cero fallidas u omitidas.
+- `npm run test:browser`: 31 comprobaciones aprobadas. Incluye guardar dos veces una selección idéntica durante una consulta pendiente: no cancela ni inicia otra consulta; al recargar reutiliza la caché completa.
+- Tras ajustar el total informado para incluir la escritura de caché: lint y 14 pruebas de cobertura/caché aprobadas.
+- PostgreSQL local descartable: persistencia entre procesos, aislamiento de selecciones, respaldo de otra hora seguido por consulta genuina, tabla bloqueada con continuidad de las fuentes y escritura posterior recuperada.
+- Migraciones locales aplicadas sin modificar las ya publicadas. La nueva tabla es una caché de consultas completas, no un historial de cuentas.
+
+El usuario autorizó publicar esta corrección en `main` después de completar esta validación. Los tiempos de la corrección local todavía no son mediciones del código desplegado en Vercel.

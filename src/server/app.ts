@@ -1,3 +1,4 @@
+import { pulseSelectionKey, readPulseSnapshot, usablePulseSnapshot, writePulseSnapshot } from './newsPulseCache.js';
 import { registerNewsLibraryRoutes } from './newsLibraryRoutes.js';
 import { COVERAGE_PUBLISHERS, collectPublisherSections } from '../utils/publisherSections.js';
 import { NewsJobs } from './newsJobs.js';
@@ -125,7 +126,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// In-memory cache per portfolio, date (in Argentina) and hour
+// Per-instance hot cache; completed results also survive in PostgreSQL.
 interface CacheEntry {
   timestamp: number;
   news: NewsItem[];
@@ -475,8 +476,8 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
   try { customAssets = validateCustomAssets(req.body.customAssets); }
   catch { return res.status(400).json({ error: 'La identificación de los activos no es válida.' }); }
   const assets = portfolioAssets({ customAssets });
-  const scope = `${portfolioId}_${portfolioNewsScope(tickers, profile, assetPositions, customAssets)}`;
-  const { cacheKey, dateKey, hourKey } = buildCacheKey(scope);
+  const scope = portfolioNewsScope(tickers, profile, assetPositions, customAssets);
+  const { cacheKey, dateKey, hourKey } = buildCacheKey(pulseSelectionKey(scope));
 
   if (lastProcessedDay && lastProcessedDay !== dateKey) {
     for (const k in newsCache) {
@@ -488,21 +489,26 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
   }
   lastProcessedDay = dateKey;
 
-  if (!forceRefresh && newsCache[cacheKey]) {
+  let cached = !forceRefresh && newsCache[cacheKey]
+    ? usablePulseSnapshot({ ...newsCache[cacheKey], hourKey }) : null;
+  let recent = null;
+  if (!cached) {
+    // A cold Vercel instance can reuse work done by another instance. Historical
+    // hours are a readable fallback only, never a completed current query.
+    recent = await readPulseSnapshot(scope);
+    if (!forceRefresh && recent?.hourKey === hourKey) cached = recent;
+  }
+  if (cached) {
+    newsCache[cacheKey] = { news: cached.news, timestamp: cached.timestamp };
     trackEventNonBlocking('news_pulse_query', {
       userId: user?.id,
-      metadata: { cached: true, tickersCount: tickers.length, newsCount: newsCache[cacheKey].news.length },
+      metadata: { cached: true, tickersCount: tickers.length, newsCount: cached.news.length },
       userAgent: req.get('user-agent')
     });
-
-    return respondWithNews({
-      news: newsCache[cacheKey].news,
-      checkedAt: new Date(newsCache[cacheKey].timestamp).toISOString(),
-      cached: true,
-      fallback: false,
-      dateKey,
-      hourKey
-    });
+    return respondWithNews({ news: cached.news, checkedAt: new Date(cached.timestamp).toISOString(), cached: true, fallback: false, dateKey, hourKey });
+  }
+  if (streaming && recent?.news.length) {
+    writeFrame({ type: 'progress', news: recent.news, checkedAt: new Date(recent.timestamp).toISOString(), cached: true, newsVersion: NEWS_CACHE_VERSION });
   }
 
   const job = newsJobs.getOrCreate(cacheKey, async publish => {
@@ -529,7 +535,8 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
     const news = await discoverMissingCoverage(mergeVerifiedNews(modelNews, rssNews), coverageDiscovery, { prefetchedSections });
     const timestamp = Date.now();
     newsCache[cacheKey] = { timestamp, news };
-    return { news, diagnostics, coverageDiscovery, fallback: grounded.status !== 'fulfilled' || !modelNews.length, timestamp, timingsMs: { firstNews, total: timestamp - startedAt } };
+    await writePulseSnapshot(scope, { timestamp, news, hourKey });
+    return { news, diagnostics, coverageDiscovery, fallback: grounded.status !== 'fulfilled' || !modelNews.length, timestamp, timingsMs: { firstNews, total: Date.now() - startedAt } };
   });
   const unsubscribe = streaming ? job.subscribe(progress => writeFrame({ type: 'progress', ...progress, newsVersion: NEWS_CACHE_VERSION })) : () => {};
   res.once('close', unsubscribe);
