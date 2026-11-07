@@ -1,6 +1,6 @@
 import { useNewsLibrary } from './hooks/useNewsLibrary';
 import { publicationDay, publicationUrls, libraryStorageKey } from './utils/newsLibrary';
-import { readNewsResponse } from './utils/newsResponse';
+import { readNewsResponse, normalizeNewsError, retryableNewsError, newsRetryDelay } from './utils/newsResponse';
 import { argentinaNewsDay, argentinaNewsHour, nextNewsHourDelay, dailyNewsItems, mergeDailyNews } from './utils/dailyNews';
 import { portfolioNewsScope } from './utils/newsCache';
 import { getPortfolioAffectedAssetIds, getPortfolioNewsImpact } from './utils/portfolioNews';
@@ -186,6 +186,7 @@ export default function App() {
   const completedNews = useRef<NewsItem[]>([]);
   const newsDay = useRef(argentinaNewsDay());
   const newsHour = useRef('');
+  const newsRecovery = useRef<{ key: string; attempts: number; after: number; timer: ReturnType<typeof setTimeout> | null }>({ key: '', attempts: 0, after: 0, timer: null });
   const newsViewRef = useRef(newsView); newsViewRef.current = newsView;
   useEffect(() => {
     visibleNews.current = newsList;
@@ -274,11 +275,15 @@ export default function App() {
   }, []);
 
   // Hourly collection adds to this day's completed feed; midnight starts a new one.
-  const fetchPulseNews = useCallback(async (isManualRefresh = false) => {
+  const fetchPulseNews = useCallback(async (isManualRefresh = false, recovering = false) => {
     const todayKey = argentinaNewsDay();
     const hourKey = argentinaNewsHour();
     const scope = newsScope;
     const cacheKey = newsClientCacheKey(scope, hourKey);
+    const recoveryKey = `${currentUser?.id || ''}:${scope}:${hourKey}`;
+    if (newsRecovery.current.timer) clearTimeout(newsRecovery.current.timer);
+    newsRecovery.current.timer = null;
+    if (!recovering || newsRecovery.current.key !== recoveryKey) newsRecovery.current = { key: recoveryKey, attempts: 0, after: 0, timer: null };
     const prefix = `${NEWS_CLIENT_CACHE_PREFIX}${scope}_`;
     newsOwner.current = currentUser?.id || '';
     newsHour.current = hourKey;
@@ -300,10 +305,13 @@ export default function App() {
     if (!isManualRefresh) {
       try {
         const cached = readNewsSnapshot(localStorage.getItem(cacheKey));
-        if (cached) {
-          const news = dailyNewsItems(cached.news, todayKey);
-          completedNews.current = news; visibleNews.current = news;
-          setNewsList(news);
+        const news = cached ? dailyNewsItems(cached.news, todayKey) : [];
+        const checked = cached?.checkedAt ? Date.parse(cached.checkedAt) : NaN;
+        if (cached && Number.isFinite(checked) && checked <= Date.now() && argentinaNewsDay(checked) === todayKey && (!cached.news.length || news.length)) {
+          const accumulated = mergeDailyNews(findRecentNewsSnapshot(localStorage, prefix)?.news || [], news, todayKey);
+          completedNews.current = accumulated; visibleNews.current = accumulated;
+          newsRecovery.current = { key: recoveryKey, attempts: 0, after: 0, timer: null };
+          setNewsList(accumulated);
           setQueryState({ status: 'cached', checkedAt: cached.checkedAt });
           setIsLoadingNews(false);
           return;
@@ -330,7 +338,6 @@ export default function App() {
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/x-ndjson' },
         body: JSON.stringify({ portfolioId: activePortfolio.id, tickers: activePortfolio.assetIds, customAssets: activePortfolio.customAssets, assetPositions: activePortfolio.assetPositions, profile: activePortfolio.profile, forceRefresh: isManualRefresh })
       });
-      if (!response.ok) throw new Error('No se pudo completar la consulta.');
       const data = await readNewsResponse(response, partial => {
         if (!currentRequest()) return;
         const news = mergeDailyNews(visibleNews.current, partial.news, todayKey);
@@ -344,6 +351,7 @@ export default function App() {
       const news = mergeDailyNews(completedNews.current, data.news, todayKey);
       completedNews.current = news; visibleNews.current = news;
       setNewsList(news);
+      newsRecovery.current = { key: recoveryKey, attempts: 0, after: 0, timer: null };
       setQueryState({ status: data.cached ? 'cached' : 'success', checkedAt });
       try {
         localStorage.setItem(cacheKey, JSON.stringify({ news, checkedAt }));
@@ -356,8 +364,20 @@ export default function App() {
         }
         older.forEach(key => localStorage.removeItem(key));
       } catch {}
-    } catch {
-      if (newsRequest.current === controller && argentinaNewsDay() === todayKey) setQueryState(previous => ({ ...previous, status: 'error' }));
+    } catch (error) {
+      if (newsRequest.current === controller && argentinaNewsDay() === todayKey) {
+        const failure = normalizeNewsError(error, controller.signal.aborted);
+        const recovery = newsRecovery.current;
+        const retrying = retryableNewsError(failure) && recovery.key === recoveryKey && recovery.attempts < 2;
+        if (retrying) {
+          const delay = newsRetryDelay(failure, recovery.attempts);
+          recovery.attempts++; recovery.after = Date.now() + delay;
+          recovery.timer = setTimeout(() => {
+            if (newsRequest.current === controller && argentinaNewsHour() === hourKey && newsRecovery.current.key === recoveryKey && Date.now() >= newsRecovery.current.after) void fetchPulseNews(isManualRefresh, true);
+          }, Math.min(delay, 2147483647));
+        }
+        setQueryState(previous => ({ ...previous, status: 'error', error: failure.message, retrying }));
+      }
     } finally {
       clearTimeout(timeout);
       if (newsRequest.current === controller) setIsLoadingNews(false);
@@ -371,6 +391,7 @@ export default function App() {
     const checkHour = () => {
       if (!active) return;
       if (newsHour.current !== argentinaNewsHour()) void fetchPulseNews(false);
+      else if (newsRecovery.current.timer && Date.now() >= newsRecovery.current.after) void fetchPulseNews(false, true);
       clearTimeout(timer);
       timer = setTimeout(checkHour, nextNewsHourDelay() + 10);
     };
@@ -380,7 +401,9 @@ export default function App() {
     window.addEventListener('focus', checkHour);
     document.addEventListener('visibilitychange', checkHour);
     return () => {
-      active = false; clearTimeout(timer); newsRequest.current?.abort();
+      active = false; clearTimeout(timer); newsRequest.current?.abort(); newsRequest.current = null;
+      if (newsRecovery.current.timer) clearTimeout(newsRecovery.current.timer);
+      newsRecovery.current.timer = null;
       window.removeEventListener('focus', checkHour);
       document.removeEventListener('visibilitychange', checkHour);
     };

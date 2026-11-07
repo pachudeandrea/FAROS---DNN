@@ -32,6 +32,12 @@ export function installNewsTransport() {
   const coverageGate = new Promise(resolve => { releaseCoverage = resolve; });
   process.on('message', message => { if (message?.type === 'news-release-coverage') releaseCoverage(); });
   let activeIndexes;
+  let sourcesUnavailable = false;
+  process.on('message', message => {
+    if (message?.type !== 'news-test-outage') return;
+    sourcesUnavailable = !!message.unavailable;
+    process.send?.({ type: 'news-test-outage-set' });
+  });
   process.on('message', message => {
     if (message?.type !== 'news-test-batch') return;
     activeIndexes = message.indexes;
@@ -41,6 +47,7 @@ export function installNewsTransport() {
   const activeArticles = () => articles.filter((_, index) => !activeIndexes || activeIndexes.includes(index));
   const stats = { sections: 0, searches: 0, extractions: 0, publications: 0, feeds: 0, prompts: [] };
   globalThis.fetch = async (input, init) => {
+    if (sourcesUnavailable) return new Response('Temporary source outage', { status: 503 });
     const url = String(input instanceof Request ? input.url : input);
     if (url.includes('generativelanguage.googleapis.com/')) {
       const payload = JSON.parse(init.body);

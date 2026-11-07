@@ -87,8 +87,8 @@ async function api(gemini = true, singleMedium = false, discovery = false, secti
   children.add(child);
   let output = ''; child.stdout?.on('data', chunk => { output += chunk; }); child.stderr?.on('data', chunk => { output += chunk; });
   const port = await new Promise<number>((resolve, reject) => { const timer = setTimeout(() => reject(new Error(output || 'API de noticias no inició')), 10000); child.once('message', (message: any) => { clearTimeout(timer); resolve(message.port); }); child.once('exit', () => { clearTimeout(timer); reject(new Error(output)); }); });
-  const pulse = async (body: Record<string, unknown>) => {
-    const res = await fetch(`http://127.0.0.1:${port}/api/news/pulse`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
+  const pulse = async (body: Record<string, unknown>, headers: Record<string, string> = {}) => {
+    const res = await fetch(`http://127.0.0.1:${port}/api/news/pulse`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
     assert.equal(res.status, 200, output); return res.json();
   };
   const stats = () => new Promise<any>(resolve => { child.once('message', resolve); child.send({ type: 'news-test-stats' }); });
@@ -96,7 +96,8 @@ async function api(gemini = true, singleMedium = false, discovery = false, secti
   const stream = (body: Record<string, unknown>) => fetch(`http://127.0.0.1:${port}/api/news/pulse`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/x-ndjson' }, body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
   const clock = (now: string) => new Promise<void>(resolve => { child.once('message', () => resolve()); child.send({ type: 'news-test-clock', now }); });
   const batch = (indexes: number[], published?: string) => new Promise<void>(resolve => { child.once('message', () => resolve()); child.send({ type: 'news-test-batch', indexes, published }); });
-  return { pulse, stream, clock, batch, releaseCoverage: () => child.send({ type: 'news-release-coverage' }), stats, version, get output() { return output; } };
+  const outage = (unavailable: boolean) => new Promise<void>(resolve => { child.once('message', () => resolve()); child.send({ type: 'news-test-outage', unavailable }); });
+  return { pulse, stream, clock, batch, outage, request: (path: string, init: RequestInit = {}) => fetch(`http://127.0.0.1:${port}${path}`, init), releaseCoverage: () => child.send({ type: 'news-release-coverage' }), stats, version, get output() { return output; } };
 }
 
 test('la API Gemini agrupa fuentes verificadas y conserva caché, actualización y cartera', { timeout: 30000 }, async () => {
@@ -398,4 +399,42 @@ test('PostgreSQL conserva todas las horas del día y combina escrituras concurre
   const midnight = await start('2030-06-16T03:00:00Z'); await midnight.batch([]);
   const newDay = await midnight.pulse(args); assert.deepEqual(newDay.news, []);
   assert.equal((await db.query('SELECT hour_key FROM faros_news_pulse_cache WHERE hour_key LIKE $1', ['2030-06-15_%'])).rowCount, 0, 'Se retiran los acumulados del día anterior');
+});
+
+
+test('una falla de sesión en la base no bloquea noticias públicas ni habilita rutas privadas', { timeout: 30000 }, async () => {
+  const server = await api(false, false, false, false, false, 'postgresql://postgres@127.0.0.1:1/faros_test');
+  const headers = { Authorization: `Bearer ${'0'.repeat(64)}` };
+  const result = await server.pulse({ portfolioId: 'public-with-session-outage', tickers: ['AL30'] }, headers);
+  assert.ok(result.news.length, 'La recopilación pública sigue disponible aunque no se pueda validar la identidad');
+  const privateResponse = await server.request('/api/news/library', { headers });
+  assert.equal(privateResponse.status, 503, 'Las guardadas privadas no se entregan sin validar la sesión');
+  assert.equal((await privateResponse.json()).code, 'DB_UNAVAILABLE');
+});
+
+
+test('recupera la colección del día si la primera lectura de caché falla y las fuentes están caídas', { timeout: 30000 }, async t => {
+  const value = process.env.TEST_DATABASE_URL!; const url = new URL(value);
+  assert.ok(['localhost','127.0.0.1','[::1]'].includes(url.hostname)); assert.match(url.pathname, /test/i);
+  const admin = new Pool(databaseConfig(value)); const schema = `pulse_recover_${randomBytes(6).toString('hex')}`;
+  await admin.query(`CREATE SCHEMA "${schema}"`); url.searchParams.set('options', `-c search_path=${schema}`);
+  const db = new Pool(databaseConfig(url.toString()));
+  t.after(async () => { for (const child of children) await stop(child); await db.end(); await admin.query(`DROP SCHEMA "${schema}" CASCADE`); await admin.end(); });
+  await db.query(await readFile(new URL('../migrations/008_news_pulse_cache.sql', import.meta.url), 'utf8'));
+  const args = { portfolioId: 'recover-day', tickers: ['AL30'] };
+  const first = await api(false, false, false, false, false, url.toString());
+  const seed = await first.pulse(args); assert.ok(seed.news.length);
+  const second = await api(false, false, false, false, false, url.toString()); await second.outage(true);
+  const lock = await db.connect(); const frames: any[] = [];
+  await lock.query('BEGIN'); await lock.query('LOCK TABLE faros_news_pulse_cache IN ACCESS EXCLUSIVE MODE');
+  let unlocked = false;
+  const unlock = async () => { if (!unlocked) { unlocked = true; await lock.query('ROLLBACK'); } };
+  const timer = setTimeout(() => { void unlock(); }, 750);
+  try {
+    await assert.rejects(readNewsResponse(await second.stream(args), frame => frames.push(frame)));
+    assert.ok(frames.some(frame => frame.cached && frame.news.length), 'Se recuperan las noticias vigentes antes de informar la falla de actualización');
+    const recovered = frames.find(frame => frame.cached);
+    assert.equal(recovered.checkedAt, seed.checkedAt, 'No se renueva la fecha de consulta de las noticias recuperadas');
+    assert.deepEqual(recovered.news, seed.news);
+  } finally { clearTimeout(timer); await unlock(); lock.release(); }
 });

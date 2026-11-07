@@ -24,13 +24,13 @@ export function usablePulseSnapshot(value: PulseSnapshot, now = Date.now()): Pul
   return { ...value, news };
 }
 
-function pool(forWrite = false): Pool | null {
-  if (!forWrite && Date.now() < retryAfter) return null;
+function pool(bypassCooldown = false): Pool | null {
+  if (!bypassCooldown && Date.now() < retryAfter) return null;
   if (cachePool) return cachePool;
   const url = (process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL_NON_POOLING || '').trim();
   if (!url) return null;
   try {
-    cachePool = new Pool({ ...databaseConfig(url), max: 1, connectionTimeoutMillis: 200, statement_timeout: 200, query_timeout: 200, idleTimeoutMillis: 10000 });
+    cachePool = new Pool({ ...databaseConfig(url), max: 1, connectionTimeoutMillis: 1000, statement_timeout: 500, query_timeout: 500, idleTimeoutMillis: 10000 });
     cachePool.on('error', () => { retryAfter = Date.now() + 30000; });
     return cachePool;
   } catch { retryAfter = Date.now() + 30000; return null; }
@@ -55,8 +55,8 @@ const dailyRowsSql = `SELECT hour_key,news,checked_at FROM faros_news_pulse_cach
   WHERE selection_key=$1 AND hour_key LIKE $2 AND checked_at <= $3
   ORDER BY checked_at ASC,hour_key ASC`;
 
-export async function readPulseSnapshot(scope: string): Promise<PulseSnapshot | null> {
-  const client = pool(); if (!client) return null;
+export async function readPulseSnapshot(scope: string, retryRead = false): Promise<PulseSnapshot | null> {
+  const client = pool(retryRead); if (!client) return null;
   const now = Date.now(); const day = argentinaNewsDay(now);
   try {
     const result = await client.query(dailyRowsSql, [pulseSelectionKey(scope), `${day}_%`, new Date(now)]);

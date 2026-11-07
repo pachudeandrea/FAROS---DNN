@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { NewsJobs } from '../src/server/newsJobs.js';
-import { readNewsResponse } from '../src/utils/newsResponse.js';
+import { readNewsResponse, NewsRequestError, normalizeNewsError, retryableNewsError, newsRetryDelay } from '../src/utils/newsResponse.js';
 import { findRecentNewsSnapshot, describeNewsQuery } from '../src/utils/newsQuery.js';
 import type { NewsItem } from '../src/types/index.js';
 const news = [{ id: 'verified', headline: 'Noticia verificada', sources: [{ sourceUrl: 'https://www.ambito.com/finanzas/fixture' }] }] as NewsItem[];
@@ -89,4 +89,33 @@ test('un lector desconectado no hace fallar el trabajo compartido de los demás'
   job.subscribe(() => { received++; });
   gate.resolve();
   assert.deepEqual(await job.promise, news); assert.equal(received, 1);
+});
+
+
+test('conserva código/estado de un fallo HTTP sin exponer mensajes internos y respeta Retry-After', async () => {
+  const response = Response.json({ code: 'DB_UNAVAILABLE', error: 'postgresql://secret@private SQL stack' }, { status: 503, headers: { 'retry-after': '9' } });
+  await assert.rejects(readNewsResponse(response, () => assert.fail()), error => {
+    assert.ok(error instanceof NewsRequestError); assert.equal(error.status, 503); assert.equal(error.code, 'DB_UNAVAILABLE');
+    assert.doesNotMatch(error.message, /secret|postgresql|private|SQL/);
+    assert.equal(retryableNewsError(error), true); assert.equal(newsRetryDelay(error, 0), 9000); return true;
+  });
+  const notFound = new NewsRequestError('No disponible', 'API_NOT_FOUND', 404);
+  assert.equal(retryableNewsError(notFound), false);
+  assert.equal(retryableNewsError(new NewsRequestError('Selección inválida', 'INVALID_SELECTION', 400)), false);
+  assert.equal(retryableNewsError(new NewsRequestError('Ocupado', 'RATE_LIMIT', 429)), true);
+  assert.equal(newsRetryDelay(new NewsRequestError('Ocupado', 'RATE_LIMIT', 429), 0), 2000);
+  assert.equal(newsRetryDelay(new NewsRequestError('Ocupado', 'RATE_LIMIT', 429), 1), 5000);
+  assert.equal(normalizeNewsError(new Error('AbortError'), true).code, 'TIMEOUT');
+});
+
+test('un error de stream conserva su código y un EOF incompleto es recuperable, sin declarar éxito', async () => {
+  const encoder = new TextEncoder();
+  const errorResponse = new Response(encoder.encode(JSON.stringify({ type: 'error', code: 'NEWS_SOURCES_UNAVAILABLE', error: '<upstream internals>' })+'\n'), { headers: { 'content-type': 'application/x-ndjson' } });
+  await assert.rejects(readNewsResponse(errorResponse, () => assert.fail()), error => {
+    assert.ok(error instanceof NewsRequestError); assert.equal(error.code, 'NEWS_SOURCES_UNAVAILABLE');
+    assert.equal(retryableNewsError(error), true); assert.doesNotMatch(error.message, /upstream|internals/); return true;
+  });
+  await assert.rejects(readNewsResponse(new Response('', { headers: { 'content-type': 'application/x-ndjson' } }), () => assert.fail()), error => {
+    assert.ok(error instanceof NewsRequestError); assert.equal(error.code, 'NEWS_STREAM_INCOMPLETE'); assert.equal(retryableNewsError(error), true); return true;
+  });
 });

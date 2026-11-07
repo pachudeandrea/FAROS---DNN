@@ -57,3 +57,10 @@ test('recupera las publicaciones acumuladas de todo el día aunque pasaron más 
   assert.equal(daily.checkedAt, '2026-11-06T17:00:00Z');
   assert.equal(findRecentNewsSnapshot(storage, 'missing_', now), null);
 });
+
+
+test('el estado fallido explica el servicio afectado y avisa recuperación sin perder el horario anterior', () => {
+  const text = describeNewsQuery({ status: 'error', checkedAt: '2026-11-01T14:23:00Z', error: 'Las fuentes no respondieron.', retrying: true }, 2);
+  assert.match(text, /Las fuentes no respondieron/); assert.match(text, /Reintentando automáticamente/);
+  assert.match(text, /consulta anterior/); assert.match(text, /11:23/);
+});

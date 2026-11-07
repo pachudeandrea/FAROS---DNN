@@ -1,3 +1,5 @@
+import { argentinaNewsHour } from '../src/utils/dailyNews.ts';
+import { newsClientCacheKey, portfolioNewsScope } from '../src/utils/newsCache.ts';
 import { readFileSync } from 'node:fs';
 import { analyzeNewsRelevance } from '../src/utils/newsRelevance.ts';
 import { publicationUrls, publicationDay, samePublication } from '../src/utils/newsLibrary.ts';
@@ -71,8 +73,9 @@ const browser = await chromium.launch({ executablePath, headless: true, args: ['
 const pageErrors = [];
 let checks = 0;
 async function check(name, run) { if (process.env.BROWSER_CHECK && !name.includes(process.env.BROWSER_CHECK)) return; await run(); checks++; console.log(`ok ${checks} - ${name}`); }
-async function setup({ anonymous = false, admin = false, permission = 'granted', longName = false, legacyNews = false, portfolioOverride, newsOverride, audioMode = 'ok', audioDelay = 0, progressiveNews = false, clockAt, savedNewsOverride, ...options } = {}) {
+async function setup({ anonymous = false, admin = false, permission = 'granted', longName = false, legacyNews = false, portfolioOverride, newsOverride, audioMode = 'ok', audioDelay = 0, progressiveNews = false, pulseFailures = [], pulseCacheSeeds = [], clockAt, savedNewsOverride, ...options } = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, ...options });
+  if (pulseCacheSeeds.length) await context.addInitScript(entries => { for (const [key, value] of entries) localStorage.setItem(key, value); }, pulseCacheSeeds);
   if (legacyNews) await context.addInitScript(({ item, portfolioId, version }) => {
     const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const hour = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', hour12: false }).format(new Date());
@@ -95,7 +98,7 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
     PushManager.prototype.subscribe = async () => { localStorage.setItem('test_push', 'yes'); return local(); };
   }, { permission, subscription });
   const libraries = new Map();
-  const state = { librarySaveFailure: false, libraries, user: structuredClone(fixture), active: false, calls: [], events: [], newsData: news, newsMode: 'ok', revision: null, saveFailure: false, delayNews: 0, audioMode, audioDelay, checkedAt: clockAt || new Date().toISOString() };
+  const state = { librarySaveFailure: false, pulseFailures: [...pulseFailures], libraries, user: structuredClone(fixture), active: false, calls: [], events: [], newsData: news, newsMode: 'ok', revision: null, saveFailure: false, delayNews: 0, audioMode, audioDelay, checkedAt: clockAt || new Date().toISOString() };
   if (portfolioOverride) state.user.portfolio = structuredClone(portfolioOverride);
   if (newsOverride) state.newsData = structuredClone(newsOverride);
   if (savedNewsOverride) libraries.set(state.user.id, savedNewsOverride.map((item, index) => ({
@@ -114,8 +117,8 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
     if (url.pathname === '/api/auth/me') data = anonymous ? { authenticated: false } : { authenticated: true, user: state.user };
     if (url.pathname === '/api/news/pulse') {
       if (state.delayNews) await new Promise(resolve => setTimeout(resolve, state.delayNews));
-      status = state.newsMode === 'error' ? 503 : 200;
-      data = state.newsMode === 'error' ? { error: 'Fuentes no disponibles.' } : { news: state.newsMode === 'empty' ? [] : state.newsData, checkedAt: state.checkedAt };
+      status = state.pulseFailures.shift() || (state.newsMode === 'error' ? 503 : 200);
+      data = status !== 200 ? { code: status === 404 ? 'API_NOT_FOUND' : 'NEWS_SOURCES_UNAVAILABLE', error: 'Fuentes no disponibles.' } : { news: state.newsMode === 'empty' ? [] : state.newsData, checkedAt: state.checkedAt };
     }
     if (url.pathname === '/api/news/library' || url.pathname.startsWith('/api/news/library/')) {
       const owner = state.user.id;
@@ -631,6 +634,73 @@ try {
     assert.equal(await page.getByRole('button', { name: 'Comparar 4 medios', exact: true }).count(), 1);
     assert.equal(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('faros_news_')).length), 0);
     assert.equal(await hero.getByRole('button', { name: 'Actualizar pulso' }).isEnabled(), true);
+    await context.close();
+  });
+  await check('Recuperación: una caché de la hora con noticias de ayer no bloquea consultar ni recuperar la jornada', async () => {
+    const clockAt = '2030-06-15T16:30:00Z';
+    const dated = (index, at) => { const item = structuredClone(news[index]); item.sources = item.sources.map(source => ({ ...source, publishedTimestamp: Date.parse(at), publishedDateIso: at })); return item; };
+    const older = dated(1, '2030-06-15T14:00:00Z');
+    const current = dated(0, '2030-06-15T16:00:00Z');
+    const invalid = dated(2, '2030-06-14T16:00:00Z');
+    const portfolio = fixture.portfolio;
+    const scope = `${portfolio.id}_${portfolioNewsScope(portfolio.assetIds, portfolio.profile, portfolio.assetPositions, portfolio.customAssets)}`;
+    const currentKey = newsClientCacheKey(scope, argentinaNewsHour(Date.parse(clockAt)));
+    const previousKey = newsClientCacheKey(scope, argentinaNewsHour(Date.parse(clockAt) - 3600000));
+    const { context, page, state } = await setup({ clockAt, newsOverride: [current], pulseFailures: [503], pulseCacheSeeds: [
+      [currentKey, JSON.stringify({ news: [invalid], checkedAt: clockAt })],
+      [previousKey, JSON.stringify({ news: [older], checkedAt: '2030-06-15T15:00:00Z' })]
+    ] });
+    await clickVisible(page, 'Ahora no');
+    await page.getByRole('button', { name: current.headline, exact: true }).waitFor();
+    await page.getByRole('button', { name: older.headline, exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: invalid.headline, exact: true }).count(), 0);
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse').length, 2);
+    await context.close();
+  });
+  await check('Recuperación: una consulta vacía de la hora conserva el acumulado válido anterior sin repetir la red', async () => {
+    const clockAt = '2030-06-15T16:30:00Z';
+    const older = structuredClone(news[0]);
+    older.sources = older.sources.map(source => ({ ...source, publishedTimestamp: Date.parse('2030-06-15T14:00:00Z'), publishedDateIso: '2030-06-15T14:00:00Z' }));
+    const portfolio = fixture.portfolio;
+    const scope = `${portfolio.id}_${portfolioNewsScope(portfolio.assetIds, portfolio.profile, portfolio.assetPositions, portfolio.customAssets)}`;
+    const { context, page, state } = await setup({ clockAt, pulseCacheSeeds: [
+      [newsClientCacheKey(scope, argentinaNewsHour(Date.parse(clockAt))), JSON.stringify({ news: [], checkedAt: clockAt })],
+      [newsClientCacheKey(scope, argentinaNewsHour(Date.parse(clockAt) - 3600000)), JSON.stringify({ news: [older], checkedAt: '2030-06-15T15:00:00Z' })]
+    ] });
+    await clickVisible(page, 'Ahora no');
+    await page.getByRole('button', { name: older.headline, exact: true }).waitFor();
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse').length, 0);
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: older.headline, exact: true }).waitFor();
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse').length, 0);
+    await context.close();
+  });
+  await check('Recuperación: la primera consulta se recupera automáticamente de un503 sin esperar otra hora', async () => {
+    const { context, page, state } = await setup({ pulseFailures: [503] });
+    await clickVisible(page, 'Ahora no');
+    await page.getByRole('button', { name: news[0].headline, exact: true }).waitFor();
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse').length, 2);
+    assert.equal(await page.locator('#news-feed-section article').count(), news.length);
+    await context.close();
+  });
+  await check('Recuperación: un404 no dispara reintentos automáticos ni consultas repetidas al recuperar foco', async () => {
+    const { context, page, state } = await setup({ pulseFailures: [404] });
+    await clickVisible(page, 'Ahora no');
+    await page.getByText('El servicio de noticias no está disponible en esta versión.', { exact: false }).waitFor();
+    await page.evaluate(() => { window.dispatchEvent(new Event('focus')); document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForTimeout(6000);
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse').length, 1);
+    assert.equal(await page.locator('#news-feed-section article').count(), 0);
+    await context.close();
+  });
+  await check('Recuperación: los fallos transitorios agotan dos reintentos y no crean una tormenta de consultas', async () => {
+    const { context, page, state } = await setup({ pulseFailures: [503, 503, 503] });
+    await clickVisible(page, 'Ahora no');
+    await page.waitForFunction(() => !document.body.innerText.includes('Reintentando automáticamente.') && document.body.innerText.includes('Error al actualizar.'), undefined, { timeout: 15000 });
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse').length, 3);
+    await page.evaluate(() => { window.dispatchEvent(new Event('focus')); document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForTimeout(2200);
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse').length, 3);
     await context.close();
   });
   await check('Actualización confiable: búsqueda, error con contenido anterior, vacío y caché con horario real', async () => {

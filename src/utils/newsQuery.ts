@@ -1,6 +1,6 @@
 import type { NewsItem } from '../types';
 import { argentinaNewsDay, dailyNewsItems, mergeDailyNews } from './dailyNews.js';
-export type NewsQueryState = { status: 'idle' | 'loading' | 'success' | 'cached' | 'error' | 'partial'; checkedAt: string | null; error?: string; partial?: boolean };
+export type NewsQueryState = { status: 'idle' | 'loading' | 'success' | 'cached' | 'error' | 'partial'; checkedAt: string | null; error?: string; partial?: boolean; retrying?: boolean };
 export type NewsSnapshot = { news: NewsItem[]; checkedAt: string | null };
 export function readNewsSnapshot(raw: string | null): NewsSnapshot | null {
   try {
@@ -15,7 +15,7 @@ export function describeNewsQuery(query: NewsQueryState, count: number): string 
   if (query.status === 'partial') return 'Noticias disponibles. Completando la comparación entre medios.';
   const previous = query.partial && count ? ' Mostrando las noticias verificadas hasta ahora.' : count ? ' Mostrando información de una consulta anterior.' : '';
   if (query.status === 'loading') return 'Buscando noticias.' + previous;
-  if (query.status === 'error') return 'Error al actualizar.' + previous + (time ? ' Última consulta: ' + time + '.' : '') + ' Volvé a intentarlo.';
+  if (query.status === 'error') return 'Error al actualizar.' + (query.error ? ' ' + query.error : '') + (query.retrying ? ' Reintentando automáticamente.' : '') + previous + (time ? ' Última consulta: ' + time + '.' : '') + ' Volvé a intentarlo.';
   if (query.status === 'cached') return 'Mostrando información de una consulta anterior.' + (time ? ' Consultada el ' + time + '.' : ' Horario de consulta no disponible.');
   if (query.status === 'success') return (count ? 'Actualización completada.' : 'Sin novedades verificadas en esta consulta.') + (time ? ' ' + time + '.' : '');
   return 'Todavía no se realizó una consulta.';

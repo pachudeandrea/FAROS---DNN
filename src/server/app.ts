@@ -439,7 +439,16 @@ async function fetchCalendarEvents(
 app.post('/api/news/pulse', asyncRoute(async (req, res) => {
   const pulseStartTime = Date.now();
   const requestDay = argentinaNewsDay(pulseStartTime);
-  const user = await getSessionUser(req);
+  // This is a public read endpoint. Validate identity independently for personal
+  // alerts/analytics; a session-store outage must not block public news. No
+  // previous user identity is reused, and private routes keep their auth checks.
+  const identity = getSessionUser(req).catch(error => {
+    console.warn('[NEWS SESSION]', error instanceof DatabaseError ? error.code : 'LOOKUP_FAILED');
+    return null;
+  });
+  const trackPulse = (metadata: Record<string, unknown>) => backgroundNotification(identity.then(user => {
+    trackEventNonBlocking('news_pulse_query', { userId: user?.id, metadata, userAgent: req.get('user-agent') });
+  }));
   const streaming = req.get('accept')?.includes('application/x-ndjson');
   const writeFrame = (body: any) => {
     if (body.type === 'progress') {
@@ -462,7 +471,7 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
       console.info('[NEWS PULSE]', JSON.stringify({ cached: !!body.cached, news: body.news.length,
         publications: body.news.reduce((count: number, item: NewsItem) => count + item.sources.length, 0),
         multiMedia: body.news.filter((item: NewsItem) => new Set(item.sources.map(source => source.mediaName)).size > 1).length }));
-      if (user) backgroundNotification(publishNews(user, body.news));
+      backgroundNotification(identity.then(user => user ? publishNews(user, body.news) : undefined));
     }
     const result = { checkedAt: new Date().toISOString(), ...body, newsVersion: NEWS_CACHE_VERSION };
     if (streaming) { writeFrame({ type: 'complete', ...result }); return res.end(); }
@@ -514,11 +523,8 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
   if (cached) {
     const news = mergeDailyNews(previousNews, cached.news, dateKey);
     newsCache[cacheKey] = { news, timestamp: cached.timestamp };
-    trackEventNonBlocking('news_pulse_query', {
-      userId: user?.id,
-      metadata: { cached: true, tickersCount: tickers.length, newsCount: news.length },
-      userAgent: req.get('user-agent')
-    });
+    trackPulse({ cached: true, tickersCount: tickers.length, newsCount: news.length });
+
     return respondWithNews({ news, checkedAt: new Date(cached.timestamp).toISOString(), cached: true, fallback: false, dateKey, hourKey });
   }
   if (streaming && previousNews.length) {
@@ -564,14 +570,19 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
   res.once('close', unsubscribe);
   try {
     const result = await job.promise;
-    trackEventNonBlocking('news_pulse_query', {
-      userId: user?.id,
-      metadata: { cached: false, usedGemini: !result.fallback, tickersCount: tickers.length, newsCount: result.news.length },
-      userAgent: req.get('user-agent')
-    });
+    trackPulse({ cached: false, usedGemini: !result.fallback, tickersCount: tickers.length, newsCount: result.news.length });
+
     return respondWithNews({ ...result, cached: false, dateKey, hourKey, checkedAt: new Date(result.timestamp).toISOString() });
-  } catch {
-    const error = { code: 'NEWS_SOURCES_UNAVAILABLE', error: 'No se pudieron consultar las fuentes. Intentá actualizar nuevamente.' };
+  } catch (failure) {
+    const code = failure instanceof Error && failure.message === 'NEWS_SOURCES_UNAVAILABLE' ? 'NEWS_SOURCES_UNAVAILABLE' : 'NEWS_COLLECTION_FAILED';
+    console.warn('[NEWS PULSE ERROR]', code);
+    // The first read may have timed out while PostgreSQL was waking. Recover
+    // today's exact selection before reporting an upstream-source failure.
+    const recovered = await readPulseSnapshot(scope, true);
+    if (streaming && recovered?.news.length && requestDay === argentinaNewsDay()) {
+      writeFrame({ type: 'progress', news: recovered.news, checkedAt: new Date(recovered.timestamp).toISOString(), cached: true, newsVersion: NEWS_CACHE_VERSION });
+    }
+    const error = { code, error: 'No se pudieron consultar las fuentes. Intentá actualizar nuevamente.' };
     if (streaming && res.headersSent) { writeFrame({ type: 'error', ...error }); return res.end(); }
     return res.status(503).json(error);
   } finally { unsubscribe(); }
