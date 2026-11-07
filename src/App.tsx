@@ -1,6 +1,7 @@
 import { useNewsLibrary } from './hooks/useNewsLibrary';
 import { publicationDay, publicationUrls, libraryStorageKey } from './utils/newsLibrary';
 import { readNewsResponse } from './utils/newsResponse';
+import { argentinaNewsDay, argentinaNewsHour, nextNewsHourDelay, dailyNewsItems, mergeDailyNews } from './utils/dailyNews';
 import { portfolioNewsScope } from './utils/newsCache';
 import { getPortfolioAffectedAssetIds, getPortfolioNewsImpact } from './utils/portfolioNews';
 import React, { useState, useMemo, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
@@ -170,21 +171,7 @@ export default function App() {
     } catch {}
   }, [currentUser]);
 
-  // Helper to get today's date in America/Argentina/Buenos_Aires dynamically
-  const getArgentinaTodayKey = useCallback(() => {
-    try {
-      return new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'America/Argentina/Buenos_Aires',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      }).format(new Date());
-    } catch {
-      return new Date().toISOString().slice(0, 10);
-    }
-  }, []);
-
-  // Keep recent completed snapshots across midnight for immediate fallback.
+  // A pulse belongs to one Argentina calendar day, regardless of the device zone.
   const purgeOldClientCache = useCallback((todayKey: string) => {
     try { pruneNewsSnapshotCache(localStorage, NEWS_CLIENT_CACHE_PREFIX, todayKey); } catch {}
   }, []);
@@ -196,6 +183,10 @@ export default function App() {
   const newsRequest = useRef<AbortController | null>(null);
   const newsPortfolio = useRef('');
   const visibleNews = useRef<NewsItem[]>([]);
+  const completedNews = useRef<NewsItem[]>([]);
+  const newsDay = useRef(argentinaNewsDay());
+  const newsHour = useRef('');
+  const newsViewRef = useRef(newsView); newsViewRef.current = newsView;
   useEffect(() => {
     visibleNews.current = newsList;
     if (newsView === 'latest') setSelectedNews(current => current ? newsList.find(item => item.sources.some(source => current.sources.some(previous => previous.sourceUrl === source.sourceUrl))) || current : current);
@@ -282,55 +273,56 @@ export default function App() {
     setCurrentTab(tab);
   }, []);
 
-  // Fetch real grounded news from server pipeline with client cache per portfolio, date and hour
+  // Hourly collection adds to this day's completed feed; midnight starts a new one.
   const fetchPulseNews = useCallback(async (isManualRefresh = false) => {
-    const todayKey = getArgentinaTodayKey();
-    purgeOldClientCache(todayKey);
-
-    let hourKey = `${todayKey}_${new Date().getHours()}`;
-    try {
-      const hourStr = new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'America/Argentina/Buenos_Aires',
-        hour: '2-digit',
-        hour12: false
-      }).format(new Date());
-      hourKey = `${todayKey}_${hourStr}`;
-    } catch {}
-
+    const todayKey = argentinaNewsDay();
+    const hourKey = argentinaNewsHour();
     const scope = newsScope;
     const cacheKey = newsClientCacheKey(scope, hourKey);
+    const prefix = `${NEWS_CLIENT_CACHE_PREFIX}${scope}_`;
     newsOwner.current = currentUser?.id || '';
+    newsHour.current = hourKey;
 
     newsRequest.current?.abort();
     const controller = new AbortController();
     newsRequest.current = controller;
-    if (newsPortfolio.current !== scope) {
+    const changedDay = newsDay.current !== todayKey;
+    if (changedDay || newsPortfolio.current !== scope) {
+      newsDay.current = todayKey;
       newsPortfolio.current = scope;
+      visibleNews.current = []; completedNews.current = [];
       setNewsList([]);
-      visibleNews.current = [];
       setQueryState({ status: 'idle', checkedAt: null });
+      if (newsViewRef.current === 'latest') setSelectedNews(null);
+      if (changedDay) audioController.stopAll('news-day-change');
     }
+    purgeOldClientCache(todayKey);
     if (!isManualRefresh) {
       try {
         const cached = readNewsSnapshot(localStorage.getItem(cacheKey));
         if (cached) {
-          visibleNews.current = cached.news;
-          setNewsList(cached.news);
+          const news = dailyNewsItems(cached.news, todayKey);
+          completedNews.current = news; visibleNews.current = news;
+          setNewsList(news);
           setQueryState({ status: 'cached', checkedAt: cached.checkedAt });
           setIsLoadingNews(false);
           return;
         }
       } catch {}
     }
-    if (!visibleNews.current.length) {
+    if (!completedNews.current.length) {
       try {
-        const recent = findRecentNewsSnapshot(localStorage, `${NEWS_CLIENT_CACHE_PREFIX}${scope}_`);
-        if (recent) { visibleNews.current = recent.news; setNewsList(recent.news); setQueryState({ status: 'cached', checkedAt: recent.checkedAt }); }
+        const recent = findRecentNewsSnapshot(localStorage, prefix);
+        if (recent) {
+          completedNews.current = recent.news; visibleNews.current = recent.news;
+          setNewsList(recent.news);
+          setQueryState({ status: 'cached', checkedAt: recent.checkedAt });
+        }
       } catch {}
     }
-    const retainPrevious = visibleNews.current.length > 0;
     setIsLoadingNews(true);
     setQueryState(previous => ({ ...previous, status: 'loading', error: undefined }));
+    const currentRequest = () => newsRequest.current === controller && !controller.signal.aborted && argentinaNewsDay() === todayKey;
     const timeout = setTimeout(() => controller.abort(), 60000);
     try {
       const response = await fetch('/api/news/pulse', {
@@ -340,28 +332,58 @@ export default function App() {
       });
       if (!response.ok) throw new Error('No se pudo completar la consulta.');
       const data = await readNewsResponse(response, partial => {
-        if (newsRequest.current !== controller || controller.signal.aborted || retainPrevious) return;
-        setNewsList(partial.news);
+        if (!currentRequest()) return;
+        const news = mergeDailyNews(visibleNews.current, partial.news, todayKey);
+        visibleNews.current = news;
+        setNewsList(news);
         setQueryState({ status: 'partial', checkedAt: partial.checkedAt || null, partial: true });
       });
       if (!Array.isArray(data.news)) throw new Error('La consulta no devolvió noticias válidas.');
-      if (newsRequest.current !== controller || controller.signal.aborted) return;
+      if (!currentRequest()) return;
       const checkedAt = typeof data.checkedAt === 'string' && Number.isFinite(Date.parse(data.checkedAt)) ? data.checkedAt : data.cached ? null : new Date().toISOString();
-      setNewsList(data.news);
+      const news = mergeDailyNews(completedNews.current, data.news, todayKey);
+      completedNews.current = news; visibleNews.current = news;
+      setNewsList(news);
       setQueryState({ status: data.cached ? 'cached' : 'success', checkedAt });
-      try { localStorage.setItem(cacheKey, JSON.stringify({ news: data.news, checkedAt })); } catch {}
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({ news, checkedAt }));
+        // The newest completed snapshot already contains the whole day. Keep
+        // one copy per selection, rather than 24 increasingly large copies.
+        const older: string[] = [];
+        for (let index = 0; index < localStorage.length; index++) {
+          const key = localStorage.key(index);
+          if (key?.startsWith(prefix) && key !== cacheKey && /^\d{4}-\d{2}-\d{2}_\d{2}$/.test(key.slice(prefix.length))) older.push(key);
+        }
+        older.forEach(key => localStorage.removeItem(key));
+      } catch {}
     } catch {
-      if (newsRequest.current === controller) setQueryState(previous => ({ ...previous, status: 'error' }));
+      if (newsRequest.current === controller && argentinaNewsDay() === todayKey) setQueryState(previous => ({ ...previous, status: 'error' }));
     } finally {
       clearTimeout(timeout);
       if (newsRequest.current === controller) setIsLoadingNews(false);
     }
-  }, [currentUser?.id, newsScope, getArgentinaTodayKey, purgeOldClientCache]);
+  }, [currentUser?.id, newsScope, purgeOldClientCache]);
 
   useEffect(() => {
     if (isSessionLoading || !currentUser) return;
-    fetchPulseNews(false);
-    return () => newsRequest.current?.abort();
+    let timer: ReturnType<typeof setTimeout>;
+    let active = true;
+    const checkHour = () => {
+      if (!active) return;
+      if (newsHour.current !== argentinaNewsHour()) void fetchPulseNews(false);
+      clearTimeout(timer);
+      timer = setTimeout(checkHour, nextNewsHourDelay() + 10);
+    };
+    // The effect also runs for a genuinely different selection in the same hour.
+    void fetchPulseNews(false);
+    timer = setTimeout(checkHour, nextNewsHourDelay() + 10);
+    window.addEventListener('focus', checkHour);
+    document.addEventListener('visibilitychange', checkHour);
+    return () => {
+      active = false; clearTimeout(timer); newsRequest.current?.abort();
+      window.removeEventListener('focus', checkHour);
+      document.removeEventListener('visibilitychange', checkHour);
+    };
   }, [fetchPulseNews, isSessionLoading, currentUser?.id]);
 
   const handleSessionSuccess = useCallback((user: UserAccount, token?: string, isNewRegistration: boolean = false) => {
@@ -419,7 +441,7 @@ export default function App() {
 
   const clearSessionView = () => {
     newsRequest.current?.abort(); newsRequest.current = null; newsPortfolio.current = ''; newsOwner.current = '';
-    visibleNews.current = []; setNewsList([]); setSelectedNews(null);
+    visibleNews.current = []; completedNews.current = []; newsHour.current = ''; setNewsList([]); setSelectedNews(null);
     setQueryState({ status: 'idle', checkedAt: null });
     audioController.stopAll('logout');
     try {

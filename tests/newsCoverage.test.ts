@@ -14,6 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { MediaCoverage, NewsItem } from '../src/types';
 import { enrichNewsCoverage, sourcesCoverSameEvent } from '../src/utils/newsCoverage';
 import { distinctMediaSources, sanitizeGroundingSources } from '../src/utils/sourceGrounding';
+import { argentinaNewsDay, argentinaNewsHour } from '../src/utils/dailyNews.js';
 import { NEWS_CACHE_VERSION } from '../src/utils/newsCache';
 import { articles } from './fixtures/news-transport.mjs';
 
@@ -78,10 +79,10 @@ before(async () => {
 });
 async function stop(child: ChildProcess) { if (child.exitCode !== null) return; const exit = once(child, 'exit'); child.kill('SIGTERM'); await exit; children.delete(child); }
 after(async () => { for (const child of children) await stop(child); if (artifact) await rm(artifact, { recursive: true, force: true }); });
-async function api(gemini = true, singleMedium = false, discovery = false, section = false, gated = false, databaseUrl = '', directional = false) {
+async function api(gemini = true, singleMedium = false, discovery = false, section = false, gated = false, databaseUrl = '', directional = false, initialNow = '') {
   const child = fork(new URL('fixtures/native-api-server.mjs', import.meta.url), [pathToFileURL(path.join(artifact, 'api/index.js')).href], {
     cwd: root, execArgv: [], silent: true,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: databaseUrl, POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NEWS_DIRECTIONAL: directional ? '1' : '', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '', FAROS_TEST_NEWS_DISCOVERY: discovery ? '1' : '', FAROS_TEST_NEWS_SECTION: section ? '1' : '', FAROS_TEST_NEWS_GATED: gated ? '1' : '' }
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: databaseUrl, POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NOW: initialNow, FAROS_TEST_NEWS_DIRECTIONAL: directional ? '1' : '', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '', FAROS_TEST_NEWS_DISCOVERY: discovery ? '1' : '', FAROS_TEST_NEWS_SECTION: section ? '1' : '', FAROS_TEST_NEWS_GATED: gated ? '1' : '' }
   });
   children.add(child);
   let output = ''; child.stdout?.on('data', chunk => { output += chunk; }); child.stderr?.on('data', chunk => { output += chunk; });
@@ -93,7 +94,9 @@ async function api(gemini = true, singleMedium = false, discovery = false, secti
   const stats = () => new Promise<any>(resolve => { child.once('message', resolve); child.send({ type: 'news-test-stats' }); });
   const version = () => fetch(`http://127.0.0.1:${port}/api/version`);
   const stream = (body: Record<string, unknown>) => fetch(`http://127.0.0.1:${port}/api/news/pulse`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/x-ndjson' }, body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
-  return { pulse, stream, releaseCoverage: () => child.send({ type: 'news-release-coverage' }), stats, version, get output() { return output; } };
+  const clock = (now: string) => new Promise<void>(resolve => { child.once('message', () => resolve()); child.send({ type: 'news-test-clock', now }); });
+  const batch = (indexes: number[], published?: string) => new Promise<void>(resolve => { child.once('message', () => resolve()); child.send({ type: 'news-test-batch', indexes, published }); });
+  return { pulse, stream, clock, batch, releaseCoverage: () => child.send({ type: 'news-release-coverage' }), stats, version, get output() { return output; } };
 }
 
 test('la API Gemini agrupa fuentes verificadas y conserva caché, actualización y cartera', { timeout: 30000 }, async () => {
@@ -266,11 +269,12 @@ test('el caché completo sobrevive entre instancias y carteras equivalentes, sin
   t.after(async () => { for (const child of children) await stop(child); await db.end(); await admin.query(`DROP SCHEMA "${schema}" CASCADE`); await admin.end(); });
   const migration = await readFile(new URL('../migrations/008_news_pulse_cache.sql', import.meta.url), 'utf8');
   await db.query(migration); await db.query(migration);
-  const first = await api(false, false, false, false, false, url.toString());
+  const cacheNow = '2030-06-15T16:00:00Z';
+  const first = await api(false, false, false, false, false, url.toString(), false, cacheNow);
   const args = { portfolioId: 'first-account-id', tickers: ['AL30'], profile: 'moderado' };
   const fresh = await first.pulse(args); assert.equal(fresh.cached, false);
   assert.equal((await db.query('SELECT * FROM faros_news_pulse_cache')).rowCount, 1);
-  const second = await api(false, false, false, false, false, url.toString());
+  const second = await api(false, false, false, false, false, url.toString(), false, cacheNow);
   const shared = await second.pulse({ ...args, portfolioId: 'another-account-id' });
   assert.equal(shared.cached, true); assert.deepEqual(shared.news, fresh.news); assert.equal(shared.checkedAt, fresh.checkedAt);
   assert.equal((await second.stats()).feeds, 0, 'Una instancia nueva no descarga otra vez los medios para la misma selección');
@@ -279,15 +283,15 @@ test('el caché completo sobrevive entre instancias y carteras equivalentes, sin
   assert.ok((await second.stats()).feeds > 0);
   // Seed a previous-hour snapshot without changing its real check time. A new
   // instance must publish it early, then complete a genuinely refreshed query.
-  await db.query("UPDATE faros_news_pulse_cache SET hour_key='previous-hour', checked_at=NOW()-INTERVAL '30 minutes'");
-  const third = await api(false, false, false, false, false, url.toString());
+  await db.query("UPDATE faros_news_pulse_cache SET hour_key=$1, checked_at=$2", [argentinaNewsHour(Date.parse(cacheNow) - 3600000), new Date(Date.parse(cacheNow) - 1800000)]);
+  const third = await api(false, false, false, false, false, url.toString(), false, cacheNow);
   const progress: any[] = [];
   const refreshed = await readNewsResponse(await third.stream(args), frame => progress.push(frame));
   assert.equal(progress[0].cached, true); assert.ok(progress[0].news.length);
   assert.ok(Date.parse(progress[0].checkedAt) < Date.parse(refreshed.checkedAt!));
   assert.equal(refreshed.cached, false); assert.ok((await third.stats()).feeds > 0);
   const countBeforeFailure = (await db.query('SELECT * FROM faros_news_pulse_cache')).rowCount!;
-  const fourth = await api(false, false, false, false, false, url.toString());
+  const fourth = await api(false, false, false, false, false, url.toString(), false, cacheNow);
   const lock = await db.connect();
   try {
     await lock.query('BEGIN'); await lock.query('LOCK TABLE faros_news_pulse_cache IN ACCESS EXCLUSIVE MODE');
@@ -325,4 +329,73 @@ test('los titulares reales conservan clasificación favorable/alerta en RSS, Gem
     const cached = await server.pulse(args);
     assert.equal(cached.cached, true); assert.deepEqual(cached.news, result.news);
   }
+});
+
+
+test('las consultas horarias acumulan la jornada y una actualización vacía no borra noticias del día', { timeout: 30000 }, async () => {
+  const server = await api(false, false, false, false, false, '', false, '2030-06-15T13:00:00Z');
+  const args = { portfolioId: 'daily-memory', tickers: ['AL30', 'YPFD'], profile: 'moderado' };
+  await server.batch([0]);
+  const first = await server.pulse(args); assert.equal(first.news.length, 1);
+  await server.clock('2030-06-15T14:00:00Z'); await server.batch([4]);
+  const frames: any[] = [];
+  const second = await readNewsResponse(await server.stream(args), frame => frames.push(frame));
+  assert.equal(second.news.length, 2);
+  assert.equal(frames[0].cached, true); assert.equal(frames[0].checkedAt, first.checkedAt);
+  assert.equal(frames[0].news[0].headline, articles[0].title);
+  await server.clock('2030-06-15T23:00:00Z'); await server.batch([]);
+  const emptyCollection = await server.pulse(args);
+  assert.equal(emptyCollection.news.length, 2, 'El resultado matinal no vence por tener más de dos horas');
+  const manualEmpty = await server.pulse({ ...args, forceRefresh: true }); assert.equal(manualEmpty.news.length, 2);
+  await server.clock('2030-06-16T03:00:00Z'); await server.batch([5], '2030-06-16T03:00:00Z');
+  const tomorrow = await server.pulse(args);
+  assert.equal(tomorrow.news.length, 1); assert.equal(tomorrow.news[0].headline, articles[5].title);
+  assert.ok(tomorrow.news.every((item: NewsItem) => item.sources.every(source => argentinaNewsDay(source.publishedTimestamp!) === '2030-06-16')));
+});
+
+test('una consulta iniciada antes de medianoche no vuelve a entregar la jornada anterior al completar', { timeout: 30000 }, async () => {
+  const server = await api(false, false, true, false, true, '', false, '2030-06-16T02:59:59Z');
+  const args = { portfolioId: 'daily-midnight-race', tickers: ['AL30', 'YPFD'] };
+  await server.batch([0]);
+  let first!: () => void;
+  const firstProgress = new Promise<void>(resolve => { first = resolve; });
+  let crossed = false;
+  const pending = readNewsResponse(await server.stream(args), progress => { assert.equal(crossed, false, 'No emitir noticias del día anterior después de medianoche'); assert.ok(progress.news.length); first(); });
+  await firstProgress;
+  await server.clock('2030-06-16T03:00:00Z'); crossed = true;
+  server.releaseCoverage();
+  const old = await pending; assert.deepEqual(old.news, []);
+  await server.batch([4], '2030-06-16T03:00:00Z');
+  const next = await server.pulse(args);
+  assert.equal(next.news.length, 1); assert.equal(next.news[0].headline, articles[4].title);
+});
+
+test('PostgreSQL conserva todas las horas del día y combina escrituras concurrentes sin perder noticias', { timeout: 30000 }, async t => {
+  const value = process.env.TEST_DATABASE_URL;
+  assert.ok(value, 'Se requiere TEST_DATABASE_URL local');
+  const url = new URL(value); assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)); assert.match(url.pathname, /test/i);
+  const admin = new Pool(databaseConfig(value)); const schema = `pulse_day_${randomBytes(6).toString('hex')}`;
+  await admin.query(`CREATE SCHEMA "${schema}"`); url.searchParams.set('options', `-c search_path=${schema}`);
+  const db = new Pool(databaseConfig(url.toString()));
+  t.after(async () => { for (const child of children) await stop(child); await db.end(); await admin.query(`DROP SCHEMA "${schema}" CASCADE`); await admin.end(); });
+  await db.query(await readFile(new URL('../migrations/008_news_pulse_cache.sql', import.meta.url), 'utf8'));
+  const args = { portfolioId: 'daily-durable', tickers: ['AL30', 'YPFD', 'MSFT'], profile: 'moderado' };
+  const start = (now: string) => api(false, false, false, false, false, url.toString(), false, now);
+  const morning = await start('2030-06-15T13:00:00Z'); await morning.batch([0]);
+  assert.equal((await morning.pulse(args)).news.length, 1);
+  const hourLater = await start('2030-06-15T14:00:00Z'); await hourLater.batch([4]);
+  const second = await hourLater.pulse(args); assert.equal(second.news.length, 2);
+  const evening = await start('2030-06-15T23:00:00Z'); await evening.batch([]);
+  assert.equal((await evening.pulse(args)).news.length, 2, 'Otra instancia recupera la mañana aun tras diez horas');
+  const concurrentA = await start('2030-06-16T00:00:00Z'); await concurrentA.batch([7]);
+  const concurrentB = await start('2030-06-16T00:00:00Z'); await concurrentB.batch([5]);
+  await Promise.all([concurrentA.pulse({ ...args, forceRefresh: true }), concurrentB.pulse({ ...args, forceRefresh: true })]);
+  const reader = await start('2030-06-16T00:01:00Z');
+  const complete = await reader.pulse(args);
+  assert.equal(complete.cached, true); assert.equal(complete.news.length, 4);
+  assert.deepEqual(new Set(complete.news.map((item: NewsItem) => item.headline)), new Set([0, 4, 5, 7].map(index => articles[index].title)));
+  assert.equal((await reader.stats()).feeds, 0);
+  const midnight = await start('2030-06-16T03:00:00Z'); await midnight.batch([]);
+  const newDay = await midnight.pulse(args); assert.deepEqual(newDay.news, []);
+  assert.equal((await db.query('SELECT hour_key FROM faros_news_pulse_cache WHERE hour_key LIKE $1', ['2030-06-15_%'])).rowCount, 0, 'Se retiran los acumulados del día anterior');
 });

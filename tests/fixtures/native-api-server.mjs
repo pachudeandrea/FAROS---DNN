@@ -1,3 +1,17 @@
+// Clock controls exist only in the isolated test runner, never the deployed API.
+if (process.env.FAROS_TEST_NOW) {
+  const NativeDate = Date;
+  let now = NativeDate.parse(process.env.FAROS_TEST_NOW);
+  globalThis.Date = class extends NativeDate {
+    constructor(...args) { super(...(args.length ? args : [now])); }
+    static now() { return now; }
+  };
+  process.on('message', message => {
+    if (message?.type !== 'news-test-clock') return;
+    now = NativeDate.parse(message.now);
+    process.send?.({ type: 'news-test-clock-set' });
+  });
+}
 // Run the emitted API in plain Node, without a TypeScript loader. This is the
 // module resolution used by the Vercel function, not by local `tsx server.ts`.
 if (process.env.FAROS_TEST_NEWS === '1') {

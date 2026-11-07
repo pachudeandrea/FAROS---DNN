@@ -1,3 +1,4 @@
+import { argentinaNewsHour } from './dailyNews.js';
 import * as cheerio from 'cheerio';
 import { MediaCoverage, NewsItem } from '../types/index.js';
 import { DOMAIN_MEDIA_MAP, getMediaNameFromDomain } from './sourceGrounding.js';
@@ -553,12 +554,12 @@ export interface VerifiedSourceResult {
   };
 }
 
-// In-memory URL verification cache (TTL 6 hours)
+// Successful source checks are reused only within the Argentina calendar hour.
 const urlVerificationCache = new Map<string, { result: VerifiedSourceResult; timestamp: number }>();
-const VERIFICATION_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const VERIFICATION_CACHE_TTL_MS = 60 * 60 * 1000;
 
 /**
- * Verifies a source URL through the complete verification pipeline with 6-hour caching and debug logs.
+ * Verifies a source URL through the complete pipeline, renewing successful checks each hour.
  */
 export async function verifySourceUrl(
   rawUri: string,
@@ -579,7 +580,9 @@ export async function verifySourceUrl(
     // Both input and final publication must belong to the requested publisher.
     if (reusable?.result.verified && reusable.result.source?.sourceUrl.startsWith('https:') && belongs(rawUri) && belongs(reusable.result.source.sourceUrl)) cached = reusable;
   }
-  if (cached && Date.now() - cached.timestamp < (cached.result.verified ? VERIFICATION_CACHE_TTL_MS : 30000)) {
+  const now = Date.now();
+  const currentHour = !cached?.result.verified || argentinaNewsHour(cached.timestamp) === argentinaNewsHour(now);
+  if (cached && currentHour && now - cached.timestamp < (cached.result.verified ? VERIFICATION_CACHE_TTL_MS : 30000)) {
     return cached.result;
   }
 

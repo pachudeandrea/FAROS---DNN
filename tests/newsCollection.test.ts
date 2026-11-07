@@ -363,3 +363,22 @@ test('una primera publicación ajena o vencida no impide mostrar otra relevante 
     assert.equal(calls.length, new Set(calls).size, 'Los dos feeds de Ámbito comparten verificaciones');
   } finally { if (timeout) clearTimeout(timeout); release(); globalThis.fetch = original; purgeUrlVerificationCache(); }
 });
+
+test('la colección diaria filtra fuentes de ayer antes de agrupar para no perder una publicación de hoy del mismo hecho', async () => {
+  const original = globalThis.fetch; purgeUrlVerificationCache();
+  const now = Date.now();
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(now);
+  const title = 'Microsoft presentó ganancias récord en su balance trimestral';
+  const yesterdayUrl = 'https://www.ambito.com/economia/daily-balance-yesterday';
+  const todayUrl = 'https://www.cronista.com/economia-politica/daily-balance-today/';
+  globalThis.fetch = async input => {
+    const url = String(input);
+    if ([yesterdayUrl, todayUrl].includes(url)) return new Response(`<html><head><meta property="og:title" content="${title}"><meta property="article:published_time" content="${new Date(url === yesterdayUrl ? now - 86400000 : now).toISOString()}"></head><body><h1>${title}</h1></body></html>`, { headers: { 'Content-Type': 'text/html' } });
+    return new Response(`<rss><channel>${[yesterdayUrl, todayUrl].map(link => `<item><title>${title}</title><link>${link}</link></item>`).join('')}</channel></rss>`);
+  };
+  try {
+    const news = await getLiveVerifiedArgentineNews(['MSFT'], undefined, undefined, undefined, today);
+    assert.equal(news.length, 1); assert.equal(news[0].coverageCount, 1);
+    assert.equal(news[0].sources[0].sourceUrl, todayUrl);
+  } finally { globalThis.fetch = original; purgeUrlVerificationCache(); }
+});

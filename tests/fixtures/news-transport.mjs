@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 // Local provider/publication fixtures. An unexpected URL fails rather than
 // making a network request. This module is loaded only by the test API process.
-const published = new Date(Date.now() - 30 * 60000).toISOString();
+const argentinaDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
+let published = new Date(Math.max(Date.now() - 30 * 60000, Date.parse(`${argentinaDay}T00:00:00-03:00`))).toISOString();
 export const articles = [
   { media: 'Ámbito', url: 'https://www.ambito.com/finanzas/bcra-compras-reservas-prueba', title: 'El BCRA compró USD 125 millones y elevó sus reservas' },
   { media: 'El Cronista', url: 'https://www.cronista.com/finanzas-mercados/compras-banco-central-prueba/', title: 'El Banco Central adquirió USD 125 millones y sumó reservas' },
@@ -30,6 +31,14 @@ export function installNewsTransport() {
   let releaseCoverage;
   const coverageGate = new Promise(resolve => { releaseCoverage = resolve; });
   process.on('message', message => { if (message?.type === 'news-release-coverage') releaseCoverage(); });
+  let activeIndexes;
+  process.on('message', message => {
+    if (message?.type !== 'news-test-batch') return;
+    activeIndexes = message.indexes;
+    if (message.published) published = message.published;
+    process.send?.({ type: 'news-test-batch-set' });
+  });
+  const activeArticles = () => articles.filter((_, index) => !activeIndexes || activeIndexes.includes(index));
   const stats = { sections: 0, searches: 0, extractions: 0, publications: 0, feeds: 0, prompts: [] };
   globalThis.fetch = async (input, init) => {
     const url = String(input instanceof Request ? input.url : input);
@@ -53,19 +62,19 @@ export function installNewsTransport() {
       if (process.env.FAROS_TEST_NEWS_GATED === '1') await coverageGate;
       const query = new URL(url).searchParams.get('q') || '';
       const publisher = query.match(/^site:(\S+)/)?.[1];
-      const found = process.env.FAROS_TEST_NEWS_DISCOVERY === '1' ? articles.filter(article => new URL(article.url).hostname === `www.${publisher}`) : [];
+      const found = process.env.FAROS_TEST_NEWS_DISCOVERY === '1' ? activeArticles().filter(article => new URL(article.url).hostname === `www.${publisher}`) : [];
       return new Response(`<rss><channel>${found.map(article => `<item><title>${article.title}</title><link>${process.env.FAROS_TEST_NEWS_SECTION === '1' ? 'https://www.bing.com/ck/a?u=a1' + Buffer.from(article.url).toString('base64url') : article.url}</link></item>`).join('')}</channel></rss>`);
     }
     if (url === 'https://www.infobae.com/economia/') {
       stats.sections++;
-      const found = process.env.FAROS_TEST_NEWS_SECTION === '1' ? articles.filter(article => article.media === 'Infobae') : [];
+      const found = process.env.FAROS_TEST_NEWS_SECTION === '1' ? activeArticles().filter(article => article.media === 'Infobae') : [];
       return new Response(`<html><body>${found.map(article => `<a href="${new URL(article.url).pathname}"><h2>${article.title}</h2></a>`).join('')}</body></html>`, { headers: { 'content-type': 'text/html' } });
     }
     const feed = url.includes('/rss/') || url.includes('/outboundfeeds/');
     if (feed) {
       stats.feeds++;
       const publisher = url.includes('ambito.com') ? 'Ámbito' : url.includes('cronista.com') ? 'El Cronista' : 'Infobae';
-      const found = process.env.FAROS_TEST_NEWS_DISCOVERY === '1' && publisher !== 'Ámbito' ? [] : articles.filter(article => article.media === publisher);
+      const found = process.env.FAROS_TEST_NEWS_DISCOVERY === '1' && publisher !== 'Ámbito' ? [] : activeArticles().filter(article => article.media === publisher);
       const xml = `<rss><channel>${found.map(article => `<item><title><![CDATA[${article.title}]]></title><link>${article.url}</link><pubDate>${new Date(published).toUTCString()}</pubDate></item>`).join('')}</channel></rss>`;
       return new Response(xml, { headers: { 'content-type': 'application/rss+xml' } });
     }

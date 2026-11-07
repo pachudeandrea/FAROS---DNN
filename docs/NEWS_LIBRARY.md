@@ -13,4 +13,4 @@ La sesión determina el propietario; `expectedUserId` protege pestañas de otras
 
 La copia local `faros_library_v1:<userId>` descarta históricos y vencidas al iniciar. Un temporizador hasta el próximo vencimiento, y controles al recuperar foco o visibilidad, actualizan tarjetas y contador incluso con la pestaña abierta. La caché local de cuentas reales conserva hasta 200 tarjetas; las demás se recuperan paginando. Cada cuenta mantiene su propio almacenamiento.
 
-La caché del pulso conserva `v13_news_tracking_coverage`. El primer candidato de un feed disponible puede verificarse mientras terminan los otros feeds. La colección final sigue usando todos los medios, el orden equitativo y la comparación de publicaciones; reutiliza la verificación temprana. Esto reduce una espera previa a la primera noticia, sin garantizar una reducción equivalente de la duración total.
+La caché del pulso usa `v16_daily_news`: acumula noticias de cada jornada argentina, se actualiza por hora y cambia a las00:00. Este corte no afecta las24horas de las copias guardadas. La carga sigue siendo progresiva y conserva la comparación entre medios; ver [Noticias por jornada](DAILY_NEWS.md).

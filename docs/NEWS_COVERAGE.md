@@ -46,7 +46,7 @@ Cada fuente conserva su titular, editorial, fecha y URL verificados. La comparac
 
 ## Caché y pruebas
 
-El espacio de caché actual es `v15_directional_classification`, compartido por cliente y servidor. Se descartan las noticias del formato anterior conservando sesión, cartera y calendario. `Actualizar pulso` fuerza la búsqueda. `/api/version` informa el commit y `newsVersion`, sin datos privados.
+El espacio de caché actual es `v16_daily_news`, compartido por cliente y servidor. Se descartan las noticias del formato anterior conservando sesión, cartera y calendario. `Actualizar pulso` fuerza la búsqueda. `/api/version` informa el commit y `newsVersion`, sin datos privados.
 
 Las pruebas cubren RSS simultáneos, un medio lento o caído, reparto entre editoriales, deduplicación, plazos, reintento de errores transitorios y tres medios para un mismo acontecimiento. Las pruebas de API demuestran que RSS agrega El Cronista e Infobae cuando la búsqueda simulada de Gemini solo encuentra Ámbito. También verifican que otros pagos, fechas, países, cifras o decisiones permanezcan separados. Los transportes son fixtures explícitos y no sustituyen consultas periodísticas en vivo.
 
@@ -71,3 +71,8 @@ Los índices económicos se solicitan en paralelo con RSS y el análisis. La cob
 La interfaz espera a conocer la sesión/cartera antes de iniciar la consulta. Conserva las noticias visibles durante una actualización y puede mostrar una consulta completa reciente de la misma selección (hasta dos horas, respetando la vigencia de las publicaciones) al cambiar de hora, mientras busca la nueva. Solo el resultado completo se guarda en el caché local. Los avances no se guardan como definitivos. Los IDs RSS se derivan de la URL principal para que un resultado que llega antes no reutilice el ID de otra noticia; una comparación abierta se actualiza por publicaciones compartidas.
 
 Esta optimización mantiene `v13_news_tracking_coverage`: el formato y las reglas de cobertura son compatibles y no se borran las consultas válidas ya guardadas por los usuarios. `timingsMs.firstNews` y `timingsMs.total` permiten distinguir primera noticia disponible de trabajo completo. Las pruebas HTTP retienen deliberadamente el buscador y comprueban que los avances llegan antes de liberarlo; las de navegador verifican lectura/audio tempranos, finalización, caché y recuperación ante interrupciones. Son controles de latencia funcional, no mediciones de tiempos de proveedores en producción.
+
+
+## Jornada diaria con actualización horaria
+
+El pulso actual acumula las publicaciones de la jornada argentina y comienza un conjunto nuevo a las00:00. Ya no se recupera el día anterior por la ventana de48horas de los recolectores. La comparación y la clasificación se mantienen; el conjunto completo del día se combina al actualizar cada hora. Ver [Noticias por jornada](DAILY_NEWS.md) para temporizadores, persistencia y pruebas.

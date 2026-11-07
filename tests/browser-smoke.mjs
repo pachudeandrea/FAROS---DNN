@@ -60,13 +60,18 @@ const fixture = {
   portfolio: structuredClone(MOCK_PORTFOLIOS[0]), preferences: { ...DEFAULT_PREFERENCES, notificationsEnabled: false }
 };
 const news = structuredClone(REAL_GROUNDED_NEWS.slice(0, 3));
+// Default pulse fixtures are publications of this Argentina day. Historical
+// publication dates belong in explicit news/library overrides.
+for (const item of news) for (const source of item.sources) {
+  source.publishedTimestamp = Date.now(); source.publishedDateIso = new Date().toISOString();
+}
 // Two outlets can publish the same agency headline; both must remain visible.
 news[0].sources[1].originalHeadline = news[0].sources[0].originalHeadline;
 const browser = await chromium.launch({ executablePath, headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
 const pageErrors = [];
 let checks = 0;
 async function check(name, run) { if (process.env.BROWSER_CHECK && !name.includes(process.env.BROWSER_CHECK)) return; await run(); checks++; console.log(`ok ${checks} - ${name}`); }
-async function setup({ anonymous = false, admin = false, permission = 'granted', longName = false, legacyNews = false, portfolioOverride, newsOverride, audioMode = 'ok', audioDelay = 0, progressiveNews = false, ...options } = {}) {
+async function setup({ anonymous = false, admin = false, permission = 'granted', longName = false, legacyNews = false, portfolioOverride, newsOverride, audioMode = 'ok', audioDelay = 0, progressiveNews = false, clockAt, savedNewsOverride, ...options } = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, ...options });
   if (legacyNews) await context.addInitScript(({ item, portfolioId, version }) => {
     const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -90,9 +95,12 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
     PushManager.prototype.subscribe = async () => { localStorage.setItem('test_push', 'yes'); return local(); };
   }, { permission, subscription });
   const libraries = new Map();
-  const state = { librarySaveFailure: false, libraries, user: structuredClone(fixture), active: false, calls: [], events: [], newsData: news, newsMode: 'ok', revision: null, saveFailure: false, delayNews: 0, audioMode, audioDelay };
+  const state = { librarySaveFailure: false, libraries, user: structuredClone(fixture), active: false, calls: [], events: [], newsData: news, newsMode: 'ok', revision: null, saveFailure: false, delayNews: 0, audioMode, audioDelay, checkedAt: clockAt || new Date().toISOString() };
   if (portfolioOverride) state.user.portfolio = structuredClone(portfolioOverride);
   if (newsOverride) state.newsData = structuredClone(newsOverride);
+  if (savedNewsOverride) libraries.set(state.user.id, savedNewsOverride.map((item, index) => ({
+    id: `saved-fixture-${index}`, news: structuredClone(item), day: publicationDay(item), urls: publicationUrls(item), savedAt: state.checkedAt, seenAt: state.checkedAt
+  })));
   if (admin) state.user.isAdmin = true;
   if (longName) state.user.portfolio.name = 'Cartera' + 'Diversificada'.repeat(12);
   await context.route('**/*', async route => {
@@ -107,7 +115,7 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
     if (url.pathname === '/api/news/pulse') {
       if (state.delayNews) await new Promise(resolve => setTimeout(resolve, state.delayNews));
       status = state.newsMode === 'error' ? 503 : 200;
-      data = state.newsMode === 'error' ? { error: 'Fuentes no disponibles.' } : { news: state.newsMode === 'empty' ? [] : state.newsData, checkedAt: '2026-11-01T14:23:00.000Z' };
+      data = state.newsMode === 'error' ? { error: 'Fuentes no disponibles.' } : { news: state.newsMode === 'empty' ? [] : state.newsData, checkedAt: state.checkedAt };
     }
     if (url.pathname === '/api/news/library' || url.pathname.startsWith('/api/news/library/')) {
       const owner = state.user.id;
@@ -117,7 +125,7 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
       const put = (item, saved) => {
         const day = publicationDay(item);
         const old = entries.find(entry => entry.day === day && samePublication(entry.news, item));
-        const entry = { id: old?.id || `library-${owner}-${entries.length}`, news: old?.savedAt ? old.news : item, urls: [...new Set([...(old?.urls || []), ...publicationUrls(item)])], day, seenAt: new Date().toISOString(), savedAt: saved === undefined ? old?.savedAt || null : saved ? old?.savedAt || new Date().toISOString() : null };
+        const entry = { id: old?.id || `library-${owner}-${entries.length}`, news: old?.savedAt ? old.news : item, urls: [...new Set([...(old?.urls || []), ...publicationUrls(item)])], day, seenAt: new Date().toISOString(), savedAt: saved === undefined ? old?.savedAt || null : saved ? old?.savedAt || state.checkedAt : null };
         if (old) entries[entries.indexOf(old)] = entry; else entries.push(entry);
         return entry;
       };
@@ -177,6 +185,7 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
     };
   }, { items: state.newsData });
   const page = await context.newPage();
+  if (clockAt) await page.clock.install({ time: new Date(clockAt) });
   page.on('pageerror', error => pageErrors.push(error.message));
   await page.goto(origin, { waitUntil: 'networkidle' });
   if (!anonymous) {
@@ -523,14 +532,8 @@ try {
       item.sources = item.sources.map(source => ({ ...source, publishedDateIso: at, publishedTimestamp: Date.parse(at) }));
       return item;
     });
-    const { context, page, state } = await setup({ newsOverride: old });
+    const { context, page, state } = await setup({ newsOverride: [], savedNewsOverride: old });
     await clickVisible(page, 'Ahora no');
-    await page.getByRole('button', { name: 'Guardadas (0)', exact: true }).waitFor();
-    for (const item of old) {
-      const card = page.locator('article').filter({ has: page.getByRole('button', { name: item.headline, exact: true }) });
-      await card.getByRole('button', { name: 'Guardar noticia', exact: true }).click();
-      await card.getByRole('button', { name: 'Quitar de guardadas', exact: true }).waitFor();
-    }
     await page.getByRole('button', { name: 'Guardadas (2)', exact: true }).waitFor();
     state.newsMode = 'empty';
     await clickVisible(page, 'Actualizar pulso');
@@ -632,8 +635,8 @@ try {
   });
   await check('Actualización confiable: búsqueda, error con contenido anterior, vacío y caché con horario real', async () => {
     const { context, page, state } = await setup();
-    await page.getByText('11:23', { exact: false }).first().waitFor();
-    assert.equal(await page.getByText('11:45 hs', { exact: false }).count(), 0);
+    const checkedTime = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit' }).format(new Date(state.checkedAt));
+    await page.getByText(checkedTime, { exact: false }).first().waitFor();
     const hero = page.getByRole('region', { name: 'Resumen de tu cartera' });
     const bounds = await hero.boundingBox(); assert.ok(bounds.height < 360, `Resumen demasiado alto: ${bounds.height}`);
     state.newsMode = 'error'; state.delayNews = 500;
@@ -643,12 +646,81 @@ try {
     assert.equal(await page.getByRole('button', { name: 'Comparar 4 medios', exact: true }).count(), news.length);
     state.newsMode = 'empty'; state.delayNews = 0;
     await clickVisible(page, 'Actualizar pulso');
-    await hero.getByText('Sin novedades verificadas en esta consulta.', { exact: false }).waitFor();
-    assert.equal(await page.getByRole('button', { name: 'Comparar 4 medios', exact: true }).count(), 0);
+    await hero.getByText('Actualización completada.', { exact: false }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Comparar 4 medios', exact: true }).count(), news.length, 'Una actualización sin novedades conserva lo acumulado en la jornada');
     const before = state.calls.filter(call => call.path === '/api/news/pulse').length;
     await page.reload({ waitUntil: 'networkidle' });
     await hero.getByText('Mostrando información de una consulta anterior.', { exact: false }).waitFor();
-    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse').length, before, 'También se conserva el resultado vacío confirmado');
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse').length, before, 'La visita siguiente recupera la jornada completa sin repetir la consulta');
+    await context.close();
+  });
+  await check('Jornada diaria: actualiza por hora, acumula y reinicia a medianoche sin perder Guardadas', async () => {
+    const dated = (index, at) => {
+      const item = structuredClone(news[index]);
+      item.sources = item.sources.map(source => ({ ...source, publishedDateIso: at, publishedTimestamp: Date.parse(at) }));
+      return item;
+    };
+    const first = dated(0, '2026-11-06T12:30:00Z');
+    const second = dated(1, '2026-11-06T13:00:00Z');
+    const tomorrow = dated(2, '2026-11-07T03:00:00Z');
+    const { context, page, state } = await setup({ clockAt: '2026-11-06T12:59:55Z', newsOverride: [first] });
+    await clickVisible(page, 'Ahora no');
+    await page.getByRole('button', { name: first.headline, exact: true }).waitFor();
+    const card = page.locator('article').first();
+    await card.getByRole('button', { name: 'Guardar noticia', exact: true }).click();
+    await page.getByRole('button', { name: 'Guardadas (1)', exact: true }).waitFor();
+    const beforeHour = state.calls.filter(call => call.path === '/api/news/pulse').length;
+    state.newsData = [second]; state.checkedAt = '2026-11-06T13:00:00Z';
+    await page.clock.runFor(5100);
+    await page.getByRole('button', { name: second.headline, exact: true }).waitFor();
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse').length, beforeHour + 1);
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse').at(-1).body.forceRefresh, false);
+    assert.equal(await page.locator('#news-feed-section article').count(), 2);
+    await page.getByRole('button', { name: first.headline, exact: true }).waitFor();
+    state.newsMode = 'empty';
+    await clickVisible(page, 'Actualizar pulso');
+    await page.getByText('Actualización completada.', { exact: false }).first().waitFor();
+    assert.equal(await page.locator('#news-feed-section article').count(), 2, 'Una actualización vacía no borra noticias de la mañana');
+    const beforeReload = state.calls.filter(call => call.path === '/api/news/pulse').length;
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: first.headline, exact: true }).waitFor();
+    await page.getByRole('button', { name: second.headline, exact: true }).waitFor();
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse').length, beforeReload);
+    await page.clock.setSystemTime(new Date('2026-11-07T02:59:59Z'));
+    state.checkedAt = '2026-11-07T02:59:59Z';
+    await Promise.all([
+      page.waitForResponse(response => new URL(response.url()).pathname === '/api/news/pulse'),
+      page.evaluate(() => window.dispatchEvent(new Event('focus')))
+    ]);
+    await page.getByRole('button', { name: first.headline, exact: true }).click();
+    await page.getByRole('dialog').waitFor();
+    state.newsMode = 'ok'; state.newsData = [first, tomorrow]; state.checkedAt = '2026-11-07T03:00:00Z';
+    await page.clock.runFor(1100);
+    await page.getByRole('button', { name: tomorrow.headline, exact: true }).waitFor();
+    assert.equal(await page.getByRole('dialog').count(), 0, 'La noticia seleccionada de ayer se cierra a las00:00');
+    assert.equal(await page.getByRole('button', { name: first.headline, exact: true }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: second.headline, exact: true }).count(), 0);
+    assert.equal(await page.locator('#news-feed-section article').count(), 1);
+    assert.equal(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('faros_news_') && key.includes('_2026-11-06_')).length), 0);
+    await clickVisible(page, 'Guardadas (1)');
+    await page.getByRole('button', { name: first.headline, exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Guardadas (1)', exact: true }).count(), 1, 'El cambio de jornada no vence una guardada con menos de24horas');
+    await context.close();
+  });
+  await check('Pestaña suspendida: recuperar foco después de medianoche retira ayer incluso si falla la consulta', async () => {
+    const first = structuredClone(news[0]);
+    first.sources = first.sources.map(source => ({ ...source, publishedDateIso: '2026-11-06T02:30:00Z', publishedTimestamp: Date.parse('2026-11-06T02:30:00Z') }));
+    const { context, page, state } = await setup({ clockAt: '2026-11-06T02:59:50Z', newsOverride: [first] });
+    await clickVisible(page, 'Ahora no');
+    await page.getByRole('button', { name: first.headline, exact: true }).waitFor();
+    const before = state.calls.filter(call => call.path === '/api/news/pulse').length;
+    state.newsMode = 'error'; state.checkedAt = '2026-11-06T03:05:00Z';
+    await page.clock.setSystemTime(new Date(state.checkedAt));
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await page.getByText('Error al actualizar.', { exact: false }).first().waitFor();
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse').length, before + 1);
+    assert.equal(await page.locator('#news-feed-section article').count(), 0, 'Ayer no reaparece como respaldo de una consulta fallida del nuevo día');
+    assert.equal(await page.getByRole('button', { name: first.headline, exact: true }).count(), 0);
     await context.close();
   });
   await check('Secciones de cartera, posiciones LONG/SHORT, guardadas, audio y controles por teclado', async () => {
@@ -810,8 +882,8 @@ try {
     await context.close();
   });
   await check('Única fuente verificada y recuperación cuando falla la carga de una pantalla', async () => {
-    const { context, page, state } = await setup();
-    state.newsData = [{ ...news[0], sources: [news[0].sources[0]], coverageCount: 1 }];
+    const singleSource = [{ ...news[0], sources: [news[0].sources[0]], coverageCount: 1 }];
+    const { context, page } = await setup({ newsOverride: singleSource });
     await clickVisible(page, 'Actualizar pulso');
     await page.getByRole('button', { name: 'Ver única fuente verificada', exact: true }).click();
     await page.getByRole('heading', { name: 'Una fuente verificada', exact: true }).waitFor();
@@ -833,7 +905,7 @@ try {
       const item = structuredClone(news[0]);
       return { ...item, id: `classification-${index}`, headline, impact: analysis.impact, relevanceType: analysis.relevanceType,
         affectedAssetIds: analysis.affectedAssetIds, briefSummary: headline, fullSynthesis: [analysis.explanation],
-        sources: [{ ...item.sources[0], originalHeadline: headline }], coverageCount: 1,
+        sources: [{ ...item.sources[0], sourceUrl: `https://www.ambito.com/finanzas/classification-${index}`, originalHeadline: headline }], coverageCount: 1,
         portfolioImpactAnalysis: { directExplanation: analysis.explanation, affectedHoldings: Object.entries(analysis.assetImpacts).map(([symbol, impactDirection]) => ({ symbol, impactDirection, relationshipDetail: analysis.relationships[symbol] })) } };
     });
     for (const position of ['long', 'short']) {

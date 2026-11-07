@@ -22,7 +22,7 @@ test('errores y búsquedas distinguen información anterior de una consulta comp
 });
 
 
-test('la limpieza conserva el respaldo reciente al cruzar medianoche sin conservar versiones incompatibles', () => {
+test('la limpieza retira toda la jornada anterior a medianoche sin tocar sesiones', () => {
   const now = Date.parse('2026-11-07T03:05:00Z'); // 00:05 in Buenos Aires.
   const prefix = 'faros_news_v13_news_tracking_coverage_';
   const snapshot = (checkedAt: string) => JSON.stringify({ news: [{ id: 'verified', sources: [{ publishedDateIso: '2026-11-07T02:00:00Z' }] }], checkedAt });
@@ -35,7 +35,25 @@ test('la limpieza conserva el respaldo reciente al cruzar medianoche sin conserv
   ]);
   const storage = { get length() { return values.size; }, key: (index: number) => [...values.keys()][index], getItem: (key: string) => values.get(key) || null, removeItem: (key: string) => { values.delete(key); } };
   pruneNewsSnapshotCache(storage, prefix, '2026-11-07', now);
-  assert.deepEqual([...values.keys()], [recentKey, 'faros_session_token']);
-  assert.equal(findRecentNewsSnapshot(storage, `${prefix}same_`, now)?.checkedAt, '2026-11-07T02:55:00Z');
+  assert.deepEqual([...values.keys()], ['faros_session_token']);
+  assert.equal(findRecentNewsSnapshot(storage, `${prefix}same_`, now), null);
   assert.equal(findRecentNewsSnapshot(storage, `${prefix}different_`, now), null);
+});
+
+
+test('recupera las publicaciones acumuladas de todo el día aunque pasaron más de dos horas', () => {
+  const now = Date.parse('2026-11-06T22:01:00Z');
+  const item = (id: string, headline: string, publishedDateIso: string) => ({ id, headline, sources: [{ originalHeadline: headline, mediaName: 'Ámbito', sourceUrl: `https://www.ambito.com/finanzas/daily-${id}`, publishedDateIso }] });
+  const first = item('morning', 'YPF inauguró un oleoducto en Vaca Muerta', '2026-11-06T10:30:00Z');
+  const second = item('afternoon', 'Apple presentó su balance trimestral', '2026-11-06T16:30:00Z');
+  const values = new Map([
+    ['same_2026-11-06_08', JSON.stringify({ news: [first], checkedAt: '2026-11-06T11:00:00Z' })],
+    ['same_2026-11-06_14', JSON.stringify({ news: [second], checkedAt: '2026-11-06T17:00:00Z' })],
+    ['other_2026-11-06_19', JSON.stringify({ news: [second], checkedAt: '2026-11-06T22:00:00Z' })]
+  ]);
+  const storage = { get length() { return values.size; }, key: (index: number) => [...values.keys()][index], getItem: (key: string) => values.get(key) || null };
+  const daily = findRecentNewsSnapshot(storage, 'same_', now)!;
+  assert.deepEqual(daily.news.map(news => news.id), ['morning', 'afternoon']);
+  assert.equal(daily.checkedAt, '2026-11-06T17:00:00Z');
+  assert.equal(findRecentNewsSnapshot(storage, 'missing_', now), null);
 });

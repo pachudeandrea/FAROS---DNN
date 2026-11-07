@@ -1,3 +1,4 @@
+import { argentinaNewsDay, dailyNewsItems, mergeDailyNews } from '../utils/dailyNews.js';
 import { pulseSelectionKey, readPulseSnapshot, usablePulseSnapshot, writePulseSnapshot } from './newsPulseCache.js';
 import { registerNewsLibraryRoutes } from './newsLibraryRoutes.js';
 import { COVERAGE_PUBLISHERS, collectPublisherSections } from '../utils/publisherSections.js';
@@ -437,9 +438,15 @@ async function fetchCalendarEvents(
 // --- NEWS PULSE ENDPOINTS ---
 app.post('/api/news/pulse', asyncRoute(async (req, res) => {
   const pulseStartTime = Date.now();
+  const requestDay = argentinaNewsDay(pulseStartTime);
   const user = await getSessionUser(req);
   const streaming = req.get('accept')?.includes('application/x-ndjson');
-  const writeFrame = (body: unknown) => {
+  const writeFrame = (body: any) => {
+    if (body.type === 'progress') {
+      if (requestDay !== argentinaNewsDay()) return;
+      body = { ...body, news: dailyNewsItems(body.news, requestDay) };
+      if (!body.news.length) return;
+    }
     if (res.destroyed || res.writableEnded) return;
     if (!res.headersSent) {
       res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
@@ -450,6 +457,7 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
     res.write(JSON.stringify(body) + '\n');
   };
   const respondWithNews = (body: any) => {
+    body = { ...body, news: requestDay === argentinaNewsDay() ? dailyNewsItems(body.news, requestDay) : [] };
     if (Array.isArray(body.news)) {
       console.info('[NEWS PULSE]', JSON.stringify({ cached: !!body.cached, news: body.news.length,
         publications: body.news.reduce((count: number, item: NewsItem) => count + item.sources.length, 0),
@@ -489,32 +497,41 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
   }
   lastProcessedDay = dateKey;
 
+  // Hourly work accumulates into the current Argentina day. Old hours are
+  // retained for the whole day; yesterday is never a fallback for today's feed.
+  const selectionPrefix = `${NEWS_CACHE_VERSION}_${pulseSelectionKey(scope)}_${dateKey}_`;
+  const memoryRows = Object.entries(newsCache).filter(([key]) => key.startsWith(selectionPrefix)).sort((a, b) => a[1].timestamp - b[1].timestamp);
+  let previousNews: NewsItem[] = [];
+  for (const [, value] of memoryRows) previousNews = mergeDailyNews(previousNews, value.news, dateKey);
   let cached = !forceRefresh && newsCache[cacheKey]
     ? usablePulseSnapshot({ ...newsCache[cacheKey], hourKey }) : null;
   let recent = null;
   if (!cached) {
-    // A cold Vercel instance can reuse work done by another instance. Historical
-    // hours are a readable fallback only, never a completed current query.
     recent = await readPulseSnapshot(scope);
+    if (recent) previousNews = mergeDailyNews(previousNews, recent.news, dateKey);
     if (!forceRefresh && recent?.hourKey === hourKey) cached = recent;
   }
   if (cached) {
-    newsCache[cacheKey] = { news: cached.news, timestamp: cached.timestamp };
+    const news = mergeDailyNews(previousNews, cached.news, dateKey);
+    newsCache[cacheKey] = { news, timestamp: cached.timestamp };
     trackEventNonBlocking('news_pulse_query', {
       userId: user?.id,
-      metadata: { cached: true, tickersCount: tickers.length, newsCount: cached.news.length },
+      metadata: { cached: true, tickersCount: tickers.length, newsCount: news.length },
       userAgent: req.get('user-agent')
     });
-    return respondWithNews({ news: cached.news, checkedAt: new Date(cached.timestamp).toISOString(), cached: true, fallback: false, dateKey, hourKey });
+    return respondWithNews({ news, checkedAt: new Date(cached.timestamp).toISOString(), cached: true, fallback: false, dateKey, hourKey });
   }
-  if (streaming && recent?.news.length) {
-    writeFrame({ type: 'progress', news: recent.news, checkedAt: new Date(recent.timestamp).toISOString(), cached: true, newsVersion: NEWS_CACHE_VERSION });
+  if (streaming && previousNews.length) {
+    const previousAt = recent?.timestamp || memoryRows.at(-1)?.[1].timestamp;
+    writeFrame({ type: 'progress', news: previousNews, checkedAt: previousAt ? new Date(previousAt).toISOString() : null, cached: true, newsVersion: NEWS_CACHE_VERSION });
   }
 
   const job = newsJobs.getOrCreate(cacheKey, async publish => {
     const startedAt = pulseStartTime;
     let firstNews: number | null = null;
-    const emit = (news: NewsItem[]) => {
+    const emit = (incoming: NewsItem[]) => {
+      if (requestDay !== argentinaNewsDay()) return;
+      const news = mergeDailyNews(previousNews, incoming, dateKey);
       if (news.length && firstNews === null) firstNews = Date.now() - startedAt;
       publish(news);
     };
@@ -528,14 +545,19 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
     let modelNews: NewsItem[] = []; let rssNews: NewsItem[] = [];
     // Publish verified results as they arrive, retaining the full collection budgets.
     const [grounded, rss] = await Promise.allSettled([
-      fetchGroundedNewsFromGemini(tickers, profile, assets).then(news => { modelNews = news || []; emit(mergeVerifiedNews(modelNews, rssNews)); return modelNews; }),
-      getLiveVerifiedArgentineNews(tickers, diagnostics, assets, emit).then(news => { rssNews = news; emit(mergeVerifiedNews(modelNews, rssNews)); return news; })
+      fetchGroundedNewsFromGemini(tickers, profile, assets).then(news => { modelNews = dailyNewsItems(news || [], dateKey); emit(mergeVerifiedNews(modelNews, rssNews)); return modelNews; }),
+      getLiveVerifiedArgentineNews(tickers, diagnostics, assets, emit, dateKey).then(news => { rssNews = news; emit(mergeVerifiedNews(modelNews, rssNews)); return news; })
     ]);
     if (!modelNews.length && rss.status === 'rejected') throw new Error('NEWS_SOURCES_UNAVAILABLE');
-    const news = await discoverMissingCoverage(mergeVerifiedNews(modelNews, rssNews), coverageDiscovery, { prefetchedSections });
+    const collected = await discoverMissingCoverage(mergeVerifiedNews(modelNews, rssNews), coverageDiscovery, { prefetchedSections });
     const timestamp = Date.now();
-    newsCache[cacheKey] = { timestamp, news };
-    await writePulseSnapshot(scope, { timestamp, news, hourKey });
+    let news = requestDay === argentinaNewsDay(timestamp) ? mergeDailyNews(previousNews, collected, dateKey) : [];
+    if (requestDay === argentinaNewsDay(timestamp)) {
+      const persisted = await writePulseSnapshot(scope, { timestamp, news, hourKey });
+      if (persisted) news = mergeDailyNews(news, persisted.news, dateKey);
+      if (requestDay === argentinaNewsDay()) newsCache[cacheKey] = { timestamp, news };
+      else news = [];
+    }
     return { news, diagnostics, coverageDiscovery, fallback: grounded.status !== 'fulfilled' || !modelNews.length, timestamp, timingsMs: { firstNews, total: Date.now() - startedAt } };
   });
   const unsubscribe = streaming ? job.subscribe(progress => writeFrame({ type: 'progress', ...progress, newsVersion: NEWS_CACHE_VERSION })) : () => {};

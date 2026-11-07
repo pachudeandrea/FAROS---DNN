@@ -50,7 +50,7 @@ test('solicitudes simultáneas de la misma selección comparten trabajo y los nu
   assert.equal(calls, 3, 'Selecciones diferentes siguen aisladas');
 });
 
-test('el respaldo reciente respeta selección, horario real y vigencia de publicaciones', () => {
+test('el respaldo diario respeta selección, fecha argentina y publicaciones de la jornada', () => {
   const now = Date.parse('2026-11-05T22:01:00Z');
   const snapshot = (checkedAt: string, date = '2026-11-05T20:00:00Z') => JSON.stringify({ news: [{ ...news[0], sources: [{ ...news[0].sources[0], publishedDateIso: date }] }], checkedAt });
   const entries = new Map([
@@ -62,6 +62,7 @@ test('el respaldo reciente respeta selección, horario real y vigencia de public
   const storage = { get length() { return entries.size; }, key: (index: number) => [...entries.keys()][index], getItem: (key: string) => entries.get(key) || null };
   assert.equal(findRecentNewsSnapshot(storage, 'same_', now)?.checkedAt, '2026-11-05T21:59:00Z');
   assert.equal(findRecentNewsSnapshot(storage, 'absent_', now), null);
+  assert.equal(findRecentNewsSnapshot(storage, 'same_', Date.parse('2026-11-06T03:00:00Z')), null, 'A las00:00 argentina no se recupera el día anterior');
 });
 
 test('una verificación RSS exitosa se reutiliza para cobertura solo dentro de la misma editorial', async t => {

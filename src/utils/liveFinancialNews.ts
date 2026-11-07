@@ -1,3 +1,4 @@
+import { argentinaNewsDay } from './dailyNews.js';
 import { createHash } from 'node:crypto';
 import * as cheerio from 'cheerio';
 import { recognizeAssetIds } from './assetNews.js';
@@ -459,13 +460,17 @@ export function incrementalNewsVerification(
   };
 }
 
-export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], diagnostics = createCollectionDiagnostics(), assets: Asset[] = ASSET_CATALOG, onProgress?: (news: NewsItem[]) => void): Promise<NewsItem[]> {
+export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], diagnostics = createCollectionDiagnostics(), assets: Asset[] = ASSET_CATALOG, onProgress?: (news: NewsItem[]) => void, day?: string): Promise<NewsItem[]> {
+  const forDay = (sources: VerifiedSource[]) => day ? sources.filter(source => {
+    const at = source.publishedTimestamp ?? Date.parse(source.publishedDateIso || '');
+    return Number.isFinite(at) && argentinaNewsDay(at) === day;
+  }) : sources;
   const partial: VerifiedSource[] = [];
   let lastProgress = 0;
   const onVerified = onProgress ? (source: VerifiedSource) => {
     partial.push(source);
     if (Date.now() - lastProgress < 500) return;
-    const news = buildVerifiedNews(partial, userTickers, assets);
+    const news = buildVerifiedNews(forDay(partial), userTickers, assets);
     if (news.length) { lastProgress = Date.now(); onProgress(news); }
   } : undefined;
   // One queue tries relevant alternatives when the first source is stale,
@@ -483,7 +488,7 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], d
     if (diagnostics.uniqueCandidates && diagnostics.discarded.connection + diagnostics.verification.skipped === diagnostics.uniqueCandidates) throw new Error('NEWS_SOURCES_UNAVAILABLE');
     return [];
   }
-  return buildVerifiedNews(verifiedSources, userTickers, assets, diagnostics);
+  return buildVerifiedNews(forDay(verifiedSources), userTickers, assets, diagnostics);
 }
 
 /** The progressive and final views use the same grounding, freshness and portfolio rules. */
