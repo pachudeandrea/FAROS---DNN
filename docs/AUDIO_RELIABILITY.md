@@ -21,3 +21,15 @@ El resumen hablado usa frases más breves y posiciones compradas/vendidas. Conse
 Referencia del catálogo de voces: https://learn.microsoft.com/azure/ai-services/speech-service/language-support?tabs=tts#supported-languages . El paquete instalado documenta el mecanismo Read Aloud y su catálogo en `speech.platform.bing.com`.
 
 La política activa de este entorno rechazó el acceso al proveedor con CONNECT 403. Los dominios de voz y publicaciones quedaron añadidos al borrador de configuración para aplicar desde el entorno. Por eso no se afirma haber escuchado Tomás en vivo, medido su latencia de red real ni verificado el despliegue de producción. Las pruebas locales comprueban el código y las condiciones de fallo con datos de prueba explícitos.
+
+## Voz estable durante la reproducción
+
+Se corrigieron dos causas de cambios inesperados: cada segmento volvía a solicitar Tomás aunque el primero hubiera elegido Elena, y el servidor guardaba audio de Elena bajo la clave solicitada de Tomás durante treinta minutos.
+
+Ahora el primer segmento define la voz real del audio completo. La continuación, preparación anticipada y reintento la solicitan expresamente con `allowVoiceFallback:false`; una respuesta con otra voz se rechaza antes de reproducirse. Una pista nueva puede volver a intentar la voz preferida. Los trabajos estrictos y los que admiten alternativa permanecen separados, y la caché se guarda bajo la voz que efectivamente generó los bytes. Solo el primer segmento admite elegir una alternativa; si la voz fijada no está disponible se ofrece reintentar, evitando cambios de narrador dentro de una síntesis.
+
+El reproductor muestra la voz real también en celular. Se retiró el aviso persistente de reemplazo de voz mientras el audio funciona. La versión `argentina-v3-fixed-voice` renueva solo las cachés de audio.
+
+La comprobación pública previa al despliegue de esta corrección obtuvo audio MP3 tanto de Tomás como de Elena (aproximadamente 2,2 y 2,4 segundos respectivamente para una frase sintética); no prueba disponibilidad permanente ni reproduce el fallo transitorio del usuario. Las regresiones locales simulan ese fallo y verifican la continuidad del narrador entre segmentos, separación de caché, cancelaciones y controles.
+
+Validación conjunta completada: `npm run lint`, 230 pruebas unitarias/de integración aprobadas con PostgreSQL local y cero omitidas, y las 42 comprobaciones completas de navegador. Incluye reproducción de una señal WAV real en dos fragmentos consecutivos con Elena, caché separada por voz, rechazo de un cambio inesperado, reintento, pausa, velocidad, saltos y cierre.

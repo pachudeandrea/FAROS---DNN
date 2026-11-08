@@ -49,6 +49,12 @@ if (process.env.FAROS_TEST_NEWS_DIRECTIONAL === '1') {
   articles.splice(0, articles.length, ...publications.map(item => ({ media: item.sources[0].mediaName, url: item.sources[0].sourceUrl, title: item.headline })));
 }
 if (process.env.FAROS_TEST_NEWS_JUDICIAL === '1') articles.splice(0, articles.length, ...judicialArticles);
+export const sectionOnlyArticles = [
+  { media: 'La Nación', url: 'https://www.lanacion.com.ar/economia/ypf-production-section-fixture/', title: 'YPF presenta novedades de su producción petrolera', description: 'YPF aumentó su producción de petróleo durante el trimestre.', body: 'La petrolera presentó los datos de actividad a sus inversores.' },
+  { media: 'Clarín', url: 'https://www.clarin.com/economia/ypf-judicial-section-fixture.html', title: 'YPF enfrenta una nueva decisión judicial', description: 'La Justicia ordenó a YPF pagar una indemnización millonaria.', body: 'La resolución judicial cambió la exposición legal de la petrolera.' },
+  { media: 'iProfesional', url: 'https://www.iprofesional.com/finanzas/ypf-report-section-fixture', title: 'YPF explica los detalles de su balance trimestral', description: 'YPF presentó su balance trimestral ante los inversores.', body: 'La empresa compartió el informe de sus actividades.' }
+];
+if (process.env.FAROS_TEST_NEWS_SECTION_ONLY === '1') articles.splice(0, articles.length, ...sectionOnlyArticles);
 
 export function installNewsTransport() {
   let releaseCoverage;
@@ -95,6 +101,11 @@ export function installNewsTransport() {
       const publisher = query.match(/^site:(\S+)/)?.[1];
       const found = process.env.FAROS_TEST_NEWS_DISCOVERY === '1' ? activeArticles().filter(article => new URL(article.url).hostname === `www.${publisher}`) : [];
       return new Response(`<rss><channel>${found.map(article => `<item><title>${article.title}</title><link>${process.env.FAROS_TEST_NEWS_SECTION === '1' ? 'https://www.bing.com/ck/a?u=a1' + Buffer.from(article.url).toString('base64url') : article.url}</link></item>`).join('')}</channel></rss>`);
+    }
+    if (process.env.FAROS_TEST_NEWS_SECTION_ONLY === '1' && ['/', '/finanzas/', '/economia/', '/finanzas-mercados/', '/economia-politica/', '/finanzas', '/economia'].includes(new URL(url).pathname)) {
+      stats.sections++;
+      const found = activeArticles().filter(article => new URL(article.url).hostname === new URL(url).hostname);
+      return new Response(`<html><body>${found.map(article => `<a href="${new URL(article.url).pathname}"><h2>${article.title}</h2></a>`).join('')}</body></html>`, { headers: { 'content-type': 'text/html' } });
     }
     if (url === 'https://www.infobae.com/economia/') {
       stats.sections++;

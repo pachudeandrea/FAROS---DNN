@@ -1,7 +1,7 @@
 export const DEFAULT_AUDIO_VOICE = 'es-AR-TomasNeural';
 export const AUDIO_VOICES = ['es-AR-TomasNeural', 'es-AR-ElenaNeural'] as const;
 export type ArgentineVoice = typeof AUDIO_VOICES[number];
-export const AUDIO_CACHE_VERSION = 'argentina-v2';
+export const AUDIO_CACHE_VERSION = 'argentina-v3-fixed-voice';
 
 /** Preserve all words and sentence order. The first small segment starts sooner. */
 export function splitSpeechText(text: string): string[] {

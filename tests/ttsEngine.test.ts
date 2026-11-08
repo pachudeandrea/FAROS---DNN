@@ -167,13 +167,75 @@ test('TTS fallback reports Elena only when Elena actually supplied the audio', a
   const result = await service.synthesize('Prueba de voz alternativa.');
   assert.equal(result.success, true);
   assert.equal(result.voice, 'es-AR-ElenaNeural');
+  assert.equal(result.hash, computeScriptHash('Prueba de voz alternativa.', 'es-AR-ElenaNeural'));
   assert.match(result.notice!, /argentina Elena/);
   assert.deepEqual(voices, ['es-AR-TomasNeural', 'es-AR-ElenaNeural']);
   const cached = await service.synthesize('Prueba de voz alternativa.');
   assert.equal(cached.cached, true);
   assert.equal(cached.voice, 'es-AR-ElenaNeural');
   assert.equal(cached.notice, result.notice);
-  assert.equal(voices.length, 2);
+  assert.deepEqual(voices, ['es-AR-TomasNeural', 'es-AR-ElenaNeural', 'es-AR-TomasNeural'], 'A later preferred-voice request tries that voice again before reusing alternate bytes');
+  const explicit = await service.synthesize('Prueba de voz alternativa.', undefined, 'es-AR-ElenaNeural', false);
+  assert.equal(explicit.cached, true);
+  assert.equal(explicit.voice, 'es-AR-ElenaNeural');
+  assert.equal(explicit.notice, undefined, 'Explicitly choosing Elena does not replay a previous Tomás failure notice');
+});
+
+test('a temporary alternate does not prevent the preferred voice recovering for the same text', async () => {
+  const voices: string[] = [];
+  let firstPrimary = true;
+  const service = createSpeechService(async (_text, voice) => {
+    voices.push(voice);
+    if (voice === 'es-AR-TomasNeural' && firstPrimary) { firstPrimary = false; throw new Error('Temporary primary outage'); }
+    return fixtureAudio(voice === 'es-AR-TomasNeural' ? 1 : 2);
+  });
+  const fallback = await service.synthesize('Prueba de recuperación de voz.');
+  assert.equal(fallback.voice, 'es-AR-ElenaNeural');
+  const recovered = await service.synthesize('Prueba de recuperación de voz.', undefined, 'es-AR-TomasNeural', false);
+  assert.equal(recovered.success, true);
+  assert.equal(recovered.cached, false);
+  assert.equal(recovered.voice, 'es-AR-TomasNeural');
+  assert.equal(recovered.hash, computeScriptHash('Prueba de recuperación de voz.', 'es-AR-TomasNeural'));
+  assert.equal(recovered.notice, undefined);
+  assert.notEqual(recovered.audioBase64, fallback.audioBase64);
+  assert.equal((await service.synthesize('Prueba de recuperación de voz.')).cached, true);
+  assert.deepEqual(voices, ['es-AR-TomasNeural', 'es-AR-ElenaNeural', 'es-AR-TomasNeural']);
+});
+
+test('a selected voice never consumes cached alternate bytes or switches voices after failure', async () => {
+  const voices: string[] = [];
+  const service = createSpeechService(async (_text, voice) => {
+    voices.push(voice);
+    if (voice === 'es-AR-TomasNeural') throw new Error('Primary unavailable');
+    return fixtureAudio(2);
+  });
+  assert.equal((await service.synthesize('Voz fijada para el resumen.')).voice, 'es-AR-ElenaNeural');
+  const strict = await service.synthesize('Voz fijada para el resumen.', undefined, 'es-AR-TomasNeural', false);
+  assert.equal(strict.success, false);
+  assert.equal(strict.audioBase64, undefined);
+  assert.equal(strict.voice, undefined);
+  assert.deepEqual(voices, ['es-AR-TomasNeural', 'es-AR-ElenaNeural', 'es-AR-TomasNeural']);
+});
+
+test('a strict request cannot join a pending job allowed to use another voice', async () => {
+  const rejects: Array<(error: Error) => void> = [];
+  const voices: string[] = [];
+  const service = createSpeechService(async (_text, voice) => {
+    voices.push(voice);
+    if (voice === 'es-AR-ElenaNeural') return fixtureAudio(2);
+    return new Promise<Buffer>((_resolve, reject) => { rejects.push(reject); });
+  });
+  const flexible = service.synthesize('Concurrencia con voz estable.');
+  const strict = service.synthesize('Concurrencia con voz estable.', undefined, 'es-AR-TomasNeural', false);
+  assert.equal(rejects.length, 2, 'Different fallback policies have independent transport jobs');
+  rejects[0](new Error('Primary failed'));
+  rejects[1](new Error('Selected voice failed'));
+  const [flexibleResult, strictResult] = await Promise.all([flexible, strict]);
+  assert.equal(flexibleResult.success, true);
+  assert.equal(flexibleResult.voice, 'es-AR-ElenaNeural');
+  assert.equal(strictResult.success, false);
+  assert.equal(strictResult.audioBase64, undefined);
+  assert.deepEqual(voices, ['es-AR-TomasNeural', 'es-AR-TomasNeural', 'es-AR-ElenaNeural']);
 });
 
 test('TTS honors Elena as an explicit first choice and can fall back to Tomás', async () => {

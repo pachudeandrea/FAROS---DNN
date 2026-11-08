@@ -1,5 +1,5 @@
 import type { AudioTrack } from '../types/index';
-import { AUDIO_CACHE_VERSION, DEFAULT_AUDIO_VOICE, splitSpeechText } from './speechText';
+import { AUDIO_CACHE_VERSION, AUDIO_VOICES, DEFAULT_AUDIO_VOICE, splitSpeechText, type ArgentineVoice } from './speechText';
 
 export interface AudioControllerState {
   isPlaying: boolean;
@@ -66,6 +66,7 @@ export class GlobalAudioController {
   private segmentIndex = 0;
   private loadedIndex = -1;
   private estimatedDuration = 0;
+  private playbackVoice: ArgentineVoice | null = null;
   private warmQueue: Array<{ text: string; key: string }> = [];
   private warmKeys = new Set<string>();
   private warmController: AbortController | null = null;
@@ -143,6 +144,7 @@ export class GlobalAudioController {
     this.segmentIndex = 0;
     this.loadedIndex = -1;
     this.estimatedDuration = 0;
+    this.playbackVoice = null;
     this.state = {
       ...this.state, isPlaying: false, isLoading: false, currentTrack: null,
       currentSeconds: 0, totalDuration: 0, remainingSeconds: 0,
@@ -167,8 +169,8 @@ export class GlobalAudioController {
     return `${AUDIO_CACHE_VERSION}\u0000${voice}\u0000${text}`;
   }
 
-  private cached(text: string): Clip | undefined {
-    const key = this.cacheKey(text);
+  private cached(text: string, voice: string = DEFAULT_AUDIO_VOICE): Clip | undefined {
+    const key = this.cacheKey(text, voice);
     const clip = this.cache.get(key);
     if (clip) { this.cache.delete(key); this.cache.set(key, clip); }
     return clip;
@@ -191,7 +193,7 @@ export class GlobalAudioController {
     }
   }
 
-  private async synthesize(text: string, controller: AbortController, lowPriority: boolean): Promise<Clip> {
+  private async synthesize(text: string, controller: AbortController, lowPriority: boolean, voice: ArgentineVoice, allowVoiceFallback: boolean): Promise<Clip> {
     let timer: ReturnType<typeof setTimeout>;
     let removeAbort = () => {};
     const deadline = new Promise<never>((_, reject) => {
@@ -206,19 +208,22 @@ export class GlobalAudioController {
     const download = async (): Promise<Clip> => {
       const response = await fetch('/api/audio/synthesize', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice: DEFAULT_AUDIO_VOICE }), signal: controller.signal,
+        body: JSON.stringify({ text, voice, allowVoiceFallback }), signal: controller.signal,
         ...(lowPriority ? { priority: 'low' } : {}),
       });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || 'El audio no está disponible en este momento.');
       if (controller.signal.aborted) throw abortError();
+      if (!AUDIO_VOICES.includes(data.voice) || !allowVoiceFallback && data.voice !== voice) {
+        throw new Error('No se pudo mantener la voz de este audio. Tocá Reintentar.');
+      }
       const mimeType = data.mimeType || 'audio/mpeg';
       if (typeof data.audioBase64 !== 'string' || !data.audioBase64.length || !/^audio\/[a-z0-9.+-]+$/i.test(mimeType)) {
         throw new Error('El servidor no devolvió un audio completo. Volvé a intentar.');
       }
       return {
         url: `data:${mimeType};base64,${data.audioBase64}`,
-        voice: data.voice || DEFAULT_AUDIO_VOICE, engine: data.engine || 'Voz neuronal argentina',
+        voice: data.voice, engine: data.engine || 'Voz neuronal argentina',
         notice: typeof data.notice === 'string' ? data.notice : undefined, size: data.audioBase64.length * 2,
       };
     };
@@ -227,15 +232,15 @@ export class GlobalAudioController {
   }
 
   /** Shared requests have independent subscribers; cancelling one cannot revive its player. */
-  private requestClip(text: string, signal: AbortSignal, lowPriority = false): Promise<Clip> {
+  private requestClip(text: string, signal: AbortSignal, lowPriority = false, voice: ArgentineVoice = DEFAULT_AUDIO_VOICE, allowVoiceFallback = true): Promise<Clip> {
     if (signal.aborted) return Promise.reject(abortError());
-    const cached = this.cached(text);
+    const cached = this.cached(text, voice);
     if (cached) return Promise.resolve(cached);
-    const key = this.cacheKey(text);
+    const key = `${this.cacheKey(text, voice)}\u0000${allowVoiceFallback ? 'initial' : 'fixed'}`;
     let request = this.requests.get(key);
     if (!request || request.controller.signal.aborted) {
       const created: Request = { controller: new AbortController(), consumers: new Set(), settled: false, promise: null! };
-      created.promise = this.synthesize(text, created.controller, lowPriority).then(clip => {
+      created.promise = this.synthesize(text, created.controller, lowPriority, voice, allowVoiceFallback).then(clip => {
         if (created.controller.signal.aborted) throw abortError();
         this.storeClip(text, clip);
         return clip;
@@ -286,8 +291,9 @@ export class GlobalAudioController {
     })();
   }
 
-  public async playTrack(track: AudioTrack, requestedSpeed?: 1 | 1.25 | 1.5): Promise<void> {
+  public async playTrack(track: AudioTrack, requestedSpeed?: 1 | 1.25 | 1.5, retainedVoice: ArgentineVoice | null = null): Promise<void> {
     this.resetPlayback();
+    this.playbackVoice = retainedVoice;
     const generation = this.generation;
     const text = track.script || track.title;
     this.segments = splitSpeechText(text).map(part => ({ text: part }));
@@ -303,7 +309,7 @@ export class GlobalAudioController {
     try {
       if (!this.segments.length) throw new Error('No hay texto disponible para este audio.');
       this.initAudioElements();
-      if (!this.cached(this.segments[0].text)) {
+      if (!this.cached(this.segments[0].text, this.playbackVoice || DEFAULT_AUDIO_VOICE)) {
         // Unlock this SAME element in the click gesture. Its promise never resumes a later track.
         // Silent samples, with the element unmuted, also unlock later speech on iOS.
         this.audioElement!.muted = false;
@@ -316,7 +322,7 @@ export class GlobalAudioController {
 
   public retry(): void {
     const track = this.state.currentTrack;
-    if (track) void this.playTrack(track, this.state.speed);
+    if (track) void this.playTrack(track, this.state.speed, this.playbackVoice);
   }
 
   private isCurrent(generation: number): boolean {
@@ -358,8 +364,10 @@ export class GlobalAudioController {
     this.state.isPlaying = false;
     this.emit();
     try {
-      const clip = segment.clip || this.cached(segment.text) || await this.requestClip(segment.text, this.sessionController.signal);
+      const voice = this.playbackVoice || DEFAULT_AUDIO_VOICE;
+      const clip = segment.clip || this.cached(segment.text, voice) || await this.requestClip(segment.text, this.sessionController.signal, false, voice, !this.playbackVoice);
       if (!this.isCurrent(generation)) return;
+      this.playbackVoice ||= clip.voice as ArgentineVoice;
       segment.clip = clip;
       segment.duration = clip.duration || segment.duration;
       if (attempt !== this.playAttempt || !this.wantsPlayback) return;
@@ -375,7 +383,8 @@ export class GlobalAudioController {
     if (!segment || !this.sessionController) return;
     void (async () => {
       try {
-        const clip = segment.clip || this.cached(segment.text) || await this.requestClip(segment.text, this.sessionController!.signal, true);
+        const voice = this.playbackVoice || DEFAULT_AUDIO_VOICE;
+        const clip = segment.clip || this.cached(segment.text, voice) || await this.requestClip(segment.text, this.sessionController!.signal, true, voice, !this.playbackVoice);
         if (!this.isCurrent(generation)) return;
         segment.clip = clip;
         segment.duration = clip.duration || segment.duration;

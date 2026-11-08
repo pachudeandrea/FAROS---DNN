@@ -9,6 +9,7 @@ import { NewsItem, MediaCoverage } from '../types/index.js';
 import { verifySourceUrl, filterByFreshness, getArgentinaDateInfo, DISALLOWED_PATH_PATTERNS } from './urlResolver.js';
 import { getPublisherKey } from './sourceGrounding.js';
 import { sourcesCoverSameEvent } from './newsCoverage.js';
+import type { PublicationCandidate } from './publisherSections.js';
 
 export interface RawFeedItem {
   title: string;
@@ -59,7 +60,7 @@ function fairCandidateOrder(candidates: RawFeedItem[], userTickers: string[], as
     queue.push(candidate);
     byPublisher.set(publisher, queue);
     priorities.set(candidate, selected.size > 0
-      && analyzeNewsRelevance(candidate.title, assets).affectedAssetIds.some(id => selected.has(id)) ? 1 : 0);
+      && recognizeAssetIds(candidate.title, assets).some(id => selected.has(id)) ? 1 : 0);
   }
   // Prioritize relevant headlines inside every publisher's queue without
   // excluding other publishers or dropping general financial coverage.
@@ -460,7 +461,7 @@ export function incrementalNewsVerification(
   };
 }
 
-export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], diagnostics = createCollectionDiagnostics(), assets: Asset[] = ASSET_CATALOG, onProgress?: (news: NewsItem[]) => void, day?: string): Promise<NewsItem[]> {
+export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], diagnostics = createCollectionDiagnostics(), assets: Asset[] = ASSET_CATALOG, onProgress?: (news: NewsItem[]) => void, day?: string, sectionCandidates?: Promise<PublicationCandidate[]>): Promise<NewsItem[]> {
   const forDay = (sources: VerifiedSource[]) => day ? sources.filter(source => {
     const at = source.publishedTimestamp ?? Date.parse(source.publishedDateIso || '');
     return Number.isFinite(at) && argentinaNewsDay(at) === day;
@@ -476,9 +477,25 @@ export async function getLiveVerifiedArgentineNews(userTickers: string[] = [], d
   // One queue tries relevant alternatives when the first source is stale,
   // unavailable or unrelated, while slower feeds can still add other media.
   const incremental = onProgress ? incrementalNewsVerification(userTickers, diagnostics, assets, { onVerified }) : undefined;
-  let candidates: RawFeedItem[];
-  try { candidates = await fetchRssCandidates(100, diagnostics, assets, incremental?.add); }
-  catch (error) { if (incremental) await incremental.finish(); throw error; }
+  // Shared publisher indexes discover independent events as well as alternate
+  // coverage. Submit their candidates as soon as they arrive, using the same
+  // fair queue/deadline and URL deduplication as RSS; do not fetch indexes twice.
+  const sections = (sectionCandidates || Promise.resolve([])).then(items => {
+    const candidates = items.filter(item => isFinancialCandidate(item.title, item.url, assets))
+      .map(item => ({ title: item.title, link: item.url, sourceFeed: item.publisher }));
+    if (candidates.length) incremental?.add(candidates);
+    return candidates;
+  }).catch(() => [] as RawFeedItem[]);
+  const [rss, extra] = await Promise.allSettled([
+    fetchRssCandidates(100, diagnostics, assets, incremental?.add), sections
+  ]);
+  const sectionItems = extra.status === 'fulfilled' ? extra.value : [];
+  if (rss.status === 'rejected' && !sectionItems.length) {
+    if (incremental) await incremental.finish();
+    throw rss.reason;
+  }
+  const candidates = [...(rss.status === 'fulfilled' ? rss.value : []), ...sectionItems];
+  diagnostics.candidates = candidates.length;
   const verifiedSources = incremental ? await incremental.finish() : await verifyNewsCandidates(candidates, userTickers, diagnostics, assets);
 
   console.log(`[LIVE VERIFIER] Total successfully verified authentic sources: ${verifiedSources.length}`);

@@ -76,3 +76,13 @@ Esta optimización mantiene `v13_news_tracking_coverage`: el formato y las regla
 ## Jornada diaria con actualización horaria
 
 El pulso actual acumula las publicaciones de la jornada argentina y comienza un conjunto nuevo a las00:00. Ya no se recupera el día anterior por la ventana de48horas de los recolectores. La comparación y la clasificación se mantienen; el conjunto completo del día se combina al actualizar cada hora. Ver [Noticias por jornada](DAILY_NEWS.md) para temporizadores, persistencia y pruebas.
+
+## Recopilación de novedades de los seis medios
+
+Se corrigió una limitación de descubrimiento: los cuatro RSS pertenecían a tres editores (Ámbito, El Cronista e Infobae). Los índices de La Nación, Clarín e iProfesional ya se descargaban, pero solo podían agregar fuentes a una noticia existente; sus hechos independientes quedaban fuera del pulso.
+
+Los índices compartidos ahora alimentan también la recopilación de noticias nuevas. Se reutiliza la misma descarga, cola de verificación con un máximo de cuatro solicitudes, presupuesto de tiempo y deduplicación de URLs. Una sección puede aportar noticias aunque fallen todos los RSS y mostrar avances mientras otro feed sigue pendiente. La fecha se comprueba en la publicación original y cada noticia debe relacionarse con los activos seleccionados. Los enlaces o títulos de portada no se usan como prueba de una dirección de impacto.
+
+La clasificación usa el texto verificado de cada artículo, sin cuotas por categoría: una colección puede ser neutral cuando la evidencia lo justifica. Las pruebas incluyen novedades independientes favorables, adversas y neutrales de los tres editores que antes no originaban tarjetas, noticias de ayer descartadas y una sola descarga por publicación. Se conservan la actualización horaria, el acumulado del día y el reinicio a las 00:00 de Argentina.
+
+Validación conjunta con la corrección de audio: lint, 230 pruebas unitarias/de integración y las 42 comprobaciones completas de navegador aprobadas. La regresión HTTP comprueba la conexión real del endpoint con los índices, tres publicaciones independientes con evidencia verificada y la conservación del resultado desde caché.

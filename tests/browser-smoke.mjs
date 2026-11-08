@@ -152,7 +152,10 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
       if (state.audioDelay) await new Promise(resolve => setTimeout(resolve, state.audioDelay));
       status = state.audioMode === 'error' ? 503 : 200;
       data = state.audioMode === 'error' ? { success: false, error: 'Fallo simulado del proveedor de audio.' }
-        : { success: true, audioBase64, mimeType: 'audio/wav', engine: 'test', voice: 'es-AR-TomasNeural' };
+        : state.audioMode === 'fallback' ? {
+          success: true, audioBase64, mimeType: 'audio/wav', engine: 'test', voice: 'es-AR-ElenaNeural',
+          ...(body.voice === 'es-AR-TomasNeural' ? { notice: 'Se está usando la voz argentina Elena porque la otra no respondió.' } : {})
+        } : { success: true, audioBase64, mimeType: 'audio/wav', engine: 'test', voice: 'es-AR-TomasNeural' };
     }
     if (url.pathname === '/api/calendar/events') data = { events: [] };
     if (url.pathname === '/api/admin/check') data = { isAdmin: !!state.user.isAdmin };
@@ -853,6 +856,41 @@ try {
     await page.screenshot({ path: path.join(artifacts, 'audio-reliable-390.png') });
     await player.getByRole('button', { name: 'Cerrar reproductor y detener audio', exact: true }).click();
     await player.waitFor({ state: 'hidden' }); await context.close();
+  });
+  await check('Audio mantiene una sola voz en el resumen y no repite el aviso de reemplazo entre fragmentos', async () => {
+    // Warmups fail before the click, so this regression observes the active
+    // summary's actual first clip and its measured continuation separately.
+    const { context, page, state } = await setup({ audioMode: 'error', viewport: { width: 1280, height: 900 } });
+    await clickVisible(page, 'Ahora no');
+    const before = state.calls.length;
+    state.audioMode = 'fallback';
+    await clickVisible(page, 'Escuchar resumen del día');
+    const player = page.getByRole('region', { name: 'Reproductor de audio', exact: true });
+    await player.getByText('Resumen del día', { exact: true }).waitFor();
+    await player.getByRole('button', { name: 'Pausar audio', exact: true }).waitFor();
+    await player.getByText(/Voz argentina.*Elena/).filter({ visible: true }).waitFor();
+    assert.equal(await player.getByText('Se está usando la voz argentina Elena porque la otra no respondió.', { exact: true }).count(), 0, 'La voz efectiva se informa sin un aviso de fallo persistente');
+    const progress = player.getByRole('slider');
+    await page.waitForFunction(() => Number(document.querySelector('[aria-label="Reproductor de audio"] [role="slider"]')?.getAttribute('aria-valuenow')) > 4.2);
+    const active = state.calls.slice(before).filter(call => call.path === '/api/audio/synthesize');
+    assert.ok(active.length >= 2, 'Se reproduce una continuación medida después del primer WAV de cuatro segundos');
+    assert.equal(active[0].body.voice, 'es-AR-TomasNeural');
+    assert.ok(active.slice(1).every(call => call.body.voice === 'es-AR-ElenaNeural' && call.body.allowVoiceFallback === false), 'Los fragmentos siguientes solicitan únicamente la voz que ya empezó a hablar');
+    await player.getByRole('button', { name: 'Pausar audio', exact: true }).click();
+    const paused = Number(await progress.getAttribute('aria-valuenow'));
+    await page.waitForTimeout(300);
+    assert.ok(Math.abs(Number(await progress.getAttribute('aria-valuenow')) - paused) < 0.2);
+    await player.getByRole('button', { name: '1.25x', exact: true }).click();
+    await player.getByRole('button', { name: 'Retroceder 10 segundos', exact: true }).click();
+    assert.ok(Number(await progress.getAttribute('aria-valuenow')) < 0.2, 'Retroceder conserva el primer fragmento de la misma voz');
+    await player.getByRole('button', { name: 'Reproducir audio', exact: true }).click();
+    await player.getByRole('button', { name: 'Pausar audio', exact: true }).waitFor();
+    await player.getByText(/Voz argentina.*Elena/).filter({ visible: true }).waitFor();
+    assert.equal(await player.getByText(/Voz argentina.*Tomás/).count(), 0);
+    await page.screenshot({ path: path.join(artifacts, 'audio-single-voice-1280.png') });
+    await player.getByRole('button', { name: 'Cerrar reproductor y detener audio', exact: true }).click();
+    await player.waitFor({ state: 'hidden' });
+    await context.close();
   });
   await check('Cerrar mientras se prepara audio impide que una respuesta tardía vuelva a reproducir', async () => {
     const { context, page, state } = await setup({ audioMode: 'error' });

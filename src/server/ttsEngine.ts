@@ -68,19 +68,28 @@ export function createSpeechService(transport: SpeechTransport = edgeSpeechTrans
   const maxBytes = options.maxBytes ?? 8 * 1024 * 1024;
   let cacheBytes = 0;
 
-  async function synthesize(rawText: string, signal?: AbortSignal, requestedVoice: string = DEFAULT_AUDIO_VOICE): Promise<SynthesisResult> {
+  function cachedAudio(hash: string): SynthesisResult | undefined {
+    const hit = cache.get(hash);
+    if (!hit) return;
+    cache.delete(hash); cacheBytes -= hit.bytes;
+    if (Date.now() - hit.at < 30 * 60000) {
+      cache.set(hash, hit); cacheBytes += hit.bytes;
+      return { ...hit.result, cached: true };
+    }
+  }
+
+  async function synthesize(rawText: string, signal?: AbortSignal, requestedVoice: string = DEFAULT_AUDIO_VOICE, allowVoiceFallback = true): Promise<SynthesisResult> {
     if (signal?.aborted) throw abortError();
     const text = rawText.trim();
     if (!text || text.length > 12000) return { success: false, error: 'El texto de audio debe tener entre 1 y 12000 caracteres.' };
     if (!AUDIO_VOICES.includes(requestedVoice as ArgentineVoice)) return { success: false, error: 'La voz solicitada no está disponible.' };
     const voice = requestedVoice as ArgentineVoice;
     const hash = computeScriptHash(text, voice);
-    const hit = cache.get(hash);
-    if (hit) {
-      cache.delete(hash); cacheBytes -= hit.bytes;
-      if (Date.now() - hit.at < 30 * 60000) { cache.set(hash, hit); cacheBytes += hit.bytes; return { ...hit.result, cached: true }; }
-    }
-    let job = jobs.get(hash);
+    const hit = cachedAudio(hash);
+    if (hit) return hit;
+    // A session with a selected voice cannot join a job allowed to change it.
+    const jobKey = `${hash}:${allowVoiceFallback ? 'fallback' : 'strict'}`;
+    let job = jobs.get(jobKey);
     if (!job) {
       if (jobs.size >= (options.maxJobs ?? 6)) return { success: false, error: 'Hay varios audios preparándose. Volvé a intentar en unos segundos.' };
       const controller = new AbortController();
@@ -95,28 +104,35 @@ export function createSpeechService(transport: SpeechTransport = edgeSpeechTrans
           buffer = await abortable(transport(text, voice, primary), primary);
         } catch {
           if (controller.signal.aborted) throw abortError();
+          if (!allowVoiceFallback) throw new Error('AUDIO_VOICE_UNAVAILABLE');
           chosen = voice === 'es-AR-TomasNeural' ? 'es-AR-ElenaNeural' : 'es-AR-TomasNeural';
+          const alternate = cachedAudio(computeScriptHash(text, chosen));
+          if (alternate) return { ...alternate, notice: `Se está usando la voz argentina ${chosen === 'es-AR-ElenaNeural' ? 'Elena' : 'Tomás'} porque la otra no respondió.` };
           buffer = await abortable(transport(text, chosen, controller.signal), controller.signal);
         }
         if (controller.signal.aborted) throw abortError();
         if (buffer.length < 256) throw new Error('AUDIO_EMPTY');
-        const result: SynthesisResult = { success: true, audioBase64: buffer.toString('base64'), mimeType: 'audio/mpeg', hash, cached: false, engine: 'Microsoft Neural', voice: chosen,
-          ...(chosen !== voice ? { notice: `Se está usando la voz argentina ${chosen === 'es-AR-ElenaNeural' ? 'Elena' : 'Tomás'} porque la otra no respondió.` } : {}) };
+        const actualHash = computeScriptHash(text, chosen);
+        const result: SynthesisResult = { success: true, audioBase64: buffer.toString('base64'), mimeType: 'audio/mpeg', hash: actualHash, cached: false, engine: 'Microsoft Neural', voice: chosen };
         const bytes = buffer.length * 4 / 3;
         if (bytes <= maxBytes) {
+          const previous = cache.get(actualHash);
+          if (previous) { cache.delete(actualHash); cacheBytes -= previous.bytes; }
           while (cacheBytes + bytes > maxBytes || cache.size >= 96) {
             const key = cache.keys().next().value;
             if (!key) break;
             cacheBytes -= cache.get(key)!.bytes; cache.delete(key);
           }
-          cache.set(hash, { result, bytes, at: Date.now() }); cacheBytes += bytes;
+          // Successful bytes belong to the voice that actually generated them.
+          // A temporary alternate must never poison the preferred voice's cache.
+          cache.set(actualHash, { result, bytes, at: Date.now() }); cacheBytes += bytes;
         }
-        return result;
+        return { ...result, ...(chosen !== voice ? { notice: `Se está usando la voz argentina ${chosen === 'es-AR-ElenaNeural' ? 'Elena' : 'Tomás'} porque la otra no respondió.` } : {}) };
       })().catch(() => ({ success: false, error: 'No se pudo preparar el audio. Tocá Reintentar.', fallbackTextOnly: true } as SynthesisResult)).finally(() => {
         clearTimeout(timeout);
-        if (jobs.get(hash) === entry) jobs.delete(hash);
+        if (jobs.get(jobKey) === entry) jobs.delete(jobKey);
       });
-      jobs.set(hash, entry); job = entry;
+      jobs.set(jobKey, entry); job = entry;
     }
     job.users++;
     const current = job;

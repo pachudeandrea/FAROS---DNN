@@ -16,7 +16,7 @@ import { enrichNewsCoverage, sourcesCoverSameEvent } from '../src/utils/newsCove
 import { distinctMediaSources, sanitizeGroundingSources } from '../src/utils/sourceGrounding';
 import { argentinaNewsDay, argentinaNewsHour } from '../src/utils/dailyNews.js';
 import { NEWS_CACHE_VERSION } from '../src/utils/newsCache';
-import { articles, judicialArticles } from './fixtures/news-transport.mjs';
+import { articles, judicialArticles, sectionOnlyArticles } from './fixtures/news-transport.mjs';
 
 const now = new Date('2030-06-15T16:00:00Z');
 const source = (title: string, domain = 'ambito.com', at = '2030-06-15T14:00:00Z'): MediaCoverage => ({ mediaName: domain, originalHeadline: title, sourceUrl: `https://${domain}/economia/${encodeURIComponent(title)}`, publishedDateIso: at, publishedTimestamp: Date.parse(at) });
@@ -79,10 +79,10 @@ before(async () => {
 });
 async function stop(child: ChildProcess) { if (child.exitCode !== null) return; const exit = once(child, 'exit'); child.kill('SIGTERM'); await exit; children.delete(child); }
 after(async () => { for (const child of children) await stop(child); if (artifact) await rm(artifact, { recursive: true, force: true }); });
-async function api(gemini = true, singleMedium = false, discovery = false, section = false, gated = false, databaseUrl = '', directional = false, initialNow = '', judicial = false) {
+async function api(gemini = true, singleMedium = false, discovery = false, section = false, gated = false, databaseUrl = '', directional = false, initialNow = '', judicial = false, sectionOnly = false) {
   const child = fork(new URL('fixtures/native-api-server.mjs', import.meta.url), [pathToFileURL(path.join(artifact, 'api/index.js')).href], {
     cwd: root, execArgv: [], silent: true,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: databaseUrl, POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NOW: initialNow, FAROS_TEST_NEWS_DIRECTIONAL: directional ? '1' : '', FAROS_TEST_NEWS_JUDICIAL: judicial ? '1' : '', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '', FAROS_TEST_NEWS_DISCOVERY: discovery ? '1' : '', FAROS_TEST_NEWS_SECTION: section ? '1' : '', FAROS_TEST_NEWS_GATED: gated ? '1' : '' }
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: databaseUrl, POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NOW: initialNow, FAROS_TEST_NEWS_DIRECTIONAL: directional ? '1' : '', FAROS_TEST_NEWS_JUDICIAL: judicial ? '1' : '', FAROS_TEST_NEWS_SECTION_ONLY: sectionOnly ? '1' : '', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '', FAROS_TEST_NEWS_DISCOVERY: discovery ? '1' : '', FAROS_TEST_NEWS_SECTION: section ? '1' : '', FAROS_TEST_NEWS_GATED: gated ? '1' : '' }
   });
   children.add(child);
   let output = ''; child.stdout?.on('data', chunk => { output += chunk; }); child.stderr?.on('data', chunk => { output += chunk; });
@@ -465,4 +465,26 @@ test('recupera la colección del día si la primera lectura de caché falla y la
     assert.equal(recovered.checkedAt, seed.checkedAt, 'No se renueva la fecha de consulta de las noticias recuperadas');
     assert.deepEqual(recovered.news, seed.news);
   } finally { clearTimeout(timer); await unlock(); lock.release(); }
+});
+
+
+test('la API crea noticias independientes de La Nación, Clarín e iProfesional fuera de los RSS, sin forzar su dirección', { timeout: 30000 }, async () => {
+  const server = await api(false, false, false, false, false, '', false, '', false, true);
+  const args = { portfolioId: 'independent-publisher-sections', tickers: ['YPFD'], profile: 'moderado' };
+  const fresh = await server.pulse(args);
+  assert.equal(fresh.news.length, 3, server.output);
+  const expected = ['favorable', 'alerta', 'neutral'];
+  for (let index = 0; index < sectionOnlyArticles.length; index++) {
+    const publication = sectionOnlyArticles[index];
+    const item = fresh.news.find((item: NewsItem) => item.sources[0].sourceUrl === publication.url);
+    assert.ok(item, 'La sección del editor debe crear su propia noticia y no solo comparar otra ya encontrada');
+    assert.equal(item.impact, expected[index]);
+    assert.equal(item.relevanceType, 'valoracion_mercado');
+    assert.ok(item.sources[0].articleSummary.includes(publication.description));
+  }
+  const stats = await server.stats();
+  assert.equal(stats.publications, 3, 'La comparación reutiliza las verificaciones sin volver a descargar los artículos');
+  assert.equal(stats.extractions, 0, 'La cobertura de los seis medios no requiere Gemini');
+  const cached = await server.pulse(args);
+  assert.equal(cached.cached, true); assert.deepEqual(cached.news, fresh.news);
 });

@@ -554,7 +554,7 @@ app.post('/api/news/pulse', asyncRoute(async (req, res) => {
     // Publish verified results as they arrive, retaining the full collection budgets.
     const [grounded, rss] = await Promise.allSettled([
       fetchGroundedNewsFromGemini(tickers, profile, assets).then(news => { modelNews = dailyNewsItems(news || [], dateKey); emit(mergeVerifiedNews(modelNews, rssNews)); return modelNews; }),
-      getLiveVerifiedArgentineNews(tickers, diagnostics, assets, emit, dateKey).then(news => { rssNews = news; emit(mergeVerifiedNews(modelNews, rssNews)); return news; })
+      getLiveVerifiedArgentineNews(tickers, diagnostics, assets, emit, dateKey, prefetchedSections).then(news => { rssNews = news; emit(mergeVerifiedNews(modelNews, rssNews)); return news; })
     ]);
     if (!modelNews.length && rss.status === 'rejected') throw new Error('NEWS_SOURCES_UNAVAILABLE');
     const collected = await discoverMissingCoverage(mergeVerifiedNews(modelNews, rssNews), coverageDiscovery, { prefetchedSections });
@@ -721,8 +721,9 @@ app.post('/api/audio/synthesize', asyncRoute(async (req, res) => {
   });
 
   try {
-    const { text, voice } = req.body;
-    if (typeof text !== 'string' || !text.trim() || text.length > 12000 || (voice !== undefined && !['es-AR-TomasNeural', 'es-AR-ElenaNeural'].includes(voice))) {
+    const { text, voice, allowVoiceFallback } = req.body;
+    if (typeof text !== 'string' || !text.trim() || text.length > 12000 || (voice !== undefined && !['es-AR-TomasNeural', 'es-AR-ElenaNeural'].includes(voice))
+      || (allowVoiceFallback !== undefined && typeof allowVoiceFallback !== 'boolean')) {
       return res.status(400).json({ 
         success: false, 
         error: 'El texto es requerido para la síntesis de audio.' 
@@ -733,7 +734,7 @@ app.post('/api/audio/synthesize', asyncRoute(async (req, res) => {
       metadata: { textLength: text.length }
     });
 
-    const result = await synthesizeArgentineSpeech(text, abortController.signal, voice);
+    const result = await synthesizeArgentineSpeech(text, abortController.signal, voice, allowVoiceFallback);
     if (!res.writableEnded && !res.destroyed) {
       res.setHeader('Cache-Control', 'private, no-store');
       return res.status(result.success ? 200 : 503).json(result);

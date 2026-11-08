@@ -11,8 +11,7 @@ import {
   Sparkles, 
   ChevronDown, 
   Loader2,
-  AlertCircle,
-  Info
+  AlertCircle
 } from 'lucide-react';
 import { 
   audioController, 
@@ -157,25 +156,6 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
           </div>
         )}
 
-        {/* Notice banner for fallback voice (e.g. edge-tts) */}
-        {!audioState.error && audioState.notice && (
-          <div role="status" aria-live="polite" className="px-4 py-2 bg-warning-950/80 border-b border-warning-800/40 text-[11px] text-warning-200 flex items-center justify-between gap-2">
-            <div className="flex items-start gap-2 min-w-0">
-              <Info className="w-3.5 h-3.5 text-warning-300 shrink-0" />
-              <span>{audioState.notice}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => audioController.clearError()}
-              className="text-warning-text hover:text-paper p-0.5 cursor-pointer shrink-0"
-              title="Descartar"
-              aria-label="Descartar aviso de audio"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-        )}
-
         {/* Collapsible Transcript / Voice Script */}
         {showScript && track?.script && (
           <div className="p-4 bg-ink-900/90 border-b border-brand-900/40 text-xs text-ink-300 max-h-44 overflow-y-auto leading-relaxed space-y-1.5">
@@ -213,6 +193,7 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
                   <span className="text-[10px] text-muted font-mono" title={audioState.isDurationEstimated ? 'Duración aproximada; se ajusta al preparar el audio' : 'Duración del audio'}>
                     {audioState.isDurationEstimated ? '≈ ' : ''}{formatTime(audioState.totalDuration)}
                   </span>
+                  {voiceLabel && <span className="sm:hidden text-[10px] text-brand-300">{voiceLabel}</span>}
                 </div>
 
                 <p className="text-xs sm:text-sm font-bold text-paper truncate mt-1" title={track.title}>

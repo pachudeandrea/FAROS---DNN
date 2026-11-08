@@ -353,3 +353,43 @@ test('alternate voice is identified and does not permanently replace the request
   await flush();
   assert.equal(fetches, 2, 'the preferred voice is attempted again on a later playback');
 });
+
+test('a summary keeps its first actual voice for every following clip and a new track can choose again', async t => {
+  const requests: Array<{ voice: string; allowVoiceFallback: boolean }> = [];
+  const controller = setup(t, async (_, options) => {
+    const body = JSON.parse(options!.body as string); requests.push(body);
+    return response(body.text, 10, requests.length === 1 ? 'es-AR-ElenaNeural' : body.voice);
+  });
+  const text = Array.from({ length: 36 }, (_, i) => `Oración ${i} de una síntesis argentina que conserva su narrador.`).join(' ');
+  const parts = splitSpeechText(text);
+  assert.ok(parts.length >= 3);
+  await controller.playTrack(track(text)); await flush();
+  for (let i = 0; i < parts.length - 1; i++) {
+    assert.equal(controller.getState().voice, 'es-AR-ElenaNeural');
+    FakeAudio.instances[0].finish(); await flush();
+  }
+  assert.equal(controller.getState().voice, 'es-AR-ElenaNeural');
+  assert.equal(requests[0].voice, DEFAULT_AUDIO_VOICE);
+  assert.equal(requests[0].allowVoiceFallback, true);
+  assert.ok(requests.slice(1).every(body => body.voice === 'es-AR-ElenaNeural' && body.allowVoiceFallback === false));
+  await controller.playTrack(track('Otra noticia nueva.', 'another')); await flush();
+  assert.equal(requests.at(-1)!.voice, DEFAULT_AUDIO_VOICE);
+  assert.equal(requests.at(-1)!.allowVoiceFallback, true);
+});
+
+test('a later response with a different voice is rejected and retry retains the original narrator', async t => {
+  const requests: Array<{ voice: string; allowVoiceFallback: boolean }> = [];
+  const controller = setup(t, async (_, options) => {
+    const body = JSON.parse(options!.body as string); requests.push(body);
+    return response(body.text, 10, requests.length === 1 ? DEFAULT_AUDIO_VOICE : 'es-AR-ElenaNeural');
+  });
+  const text = 'Una primera oración de este resumen es suficientemente extensa para completar el fragmento inicial de la lectura. '.repeat(10);
+  await controller.playTrack(track(text)); await flush();
+  FakeAudio.instances[0].finish(); await flush();
+  assert.match(controller.getState().error || '', /mantener la voz/);
+  assert.equal(controller.getState().voice, DEFAULT_AUDIO_VOICE);
+  assert.equal(controller.getState().isPlaying, false);
+  controller.retry(); await flush();
+  assert.equal(controller.getState().voice, DEFAULT_AUDIO_VOICE);
+  assert.ok(requests.slice(1).every(body => body.voice === DEFAULT_AUDIO_VOICE && body.allowVoiceFallback === false));
+});
