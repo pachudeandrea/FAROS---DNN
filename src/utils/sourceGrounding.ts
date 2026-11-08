@@ -14,6 +14,9 @@ export const DOMAIN_MEDIA_MAP: Record<string, string> = {
   'baenegocios.com': 'BAE Negocios',
   'forbesargentina.com': 'Forbes Argentina',
   'perfil.com': 'Perfil',
+  'pagina12.com.ar': 'Página/12',
+  'eldestapeweb.com': 'El Destape',
+  'tiempoar.com.ar': 'Tiempo Argentino',
   'wsj.com': 'The Wall Street Journal',
   'bloomberg.com': 'Bloomberg',
   'ft.com': 'Financial Times',
@@ -55,7 +58,9 @@ export function isValidArticleUrl(url: string | undefined): boolean {
       '/finanzas-mercados',
       '/mercados',
       '/negocios',
-      '/latinoamerica'
+      '/latinoamerica',
+      '/secciones/economia',
+      '/seccion/economia'
     ];
     if (genericSections.includes(cleanPath)) {
       return false;
@@ -91,7 +96,7 @@ export function getMediaNameFromDomain(domain: string, title?: string): string {
   const cleanDomain = domain.toLowerCase().replace(/^www\./, '').trim();
 
   for (const [key, name] of Object.entries(DOMAIN_MEDIA_MAP)) {
-    if (cleanDomain.includes(key)) {
+    if (cleanDomain === key || cleanDomain.endsWith(`.${key}`)) {
       return name;
     }
   }
@@ -109,6 +114,9 @@ export function getMediaNameFromDomain(domain: string, title?: string): string {
     if (lowerTitle.includes('econojournal')) return 'EconoJournal';
     if (lowerTitle.includes('iprofesional')) return 'iProfesional';
     if (lowerTitle.includes('bae negocios')) return 'BAE Negocios';
+    if (lowerTitle.includes('página/12') || lowerTitle.includes('pagina12') || lowerTitle.includes('página 12')) return 'Página/12';
+    if (lowerTitle.includes('el destape')) return 'El Destape';
+    if (lowerTitle.includes('tiempo argentino')) return 'Tiempo Argentino';
     if (lowerTitle.includes('ypf')) return 'YPF Oficial';
     if (lowerTitle.includes('bcra')) return 'BCRA Oficial';
   }
@@ -181,7 +189,7 @@ export function distinctMediaSources(sources: MediaCoverage[]): MediaCoverage[] 
 export function cleanHeadlineText(headline: string): string {
   if (!headline) return '';
   return headline
-    .replace(/\s*[-–—|]\s*(Ámbito|El Cronista|Cronista|Infobae|Clarín|Clarin|La Nación|La Nacion|Bloomberg Línea|Bloomberg|Reuters|EconoJournal|iProfesional|BAE Negocios|Perfil).*$/i, '')
+    .replace(/\s*[-–—|]\s*(Ámbito|El Cronista|Cronista|Infobae|Clarín|Clarin|La Nación|La Nacion|Bloomberg Línea|Bloomberg|Reuters|EconoJournal|iProfesional|BAE Negocios|Perfil|Página\/12|Pagina\/12|Página 12|El Destape|Tiempo Argentino|El Economista).*$/i, '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()

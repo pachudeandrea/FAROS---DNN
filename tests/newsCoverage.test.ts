@@ -16,7 +16,7 @@ import { enrichNewsCoverage, sourcesCoverSameEvent } from '../src/utils/newsCove
 import { distinctMediaSources, sanitizeGroundingSources } from '../src/utils/sourceGrounding';
 import { argentinaNewsDay, argentinaNewsHour } from '../src/utils/dailyNews.js';
 import { NEWS_CACHE_VERSION } from '../src/utils/newsCache';
-import { articles, judicialArticles, sectionOnlyArticles } from './fixtures/news-transport.mjs';
+import { articles, judicialArticles, sectionOnlyArticles, twelveMediaArticles } from './fixtures/news-transport.mjs';
 
 const now = new Date('2030-06-15T16:00:00Z');
 const source = (title: string, domain = 'ambito.com', at = '2030-06-15T14:00:00Z'): MediaCoverage => ({ mediaName: domain, originalHeadline: title, sourceUrl: `https://${domain}/economia/${encodeURIComponent(title)}`, publishedDateIso: at, publishedTimestamp: Date.parse(at) });
@@ -79,10 +79,10 @@ before(async () => {
 });
 async function stop(child: ChildProcess) { if (child.exitCode !== null) return; const exit = once(child, 'exit'); child.kill('SIGTERM'); await exit; children.delete(child); }
 after(async () => { for (const child of children) await stop(child); if (artifact) await rm(artifact, { recursive: true, force: true }); });
-async function api(gemini = true, singleMedium = false, discovery = false, section = false, gated = false, databaseUrl = '', directional = false, initialNow = '', judicial = false, sectionOnly = false) {
+async function api(gemini = true, singleMedium = false, discovery = false, section = false, gated = false, databaseUrl = '', directional = false, initialNow = '', judicial = false, sectionOnly = false, twelveMedia = false) {
   const child = fork(new URL('fixtures/native-api-server.mjs', import.meta.url), [pathToFileURL(path.join(artifact, 'api/index.js')).href], {
     cwd: root, execArgv: [], silent: true,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: databaseUrl, POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NOW: initialNow, FAROS_TEST_NEWS_DIRECTIONAL: directional ? '1' : '', FAROS_TEST_NEWS_JUDICIAL: judicial ? '1' : '', FAROS_TEST_NEWS_SECTION_ONLY: sectionOnly ? '1' : '', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '', FAROS_TEST_NEWS_DISCOVERY: discovery ? '1' : '', FAROS_TEST_NEWS_SECTION: section ? '1' : '', FAROS_TEST_NEWS_GATED: gated ? '1' : '' }
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: databaseUrl, POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NOW: initialNow, FAROS_TEST_NEWS_DIRECTIONAL: directional ? '1' : '', FAROS_TEST_NEWS_JUDICIAL: judicial ? '1' : '', FAROS_TEST_NEWS_SECTION_ONLY: sectionOnly ? '1' : '', FAROS_TEST_NEWS_TWELVE_MEDIA: twelveMedia ? '1' : '', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '', FAROS_TEST_NEWS_DISCOVERY: discovery ? '1' : '', FAROS_TEST_NEWS_SECTION: section ? '1' : '', FAROS_TEST_NEWS_GATED: gated ? '1' : '' }
   });
   children.add(child);
   let output = ''; child.stdout?.on('data', chunk => { output += chunk; }); child.stderr?.on('data', chunk => { output += chunk; });
@@ -487,4 +487,39 @@ test('la API crea noticias independientes de La Nación, Clarín e iProfesional 
   assert.equal(stats.extractions, 0, 'La cobertura de los seis medios no requiere Gemini');
   const cached = await server.pulse(args);
   assert.equal(cached.cached, true); assert.deepEqual(cached.news, fresh.news);
+});
+
+
+test('la API recopila publicaciones propias de doce medios argentinos y verifica los seis nuevos sin cuotas de impacto', { timeout: 30000 }, async () => {
+  const server = await api(false, false, false, false, false, '', false, '', false, false, true);
+  const args = { portfolioId: 'twelve-media-independent-events', tickers: ['AL30', 'GGAL', 'MSFT', 'YPFD', 'AAPL', 'PAMP', 'BMA', 'NVDA', 'TSLA', 'TECO2', 'MELI', 'CEPU'], profile: 'moderado' };
+  const fresh = await server.pulse(args);
+  assert.equal(fresh.news.length, twelveMediaArticles.length, server.output);
+  const domain = (url: string) => new URL(url).hostname.replace(/^www\./, '');
+  const expectedPublishers = twelveMediaArticles.map(publication => domain(publication.url));
+  assert.equal(new Set(expectedPublishers).size, 12, 'Cada publicación pertenece a un editor distinto');
+  assert.deepEqual(new Set(fresh.news.map((item: NewsItem) => domain(item.sources[0].sourceUrl))), new Set(expectedPublishers));
+  const newPublications = twelveMediaArticles.slice(6);
+  const expected = ['favorable', 'neutral', 'alerta', 'neutral', 'alerta', 'favorable'];
+  for (let index = 0; index < newPublications.length; index++) {
+    const publication = newPublications[index];
+    const item = fresh.news.find((item: NewsItem) => item.sources[0].sourceUrl === publication.url);
+    assert.ok(item, `La publicación de ${domain(publication.url)} debe crear una tarjeta propia`);
+    assert.equal(item.sources[0].originalHeadline, publication.title);
+    assert.ok(item.sources[0].articleSummary.includes(publication.description), 'La evidencia procede del artículo original verificado');
+    assert.equal(argentinaNewsDay(item.sources[0].publishedTimestamp), fresh.dateKey);
+    assert.equal(item.impact, expected[index], 'Cada hecho conserva la dirección de su evidencia, incluyendo los neutrales');
+  }
+  for (const publisher of expectedPublishers) {
+    const report = fresh.diagnostics.sources.find((source: { name: string }) => source.name === publisher);
+    assert.ok(report?.attempted >= 1 && report?.verified >= 1, `La cola debe dar turno y verificar publicaciones de ${publisher}`);
+  }
+  assert.ok(fresh.diagnostics.verification.peakConcurrency <= 4, 'Duplicar editores conserva el límite de solicitudes simultáneas');
+  const stats = await server.stats();
+  assert.equal(stats.extractions, 0, 'Las novedades de los doce medios se recopilan sin depender de síntesis generada');
+  for (const publication of twelveMediaArticles) assert.equal(stats.publicationUrls.filter((url: string) => url === publication.url).length, 1, 'RSS, índices y comparación comparten la misma verificación');
+  const cached = await server.pulse(args);
+  assert.equal(cached.cached, true);
+  assert.equal(cached.checkedAt, fresh.checkedAt);
+  assert.deepEqual(cached.news, fresh.news, 'La caché conserva las noticias, fuentes y valoraciones de todos los editores');
 });

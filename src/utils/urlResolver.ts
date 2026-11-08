@@ -22,6 +22,9 @@ export const ALLOWED_MEDIA_DOMAINS = [
   'baenegocios.com',
   'forbesargentina.com',
   'perfil.com',
+  'pagina12.com.ar',
+  'eldestapeweb.com',
+  'tiempoar.com.ar',
   'bcra.gob.ar',
   'ypf.com',
   'rava.com',
@@ -34,6 +37,17 @@ export const ALLOWED_MEDIA_DOMAINS = [
   'ft.com',
   'cnbc.com'
 ];
+
+/** Publishers with article paths outside the common /economia/<slug> shape.
+ * An index, author page or section URL must never become a verified article. */
+export const PUBLISHER_ARTICLE_PATHS: Record<string, RegExp> = {
+  'pagina12.com.ar': /^\/(?:\d{5,}-[^/]+|economia\/[^/]+)\/?$/i,
+  'perfil.com': /^\/noticias\/(?:economia|finanzas)\/[^/]+\.phtml\/?$/i,
+  'eldestapeweb.com': /^\/(?:economia|economia-y-finanzas)\/[^/]+(?:\/[^/]+)*-\d{8,}\/?$/i,
+  'tiempoar.com.ar': /^\/(?:economia\/[^/]+|ta_article\/[^/]+)\/?$/i,
+  'eleconomista.com.ar': /^\/(?:economia|finanzas|negocios|energia)\/[^/]+-n\d+\/?$/i,
+  'econojournal.com.ar': /^\/\d{4}\/\d{2}\/[^/]+\/?$/i
+};
 
 // Disallowed URL path patterns: foreign national editions, entertainment, sports, lifestyle
 export const DISALLOWED_PATH_PATTERNS = [
@@ -310,6 +324,10 @@ export function validateArticleUrl(
 
   // 4c. Enforce economic/financial sections for general interest newspapers (e.g. Infobae -> /economia/)
   const domain = parsed.hostname.replace(/^www\./, '').toLowerCase();
+  const articlePath = PUBLISHER_ARTICLE_PATHS[domain];
+  if (articlePath && !articlePath.test(cleanPath)) {
+    return { valid: false, reason: `La ruta no corresponde a una publicación del medio '${domain}'`, domain };
+  }
   for (const [mediaDomain, requiredSections] of Object.entries(MEDIA_REQUIRED_SECTIONS)) {
     if (domain === mediaDomain || domain.endsWith(`.${mediaDomain}`)) {
       const hasRequiredSection = requiredSections.some(sec => cleanPath.startsWith(sec) || cleanPath.includes(sec));
@@ -363,7 +381,7 @@ export interface ExtractedArticleMeta {
 function cleanHeadlineText(raw: string): string {
   if (!raw) return '';
   return raw
-    .replace(/( \| | - | — | : ).*(Ámbito|El Cronista|Cronista|Infobae|Bloomberg Línea|Bloomberg|La Nación|Clarín|Reuters|EconoJournal|iProfesional|BAE Negocios|Forbes|Perfil|Swissinfo|WSJ|CNBC|Rava|A24).*$/i, '')
+    .replace(/( \| | - | — | : ).*(Ámbito|El Cronista|Cronista|Infobae|Bloomberg Línea|Bloomberg|La Nación|Clarín|Reuters|EconoJournal|iProfesional|BAE Negocios|Forbes|Perfil|Página\/12|Pagina\/12|Página 12|El Destape|Tiempo Argentino|El Economista|Swissinfo|WSJ|CNBC|Rava|A24).*$/i, '')
     .replace(/\s+/g, ' ')
     .trim();
 }

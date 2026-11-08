@@ -56,6 +56,25 @@ export const sectionOnlyArticles = [
 ];
 if (process.env.FAROS_TEST_NEWS_SECTION_ONLY === '1') articles.splice(0, articles.length, ...sectionOnlyArticles);
 
+// One distinct financial event per editor exercises independent discovery and
+// per-publisher fairness; directions come from these explicit publisher facts.
+export const twelveMediaArticles = [
+  { media: 'Ámbito', url: 'https://www.ambito.com/finanzas/al30-twelve-fixture', title: 'AL30 sube en la Bolsa tras una rueda de negocios', description: 'AL30 sube en la Bolsa durante la rueda de negocios.', body: 'La publicación informa una variación observada del bono.' },
+  { media: 'El Cronista', url: 'https://www.cronista.com/finanzas-mercados/galicia-twelve-fixture/', title: 'Banco Galicia presenta un informe sobre sus resultados', description: 'Banco Galicia presentó su informe de resultados trimestrales.', body: 'La publicación detalla el reporte del emisor.' },
+  { media: 'Infobae', url: 'https://www.infobae.com/economia/2030/06/15/microsoft-twelve-fixture/', title: 'Microsoft reporta ganancias crecientes en el trimestre', description: 'Microsoft aumentó sus ganancias durante el trimestre.', body: 'La empresa publicó sus resultados operativos.' },
+  { media: 'La Nación', url: 'https://www.lanacion.com.ar/economia/ypf-twelve-fixture/', title: 'YPF presenta los datos de su producción petrolera', description: 'YPF aumentó su producción de petróleo durante el trimestre.', body: 'La petrolera difundió el reporte de actividad.' },
+  { media: 'Clarín', url: 'https://www.clarin.com/economia/apple-twelve-fixture.html', title: 'Apple informa en su balance una reducción de sus ingresos trimestrales', description: 'Apple redujo sus ingresos durante el trimestre.', body: 'La empresa difundió los datos de su balance.' },
+  { media: 'iProfesional', url: 'https://www.iprofesional.com/finanzas/pampa-twelve-fixture', title: 'Pampa Energía presenta su informe para inversores', description: 'Pampa Energía presentó su informe trimestral para inversores.', body: 'El informe detalla las actividades de la compañía.' },
+  { media: 'Página/12', url: 'https://www.pagina12.com.ar/123456-banco-macro-twelve-fixture', title: 'Banco Macro presentó ganancias récord en el trimestre', description: 'Banco Macro presentó ganancias récord en su balance trimestral.', body: 'El reporte se refiere a los resultados del banco.' },
+  { media: 'Perfil', url: 'https://www.perfil.com/noticias/economia/nvidia-twelve-fixture.phtml', title: 'NVIDIA explica el contenido de su balance trimestral', description: 'NVIDIA presentó su balance trimestral ante los inversores.', body: 'La empresa detalló la información del reporte.' },
+  { media: 'El Destape', url: 'https://www.eldestapeweb.com/economia/tesla/ventas-twelve-fixture-20300615120000', title: 'Tesla informó una reducción de sus ventas trimestrales', description: 'Tesla redujo sus ventas durante el trimestre.', body: 'La compañía publicó los datos operativos del período.' },
+  { media: 'Tiempo Argentino', url: 'https://www.tiempoar.com.ar/ta_article/telecom-twelve-fixture/', title: 'Telecom Argentina presentó información sobre sus contratos', description: 'Telecom Argentina presentó un informe sobre sus contratos vigentes.', body: 'La empresa explicó las actividades comprendidas en el documento.' },
+  { media: 'El Economista', url: 'https://eleconomista.com.ar/finanzas/mercado-libre-twelve-fixture-n123456', title: 'Mercado Libre informó en su balance un aumento de sus costos', description: 'Mercado Libre aumentó sus costos operativos durante el trimestre.', body: 'La publicación presenta los datos informados por la empresa.' },
+  { media: 'EconoJournal', url: 'https://econojournal.com.ar/2030/06/central-puerto-twelve-fixture/', title: 'Central Puerto presenta nuevas cifras de producción', description: 'Central Puerto aumentó su producción durante el trimestre.', body: 'La empresa difundió los datos de generación eléctrica.' }
+];
+if (process.env.FAROS_TEST_NEWS_TWELVE_MEDIA === '1') articles.splice(0, articles.length, ...twelveMediaArticles);
+
+
 export function installNewsTransport() {
   let releaseCoverage;
   const coverageGate = new Promise(resolve => { releaseCoverage = resolve; });
@@ -74,7 +93,7 @@ export function installNewsTransport() {
     process.send?.({ type: 'news-test-batch-set' });
   });
   const activeArticles = () => articles.filter((_, index) => !activeIndexes || activeIndexes.includes(index));
-  const stats = { sections: 0, searches: 0, extractions: 0, publications: 0, feeds: 0, prompts: [] };
+  const stats = { sections: 0, searches: 0, extractions: 0, publications: 0, publicationUrls: [], feeds: 0, prompts: [] };
   globalThis.fetch = async (input, init) => {
     if (sourcesUnavailable) return new Response('Temporary source outage', { status: 503 });
     const url = String(input instanceof Request ? input.url : input);
@@ -102,9 +121,10 @@ export function installNewsTransport() {
       const found = process.env.FAROS_TEST_NEWS_DISCOVERY === '1' ? activeArticles().filter(article => new URL(article.url).hostname === `www.${publisher}`) : [];
       return new Response(`<rss><channel>${found.map(article => `<item><title>${article.title}</title><link>${process.env.FAROS_TEST_NEWS_SECTION === '1' ? 'https://www.bing.com/ck/a?u=a1' + Buffer.from(article.url).toString('base64url') : article.url}</link></item>`).join('')}</channel></rss>`);
     }
-    if (process.env.FAROS_TEST_NEWS_SECTION_ONLY === '1' && ['/', '/finanzas/', '/economia/', '/finanzas-mercados/', '/economia-politica/', '/finanzas', '/economia'].includes(new URL(url).pathname)) {
+    if ((process.env.FAROS_TEST_NEWS_SECTION_ONLY === '1' || process.env.FAROS_TEST_NEWS_TWELVE_MEDIA === '1') && ['/', '/finanzas/', '/economia/', '/finanzas-mercados/', '/economia-politica/', '/finanzas', '/economia', '/seccion/economia', '/seccion/economia/', '/secciones/economia', '/secciones/economia/'].includes(new URL(url).pathname)) {
       stats.sections++;
-      const found = activeArticles().filter(article => new URL(article.url).hostname === new URL(url).hostname);
+      const publisher = new URL(url).hostname.replace(/^www\./, '');
+      const found = activeArticles().filter(article => new URL(article.url).hostname.replace(/^www\./, '') === publisher);
       return new Response(`<html><body>${found.map(article => `<a href="${new URL(article.url).pathname}"><h2>${article.title}</h2></a>`).join('')}</body></html>`, { headers: { 'content-type': 'text/html' } });
     }
     if (url === 'https://www.infobae.com/economia/') {
@@ -122,7 +142,7 @@ export function installNewsTransport() {
     }
     const article = articles.find(article => article.url === url);
     if (!article) throw new Error('Unexpected test-only news URL');
-    stats.publications++;
+    stats.publications++; stats.publicationUrls.push(url);
     const evidence = article.description ? `<meta property="og:description" content="${article.description}"><script type="application/ld+json">${JSON.stringify({ '@type': 'NewsArticle', headline: article.title, description: article.description, articleBody: article.body })}</script>` : '';
     return new Response(`<html><head><meta property="og:title" content="${article.title}">${evidence}<meta property="article:published_time" content="${published}"><link rel="canonical" href="${article.url}"></head><body><h1>${article.title}</h1><p>Publicación utilizada únicamente como prueba local de FAROS.</p></body></html>`, { headers: { 'content-type': 'text/html' } });
   };

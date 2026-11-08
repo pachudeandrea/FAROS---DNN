@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { resolveFinalUrl, DISALLOWED_PATH_PATTERNS } from './urlResolver.js';
+import { resolveFinalUrl, DISALLOWED_PATH_PATTERNS, PUBLISHER_ARTICLE_PATHS } from './urlResolver.js';
 
 export const COVERAGE_PUBLISHERS = [
   { domain: 'ambito.com', sections: ['https://www.ambito.com/finanzas/', 'https://www.ambito.com/economia/'] },
@@ -7,7 +7,13 @@ export const COVERAGE_PUBLISHERS = [
   { domain: 'infobae.com', sections: ['https://www.infobae.com/economia/'] },
   { domain: 'lanacion.com.ar', sections: ['https://www.lanacion.com.ar/economia/'] },
   { domain: 'clarin.com', sections: ['https://www.clarin.com/economia/'] },
-  { domain: 'iprofesional.com', sections: ['https://www.iprofesional.com/finanzas', 'https://www.iprofesional.com/economia'] }
+  { domain: 'iprofesional.com', sections: ['https://www.iprofesional.com/finanzas', 'https://www.iprofesional.com/economia'] },
+  { domain: 'pagina12.com.ar', sections: ['https://www.pagina12.com.ar/secciones/economia'] },
+  { domain: 'perfil.com', sections: ['https://www.perfil.com/seccion/economia'] },
+  { domain: 'eldestapeweb.com', sections: ['https://www.eldestapeweb.com/economia'] },
+  { domain: 'tiempoar.com.ar', sections: ['https://www.tiempoar.com.ar/economia/'] },
+  { domain: 'eleconomista.com.ar', sections: ['https://eleconomista.com.ar/economia/', 'https://eleconomista.com.ar/finanzas/'] },
+  { domain: 'econojournal.com.ar', sections: ['https://econojournal.com.ar/'] }
 ];
 export interface PublicationCandidate { publisher: string; url: string; title: string }
 export interface SectionReport { publisher: string; section: string; status: string; found: number; accepted: number }
@@ -22,8 +28,8 @@ export function extractSectionCandidates(html: string, section: string, publishe
       const url = new URL(raw, section);
       if (url.protocol !== 'https:' || url.username || url.password || url.port || !(url.hostname === publisher || url.hostname === `www.${publisher}`)) return;
       if (DISALLOWED_PATH_PATTERNS.some(path => url.pathname.toLowerCase().includes(path))) return;
-      const articlePath = publisher === 'infobae.com' ? /^\/economia\/\d{4}\/\d{2}\/\d{2}\/[^/]+\/?$/
-        : /^\/(?:finanzas|economia|finanzas-mercados|economia-politica|negocios|energia)\/[^/]+/;
+      const articlePath = PUBLISHER_ARTICLE_PATHS[publisher] || (publisher === 'infobae.com' ? /^\/economia\/\d{4}\/\d{2}\/\d{2}\/[^/]+\/?$/
+        : /^\/(?:finanzas|economia|finanzas-mercados|economia-politica|negocios|energia)\/[^/]+/);
       if (!articlePath.test(url.pathname)) return;
       const title = headline.replace(/\s+/g, ' ').trim().slice(0, 300);
       if (title.length < 20) return;
