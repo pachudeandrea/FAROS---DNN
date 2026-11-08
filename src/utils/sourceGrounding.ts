@@ -145,6 +145,7 @@ export function sanitizeGroundingSources(sources: MediaCoverage[]): MediaCoverag
     validSources.push({
       mediaName: src.mediaName,
       originalHeadline: src.originalHeadline,
+      articleSummary: src.articleSummary,
       sourceUrl: normalizedUrl,
       publishedTime: src.publishedTime && src.publishedTime !== 'Hoy' ? src.publishedTime : undefined,
       domain: src.domain,

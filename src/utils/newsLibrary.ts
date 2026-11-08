@@ -29,7 +29,8 @@ export function validLibraryNews(value: unknown): value is NewsItem {
   return typeof item.id === 'string' && item.id.length <= 300 && typeof item.headline === 'string' && item.headline.length > 0 && item.headline.length <= 1000
     && typeof item.briefSummary === 'string' && Array.isArray(item.fullSynthesis) && item.fullSynthesis.every(line => typeof line === 'string')
     && Array.isArray(item.sources) && item.sources.length > 0 && item.sources.length <= 5 && publicationUrls(item).length === item.sources.length
-    && item.sources.every(source => typeof source.mediaName === 'string' && typeof source.originalHeadline === 'string')
+    && item.sources.every(source => typeof source.mediaName === 'string' && typeof source.originalHeadline === 'string'
+      && (source.articleSummary === undefined || typeof source.articleSummary === 'string' && source.articleSummary.length <= 1200))
     && Array.isArray(item.affectedAssetIds) && item.affectedAssetIds.every(id => typeof id === 'string')
     && typeof item.audioScript === 'string' && typeof item.audioDuration === 'string'
     && typeof item.timestamp === 'string' && typeof item.publishedAgo === 'string' && item.coverageCount === item.sources.length

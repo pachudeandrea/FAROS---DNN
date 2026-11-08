@@ -5,6 +5,7 @@ import { NEWS_CACHE_VERSION } from '../utils/newsCache.js';
 import { validLibraryNews } from '../utils/newsLibrary.js';
 import { argentinaNewsDay, dailyNewsItems, mergeDailyNews } from '../utils/dailyNews.js';
 import type { NewsItem } from '../types/index.js';
+import { reclassifyCachedNews } from '../utils/newsClassification.js';
 
 export interface PulseSnapshot { news: NewsItem[]; timestamp: number; hourKey: string }
 let cachePool: Pool | undefined;
@@ -21,7 +22,7 @@ export function usablePulseSnapshot(value: PulseSnapshot, now = Date.now()): Pul
   const news = dailyNewsItems(value.news, day);
   // A previous-day publication is not a successful empty query for this day.
   if (value.news.length && !news.length) return null;
-  return { ...value, news };
+  return { ...value, news: reclassifyCachedNews(news) };
 }
 
 function pool(bypassCooldown = false): Pool | null {

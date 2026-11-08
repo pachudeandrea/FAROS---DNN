@@ -348,6 +348,7 @@ export function validateArticleUrl(
 
 export interface ExtractedArticleMeta {
   headline: string;
+  articleSummary?: string;
   publishedTime?: string;
   publishedDateIso?: string;
   publishedTimestamp?: number;
@@ -365,6 +366,61 @@ function cleanHeadlineText(raw: string): string {
     .replace(/( \| | - | — | : ).*(Ámbito|El Cronista|Cronista|Infobae|Bloomberg Línea|Bloomberg|La Nación|Clarín|Reuters|EconoJournal|iProfesional|BAE Negocios|Forbes|Perfil|Swissinfo|WSJ|CNBC|Rava|A24).*$/i, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/** Only use publisher text belonging to the current article. Page-wide text
+ * (including related-story cards) is deliberately excluded. */
+function extractArticleSummary($: cheerio.CheerioAPI, headline: string): string | undefined {
+  const plain = (value: unknown) => {
+    if (typeof value !== 'string') return '';
+    const fragment = cheerio.load(value.slice(0, 16000), null, false);
+    fragment('script,style,noscript').remove();
+    return fragment.text().replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  };
+  const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const normalizedHeadline = normalize(headline);
+  const generic = /\b(ultimas noticias|todas las noticias|noticias de hoy|suscribite|suscribase|diario economico|diarios economicos|fuente mas confiable|informacion en tiempo real)\b/;
+  const stop = new Set('para como sobre entre desde hasta mucho todos todas noticias economia finanzas negocios mercado mercados argentina argentino actualidad diario informacion'.split(' '));
+  const headlineWords = new Set(normalizedHeadline.split(' ').filter(word => word.length >= 3 && !stop.has(word)));
+  const relatedText = (value: string) => normalize(value).split(' ').some(word => headlineWords.has(word));
+  const matchingHeadline = (value: unknown) => {
+    if (typeof value !== 'string') return false;
+    const title = normalize(cleanHeadlineText(value));
+    if (title === normalizedHeadline) return true;
+    const words = title.split(' ').filter(word => word.length >= 3 && !stop.has(word));
+    const shared = words.filter(word => headlineWords.has(word)).length;
+    return shared >= 2 && shared / Math.max(words.length, headlineWords.size) >= 0.6;
+  };
+  let article: Record<string, unknown> | undefined;
+  $('script[type="application/ld+json"]').each((_, element) => {
+    if (article) return;
+    try {
+      const queue: unknown[] = [JSON.parse($(element).text())];
+      for (let count = 0; queue.length && count < 80; count++) {
+        const value = queue.shift();
+        if (Array.isArray(value)) { queue.push(...value); continue; }
+        if (!value || typeof value !== 'object') continue;
+        const item = value as Record<string, unknown>;
+        const types = Array.isArray(item['@type']) ? item['@type'] : [item['@type']];
+        const articleType = types.some(type => typeof type === 'string' && /^(?:NewsArticle|Article|AnalysisNewsArticle|OpinionNewsArticle|ReportageNewsArticle)$/i.test(type));
+        // Match the headline as well as the schema type, so a related article
+        // nested in the page cannot supply evidence for this story.
+        if (articleType && matchingHeadline(item.headline || item.name)) { article = item; break; }
+        if (item['@graph']) queue.push(item['@graph']);
+        if (item.mainEntity) queue.push(item.mainEntity);
+      }
+    } catch {}
+  });
+  const candidates = [
+    $('meta[property="og:description"]').attr('content') || $('meta[name="og:description"]').attr('content'),
+    $('meta[name="twitter:description"]').attr('content') || $('meta[property="twitter:description"]').attr('content'),
+    article?.description,
+    $('meta[name="description"]').attr('content')
+  ].map(plain);
+  const description = candidates.find(value => value.length >= 25 && !generic.test(normalize(value)) && (article || relatedText(value)));
+  const body = plain(article?.articleBody);
+  const summary = [description, body && body !== description && !description?.startsWith(body) ? body : ''].filter(Boolean).join(' ');
+  return summary ? summary.slice(0, 1200).trim() : undefined;
 }
 
 /**
@@ -535,6 +591,7 @@ export function extractArticleMeta(html: string, finalUrl: string, fallbackTitle
 
   return {
     headline: candidateHeadline,
+    articleSummary: extractArticleSummary($, candidateHeadline),
     publishedTime: dateResult?.displayString,
     publishedDateIso: dateResult?.isoString,
     publishedTimestamp: dateResult?.timestamp,
@@ -641,6 +698,7 @@ export async function verifySourceUrl(
     source: {
       mediaName: meta.mediaName,
       originalHeadline: meta.headline,
+      articleSummary: meta.articleSummary,
       sourceUrl: finalUrl, // STRICTLY the canonical resolved final URL, NEVER vertexaisearch
       publishedTime: meta.publishedTime,
       publishedDateIso: meta.publishedDateIso,

@@ -227,12 +227,12 @@ interface EventCluster {
  *
  * NOTE: Category is used solely for metadata and filtering, NEVER to force-group unrelated events!
  */
-export function analyzeArticleContext(headline: string, assets: Asset[] = ASSET_CATALOG): {
+export function analyzeArticleContext(headline: string, assets: Asset[] = ASSET_CATALOG, articleSummary = ''): {
   category: NewsItem['topicCategory'];
   tickers: string[];
   impact: NewsItem['impact'];
 } {
-  const analysis = analyzeNewsRelevance(headline, assets);
+  const analysis = analyzeNewsRelevance(headline, assets, articleSummary);
   return { category: analysis.topicCategory, tickers: analysis.affectedAssetIds, impact: analysis.impact };
 }
 
@@ -510,7 +510,7 @@ function buildVerifiedNews(verifiedSources: VerifiedSource[], userTickers: strin
       }
     } else {
       // Independent concrete event!
-      const ctx = analyzeArticleContext(src.originalHeadline, assets);
+      const ctx = analyzeArticleContext(src.originalHeadline, assets, src.articleSummary);
       clusters.push({
         id: `live-event-${Date.now()}-${clusters.length}`,
         headline: src.originalHeadline, // The authentic, real headline of the event
@@ -531,8 +531,8 @@ function buildVerifiedNews(verifiedSources: VerifiedSource[], userTickers: strin
     const matchesUserTickers = userTickers.length === 0 || cluster.tickers.some(t => userTickers.includes(t));
     if (!matchesUserTickers) { diagnostics.discarded.unrelated++; continue; }
 
-    const analysis = analyzeNewsRelevance(cluster.headline, assets);
     const primarySource = cluster.sources[0];
+    const analysis = analyzeNewsRelevance(cluster.headline, assets, primarySource.articleSummary);
     const mediaNames = cluster.sources.map(s => s.mediaName).join(' y ');
     const displayTimestamp = primarySource.publishedTime || argInfo.formattedSpanish;
 
@@ -555,6 +555,7 @@ function buildVerifiedNews(verifiedSources: VerifiedSource[], userTickers: strin
       sources: cluster.sources.map(s => ({
         mediaName: s.mediaName,
         originalHeadline: s.originalHeadline,
+        articleSummary: s.articleSummary,
         sourceUrl: s.sourceUrl, // Real verified canonical URL
         publishedTime: s.publishedTime,
         publishedDateIso: s.publishedDateIso,

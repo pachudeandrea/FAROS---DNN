@@ -21,11 +21,34 @@ export const articles = [
 
 ];
 
+// Publisher evidence is local fixture data, not a generated Gemini summary.
+export const judicialArticles = [
+  {
+    media: 'El Cronista', url: 'https://www.cronista.com/columnistas/juicio-ypf-mucho-ruido-y-una-premisa-equivocada/',
+    title: 'Juicio YPF: mucho ruido y una premisa equivocada',
+    description: 'El amicus de los 15 Estados confunde jurisdicción con derecho aplicable: el Segundo Circuito sí juzgó a la Argentina, pero aplicó ley argentina.',
+    body: 'Quince Estados de los EE.UU presentaron un amicus curiae ante la Corte Suprema de los EE.UU para apoyar la revisión del fallo que favoreció a la Argentina.'
+  },
+  {
+    media: 'Ámbito', url: 'https://www.ambito.com/energia/ypf-sancion-ambiental-judicial-prueba',
+    title: 'YPF y una sanción ambiental: las novedades del expediente judicial',
+    description: 'La Justicia ordenó a YPF pagar una multa ambiental por el incumplimiento de sus obligaciones.',
+    body: 'La resolución judicial impone una nueva obligación de pago a la petrolera YPF.'
+  },
+  {
+    media: 'Infobae', url: 'https://www.infobae.com/economia/2030/06/15/ypf-demanda-laboral-desestimada-prueba/',
+    title: 'La Justicia desestimó una demanda laboral contra YPF',
+    description: 'El tribunal desestimó una demanda contra YPF y eliminó esa contingencia judicial para la empresa.',
+    body: 'La decisión cierra el expediente laboral contra YPF.'
+  }
+];
+
 // Public verified headlines reproduced locally; no production request is made.
 if (process.env.FAROS_TEST_NEWS_DIRECTIONAL === '1') {
   const publications = JSON.parse(readFileSync(new URL('./classification-production-2026-11-06.json', import.meta.url), 'utf8'));
   articles.splice(0, articles.length, ...publications.map(item => ({ media: item.sources[0].mediaName, url: item.sources[0].sourceUrl, title: item.headline })));
 }
+if (process.env.FAROS_TEST_NEWS_JUDICIAL === '1') articles.splice(0, articles.length, ...judicialArticles);
 
 export function installNewsTransport() {
   let releaseCoverage;
@@ -57,8 +80,9 @@ export function installNewsTransport() {
       if (payload.generationConfig?.responseMimeType === 'application/json') {
         stats.extractions++;
         const energy = text.includes('Activos bajo monitoreo: YPFD');
-        const selected = text.includes('Activos bajo monitoreo: PAMP') ? 11 : text.includes('Activos bajo monitoreo: AAPL') ? 12 : text.includes('Activos bajo monitoreo: MSFT') ? 7 : text.includes('Activos bajo monitoreo: CO29') ? 8 : text.includes('Activos bajo monitoreo: YMCJO') ? 9 : text.includes('Activos bajo monitoreo: TX28') ? 10 : energy ? 4 : 0;
-        candidate = { content: { parts: [{ text: JSON.stringify({ items: [{ sourceId: selected + 1, headline: articles[selected].title, summary: selected === 11 ? 'Conviene comprar PAMP ahora: recomendación de prueba que debe descartarse.' : 'Síntesis de prueba sin cambios.', economicAnalysis: 'Análisis personalizado de prueba sin cambios.', affectedHoldings: energy ? ['YPFD'] : ['AL30'], audioScript: 'Audio de prueba sin cambios.', sentiment: 'favorable', impact: 'medio' }] }) }] } };
+        const selected = process.env.FAROS_TEST_NEWS_JUDICIAL === '1' ? 0 : text.includes('Activos bajo monitoreo: PAMP') ? 11 : text.includes('Activos bajo monitoreo: AAPL') ? 12 : text.includes('Activos bajo monitoreo: MSFT') ? 7 : text.includes('Activos bajo monitoreo: CO29') ? 8 : text.includes('Activos bajo monitoreo: YMCJO') ? 9 : text.includes('Activos bajo monitoreo: TX28') ? 10 : energy ? 4 : 0;
+        const indexes = process.env.FAROS_TEST_NEWS_JUDICIAL === '1' ? articles.map((_, index) => index) : [selected];
+        candidate = { content: { parts: [{ text: JSON.stringify({ items: indexes.map(index => ({ sourceId: index + 1, headline: articles[index].title, summary: index === 11 ? 'Conviene comprar PAMP ahora: recomendación de prueba que debe descartarse.' : 'Síntesis de prueba sin cambios.', economicAnalysis: 'Análisis personalizado de prueba sin cambios.', affectedHoldings: energy ? ['YPFD'] : ['AL30'], audioScript: 'Audio de prueba sin cambios.', sentiment: 'favorable', impact: 'medio' })) }) }] } };
       } else {
         stats.searches++;
         candidate = { content: { parts: [{ text: 'Publicaciones de prueba sobre reservas y acciones de YPF.' }] }, groundingMetadata: { groundingChunks: (process.env.FAROS_TEST_NEWS_ONE_MEDIUM === '1' ? articles.filter(article => article.media === 'Ámbito') : articles).map(article => ({ web: { uri: article.url, title: article.title } })) } };
@@ -88,7 +112,8 @@ export function installNewsTransport() {
     const article = articles.find(article => article.url === url);
     if (!article) throw new Error('Unexpected test-only news URL');
     stats.publications++;
-    return new Response(`<html><head><meta property="og:title" content="${article.title}"><meta property="article:published_time" content="${published}"><link rel="canonical" href="${article.url}"></head><body><h1>${article.title}</h1><p>Publicación utilizada únicamente como prueba local de FAROS.</p></body></html>`, { headers: { 'content-type': 'text/html' } });
+    const evidence = article.description ? `<meta property="og:description" content="${article.description}"><script type="application/ld+json">${JSON.stringify({ '@type': 'NewsArticle', headline: article.title, description: article.description, articleBody: article.body })}</script>` : '';
+    return new Response(`<html><head><meta property="og:title" content="${article.title}">${evidence}<meta property="article:published_time" content="${published}"><link rel="canonical" href="${article.url}"></head><body><h1>${article.title}</h1><p>Publicación utilizada únicamente como prueba local de FAROS.</p></body></html>`, { headers: { 'content-type': 'text/html' } });
   };
   process.on('message', message => { if (message?.type === 'news-test-stats') process.send?.({ type: 'news-test-stats', ...stats }); });
 }

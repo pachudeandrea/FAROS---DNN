@@ -140,6 +140,12 @@ export const NewsCard: React.FC<NewsCardProps> = ({
         <p className="text-base text-muted leading-relaxed font-normal">
           {news.briefSummary}
         </p>
+        {news.relevanceType === 'valoracion_mercado' && news.portfolioImpactAnalysis?.directExplanation && (
+          <details className="text-sm text-muted leading-relaxed">
+            <summary className="cursor-pointer font-semibold text-brand-950">Por qué se clasifica así</summary>
+            <p className="pt-2">{news.portfolioImpactAnalysis.directExplanation}</p>
+          </details>
+        )}
 
         {/* Affected Portfolio Assets Chips + Position Badge + Effect Badge */}
         <div className="pt-2 flex flex-wrap items-center justify-between gap-3">

@@ -96,6 +96,8 @@ export type RelevanceType =
 export interface MediaCoverage {
   mediaName: string;
   originalHeadline: string;
+  /** Bounded publisher text extracted from the verified article, never model output. */
+  articleSummary?: string;
   sourceUrl: string;
   publishedTime?: string;
   editorialAngle?: string;

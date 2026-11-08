@@ -4,6 +4,8 @@ import { readNewsResponse, normalizeNewsError, retryableNewsError, newsRetryDela
 import { argentinaNewsDay, argentinaNewsHour, nextNewsHourDelay, dailyNewsItems, mergeDailyNews } from './utils/dailyNews';
 import { portfolioNewsScope } from './utils/newsCache';
 import { getPortfolioAffectedAssetIds, getPortfolioNewsImpact } from './utils/portfolioNews';
+import { reclassifyCachedNews } from './utils/newsClassification';
+import { portfolioAssets } from './data/assetCatalog';
 import React, { useState, useMemo, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { 
   Asset, 
@@ -279,6 +281,7 @@ export default function App() {
     const todayKey = argentinaNewsDay();
     const hourKey = argentinaNewsHour();
     const scope = newsScope;
+    const classifyCached = (items: NewsItem[]) => reclassifyCachedNews(items, portfolioAssets(activePortfolio));
     const cacheKey = newsClientCacheKey(scope, hourKey);
     const recoveryKey = `${currentUser?.id || ''}:${scope}:${hourKey}`;
     if (newsRecovery.current.timer) clearTimeout(newsRecovery.current.timer);
@@ -308,7 +311,7 @@ export default function App() {
         const news = cached ? dailyNewsItems(cached.news, todayKey) : [];
         const checked = cached?.checkedAt ? Date.parse(cached.checkedAt) : NaN;
         if (cached && Number.isFinite(checked) && checked <= Date.now() && argentinaNewsDay(checked) === todayKey && (!cached.news.length || news.length)) {
-          const accumulated = mergeDailyNews(findRecentNewsSnapshot(localStorage, prefix)?.news || [], news, todayKey);
+          const accumulated = classifyCached(mergeDailyNews(findRecentNewsSnapshot(localStorage, prefix)?.news || [], news, todayKey));
           completedNews.current = accumulated; visibleNews.current = accumulated;
           newsRecovery.current = { key: recoveryKey, attempts: 0, after: 0, timer: null };
           setNewsList(accumulated);
@@ -322,8 +325,9 @@ export default function App() {
       try {
         const recent = findRecentNewsSnapshot(localStorage, prefix);
         if (recent) {
-          completedNews.current = recent.news; visibleNews.current = recent.news;
-          setNewsList(recent.news);
+          const news = classifyCached(recent.news);
+          completedNews.current = news; visibleNews.current = news;
+          setNewsList(news);
           setQueryState({ status: 'cached', checkedAt: recent.checkedAt });
         }
       } catch {}

@@ -230,6 +230,7 @@ Detallá los hechos concretos, cifras y mecanismos de transmisión respaldados p
       id: number;
       mediaName: string;
       originalHeadline: string;
+      articleSummary?: string;
       sourceUrl: string;
       domain?: string;
       publishedTime?: string;
@@ -342,7 +343,7 @@ Respondé ÚNICAMENTE con un JSON con el siguiente esquema:
       const mediaDomain = assignedSource.domain || (new URL(assignedSource.sourceUrl)).hostname;
       const mediaName = assignedSource.mediaName || mediaDomain;
 
-      const analysis = analyzeNewsRelevance(assignedSource.originalHeadline, assets);
+      const analysis = analyzeNewsRelevance(assignedSource.originalHeadline, assets, assignedSource.articleSummary);
       const relatedIds = analysis.affectedAssetIds.filter(id => !tickers.length || tickers.includes(id));
       if (tickers.length && !relatedIds.some(id => tickers.includes(id))) continue;
       const proposedSummary = typeof item.summary === 'string' ? item.summary.trim() : '';
@@ -363,6 +364,7 @@ Respondé ÚNICAMENTE con un JSON con el siguiente esquema:
         sources: [{
           mediaName,
           originalHeadline: assignedSource.originalHeadline,
+          articleSummary: assignedSource.articleSummary,
           sourceUrl: assignedSource.sourceUrl,
           publishedTime: assignedSource.publishedTime,
           publishedDateIso: assignedSource.publishedDateIso,

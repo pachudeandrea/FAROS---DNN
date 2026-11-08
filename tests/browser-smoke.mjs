@@ -1001,6 +1001,78 @@ try {
       await context.close();
     }
   });
+  await check('Clasificación judicial: catalizadores y producción generan señales antes de la cotización; opinión y LONG/SHORT conservan su sentido', async () => {
+    const publications = [
+      { headline: 'La Justicia ordenó a YPF pagar una indemnización millonaria', direction: 'alerta' },
+      { headline: 'La Justicia rechazó la demanda contra YPF', direction: 'favorable' },
+      { headline: 'YPF bajó 9% su producción', direction: 'alerta' },
+      { headline: 'Juicio YPF: mucho ruido y una premisa equivocada', direction: 'neutral', articleSummary: 'El amicus de los 15 Estados confunde jurisdicción con derecho aplicable: el Segundo Circuito sí juzgó a la Argentina, pero aplicó ley argentina.' }
+    ];
+    const classified = publications.map(({ headline, direction, articleSummary }, index) => {
+      const analysis = analyzeNewsRelevance(headline, ASSET_CATALOG, articleSummary);
+      assert.equal(analysis.relevanceType, 'valoracion_mercado', 'Un catalizador no equivale a una cotización observada');
+      assert.equal(analysis.assetImpacts.YPFD, direction, headline);
+      const item = structuredClone(news[0]);
+      return { ...item, id: `judicial-classification-${index}`, headline, impact: analysis.impact, relevanceType: analysis.relevanceType,
+        affectedAssetIds: analysis.affectedAssetIds, briefSummary: headline, fullSynthesis: [analysis.explanation],
+        sources: [{ ...item.sources[0], sourceUrl: `https://www.ambito.com/finanzas/judicial-classification-${index}`, originalHeadline: headline, articleSummary }], coverageCount: 1,
+        portfolioImpactAnalysis: { directExplanation: analysis.explanation, affectedHoldings: Object.entries(analysis.assetImpacts).map(([symbol, impactDirection]) => ({ symbol, impactDirection, relationshipDetail: analysis.relationships[symbol] })) } };
+    });
+    for (const position of ['long', 'short']) {
+      const { context, page } = await setup({ newsOverride: classified, portfolioOverride: { ...MOCK_PORTFOLIOS[0], assetIds: ['YPFD'], assetPositions: { YPFD: position } } });
+      await clickVisible(page, 'Ahora no');
+      const group = page.getByRole('group', { name: 'Filtrar noticias por impacto', exact: true });
+      await group.getByRole('button', { name: `Alertas: ${position === 'long' ? 2 : 1} noticias`, exact: true }).waitFor();
+      await group.getByRole('button', { name: `Favorables: ${position === 'long' ? 1 : 2} noticias`, exact: true }).waitFor();
+      await group.getByRole('button', { name: 'Neutrales: 1 noticias', exact: true }).waitFor();
+      const adverse = page.locator('article').filter({ has: page.getByRole('button', { name: publications[0].headline, exact: true }) });
+      await adverse.getByText(position === 'long' ? 'Alerta' : 'Favorable', { exact: true }).waitFor();
+      await adverse.getByText('Por qué se clasifica así', { exact: true }).click();
+      await adverse.getByText(classified[0].portfolioImpactAnalysis.directExplanation, { exact: true }).waitFor();
+      await adverse.getByRole('button', { name: publications[0].headline, exact: true }).click();
+      await page.getByText(position === 'long' ? 'Desfavorable para posición Long (condicional)' : 'Favorable para posición Short (condicional)', { exact: true }).waitFor();
+      await page.getByRole('dialog').getByText(classified[0].portfolioImpactAnalysis.directExplanation, { exact: true }).first().waitFor();
+      await page.getByRole('button', { name: 'Cerrar detalle y detener audio', exact: true }).click();
+      const opinion = page.locator('article').filter({ has: page.getByRole('button', { name: publications[3].headline, exact: true }) });
+      await opinion.getByText('Neutral', { exact: true }).waitFor();
+      await opinion.getByText('Valoración de mercado', { exact: true }).waitFor();
+      await opinion.getByRole('button', { name: publications[3].headline, exact: true }).click();
+      assert.match(classified[3].portfolioImpactAnalysis.directExplanation, /judicial/i);
+      await page.getByRole('dialog').getByText(classified[3].portfolioImpactAnalysis.directExplanation, { exact: true }).first().waitFor();
+      await page.getByRole('button', { name: 'Cerrar detalle y detener audio', exact: true }).click();
+      await group.getByRole('button', { name: `Alertas: ${position === 'long' ? 2 : 1} noticias`, exact: true }).click();
+      await page.waitForFunction(expected => document.querySelectorAll('#news-feed-section article').length === expected, position === 'long' ? 2 : 1);
+      await fits(page, `Catalizadores judiciales ${position}`);
+      await page.screenshot({ path: path.join(artifacts, `judicial-classification-${position}.png`), fullPage: true });
+      await context.close();
+    }
+  });
+  await check('Clasificación judicial: corrige una neutral antigua de la caché del día sin borrar noticias ni renovar su horario', async () => {
+    const clockAt = '2030-06-15T16:30:00Z';
+    const checkedAt = '2030-06-15T16:05:00Z';
+    const headline = 'La Justicia ordenó a YPF pagar una indemnización millonaria';
+    const stale = { ...structuredClone(news[0]), id: 'live-news-ypf-stale', headline, briefSummary: headline,
+      impact: 'neutral', relevanceType: 'ruido', affectedAssetIds: ['YPFD'],
+      sources: [{ mediaName: 'Ámbito', sourceUrl: 'https://www.ambito.com/finanzas/judicial-stale-fixture', originalHeadline: headline, publishedDateIso: '2030-06-15T15:00:00Z', publishedTimestamp: Date.parse('2030-06-15T15:00:00Z') }], coverageCount: 1,
+      portfolioImpactAnalysis: { directExplanation: 'Clasificación neutral antigua.', affectedHoldings: [{ symbol: 'YPFD', impactDirection: 'neutral', relationshipDetail: 'Clasificación antigua.' }] } };
+    const portfolio = { ...MOCK_PORTFOLIOS[0], assetIds: ['YPFD'], assetPositions: { YPFD: 'long' } };
+    const scope = `${portfolio.id}_${portfolioNewsScope(portfolio.assetIds, portfolio.profile, portfolio.assetPositions, portfolio.customAssets)}`;
+    const cacheKey = newsClientCacheKey(scope, argentinaNewsHour(Date.parse(clockAt)));
+    const { context, page, state } = await setup({ clockAt, portfolioOverride: portfolio, pulseCacheSeeds: [[cacheKey, JSON.stringify({ news: [stale], checkedAt })]] });
+    await clickVisible(page, 'Ahora no');
+    await page.getByRole('group', { name: 'Filtrar noticias por impacto', exact: true }).getByRole('button', { name: 'Alertas: 1 noticias', exact: true }).waitFor();
+    const card = page.locator('article').filter({ has: page.getByRole('button', { name: headline, exact: true }) });
+    await card.getByText('Alerta', { exact: true }).waitFor();
+    await card.getByText('Valoración de mercado', { exact: true }).waitFor();
+    const expectedTime = await page.evaluate(at => new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(at)), checkedAt);
+    assert.ok((await page.getByRole('region', { name: 'Resumen de tu cartera' }).getByRole('status').innerText()).includes(expectedTime), 'La tarjeta conserva la hora original con el formato local del navegador');
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse').length, 0, 'La corrección de reglas no requiere repetir una consulta ya guardada');
+    assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).checkedAt, cacheKey), checkedAt);
+    await card.getByRole('button', { name: headline, exact: true }).click();
+    assert.equal(await page.getByText('Clasificación neutral antigua.', { exact: true }).count(), 0);
+    await page.getByText('Desfavorable para posición Long (condicional)', { exact: true }).waitFor();
+    await context.close();
+  });
   await check('Contadores visibles de impacto filtran inmediatamente la lista y permiten quitar el filtro', async () => {
     const { context, page, state } = await setup({ viewport: { width: 1440, height: 900 } });
     await clickVisible(page, 'Ahora no');

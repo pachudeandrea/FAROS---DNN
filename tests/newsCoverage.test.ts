@@ -16,7 +16,7 @@ import { enrichNewsCoverage, sourcesCoverSameEvent } from '../src/utils/newsCove
 import { distinctMediaSources, sanitizeGroundingSources } from '../src/utils/sourceGrounding';
 import { argentinaNewsDay, argentinaNewsHour } from '../src/utils/dailyNews.js';
 import { NEWS_CACHE_VERSION } from '../src/utils/newsCache';
-import { articles } from './fixtures/news-transport.mjs';
+import { articles, judicialArticles } from './fixtures/news-transport.mjs';
 
 const now = new Date('2030-06-15T16:00:00Z');
 const source = (title: string, domain = 'ambito.com', at = '2030-06-15T14:00:00Z'): MediaCoverage => ({ mediaName: domain, originalHeadline: title, sourceUrl: `https://${domain}/economia/${encodeURIComponent(title)}`, publishedDateIso: at, publishedTimestamp: Date.parse(at) });
@@ -79,10 +79,10 @@ before(async () => {
 });
 async function stop(child: ChildProcess) { if (child.exitCode !== null) return; const exit = once(child, 'exit'); child.kill('SIGTERM'); await exit; children.delete(child); }
 after(async () => { for (const child of children) await stop(child); if (artifact) await rm(artifact, { recursive: true, force: true }); });
-async function api(gemini = true, singleMedium = false, discovery = false, section = false, gated = false, databaseUrl = '', directional = false, initialNow = '') {
+async function api(gemini = true, singleMedium = false, discovery = false, section = false, gated = false, databaseUrl = '', directional = false, initialNow = '', judicial = false) {
   const child = fork(new URL('fixtures/native-api-server.mjs', import.meta.url), [pathToFileURL(path.join(artifact, 'api/index.js')).href], {
     cwd: root, execArgv: [], silent: true,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: databaseUrl, POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NOW: initialNow, FAROS_TEST_NEWS_DIRECTIONAL: directional ? '1' : '', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '', FAROS_TEST_NEWS_DISCOVERY: discovery ? '1' : '', FAROS_TEST_NEWS_SECTION: section ? '1' : '', FAROS_TEST_NEWS_GATED: gated ? '1' : '' }
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, DATABASE_URL: databaseUrl, POSTGRES_URL: '', POSTGRES_PRISMA_URL: '', POSTGRES_URL_NON_POOLING: '', GEMINI_API_KEY: gemini ? 'test-only-no-network' : '', NODE_ENV: 'production', VERCEL: '1', VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40), FAROS_TEST_NEWS: '1', FAROS_TEST_NOW: initialNow, FAROS_TEST_NEWS_DIRECTIONAL: directional ? '1' : '', FAROS_TEST_NEWS_JUDICIAL: judicial ? '1' : '', FAROS_TEST_NEWS_ONE_MEDIUM: singleMedium ? '1' : '', FAROS_TEST_NEWS_DISCOVERY: discovery ? '1' : '', FAROS_TEST_NEWS_SECTION: section ? '1' : '', FAROS_TEST_NEWS_GATED: gated ? '1' : '' }
   });
   children.add(child);
   let output = ''; child.stdout?.on('data', chunk => { output += chunk; }); child.stderr?.on('data', chunk => { output += chunk; });
@@ -143,9 +143,9 @@ test('Gemini usa los metadatos del catálogo y valida relaciones aunque el model
   const args = { portfolioId: 'same-portfolio', tickers: ['MSFT'], profile: 'moderado' };
   const microsoft = await server.pulse(args);
   assert.deepEqual(microsoft.news[0].affectedAssetIds, ['MSFT']);
-  assert.equal(microsoft.news[0].impact, 'neutral');
+  assert.equal(microsoft.news[0].impact, 'favorable', 'Las ganancias récord son una señal de valoración, no una cotización observada');
   assert.equal(microsoft.news[0].relevanceType, 'valoracion_mercado');
-  assert.equal(microsoft.news[0].portfolioImpactAnalysis.affectedHoldings[0].impactDirection, 'neutral');
+  assert.equal(microsoft.news[0].portfolioImpactAnalysis.affectedHoldings[0].impactDirection, 'favorable');
   assert.equal(microsoft.news[0].portfolioImpactAnalysis.horizon, undefined);
   assert.equal((await server.pulse(args)).cached, true);
   const before = (await server.stats()).searches;
@@ -329,6 +329,34 @@ test('los titulares reales conservan clasificación favorable/alerta en RSS, Gem
     if (gemini) assert.ok((await server.stats()).extractions > 0);
     const cached = await server.pulse(args);
     assert.equal(cached.cached, true); assert.deepEqual(cached.news, result.news);
+  }
+});
+
+test('RSS y Gemini usan evidencia judicial del editor y distinguen opinión, multa adversa y demanda desestimada', { timeout: 30000 }, async () => {
+  for (const gemini of [false, true]) {
+    const server = await api(gemini, false, false, false, false, '', false, '', true);
+    const args = { portfolioId: 'judicial-evidence-fixture', tickers: ['YPFD'], profile: 'moderado' };
+    const fresh = await server.pulse(args);
+    assert.equal(fresh.cached, false); assert.equal(fresh.news.length, judicialArticles.length, server.output);
+    const expected = ['neutral', 'alerta', 'favorable'];
+    for (let index = 0; index < judicialArticles.length; index++) {
+      const publication = judicialArticles[index];
+      const item = fresh.news.find((item: NewsItem) => item.sources[0].sourceUrl === publication.url);
+      assert.ok(item, publication.title);
+      assert.ok(item.id.startsWith(gemini ? 'gemini_' : 'live-news-'), 'La prueba recorre la rama de recopilación indicada');
+      assert.equal(item.headline, publication.title);
+      assert.equal(item.relevanceType, 'valoracion_mercado', publication.title);
+      assert.equal(item.impact, expected[index], publication.title);
+      assert.equal(item.portfolioImpactAnalysis.affectedHoldings.find((holding: any) => holding.symbol === 'YPFD').impactDirection, expected[index]);
+      assert.ok(item.sources[0].articleSummary.includes(publication.description), 'Se conserva evidencia obtenida del HTML, no el sentimiento propuesto por Gemini');
+      assert.ok(item.sources[0].articleSummary.includes(publication.body));
+      assert.match(item.portfolioImpactAnalysis.directExplanation, /judicial|legal/);
+    }
+    const cached = await server.pulse(args);
+    assert.equal(cached.cached, true);
+    assert.equal(cached.checkedAt, fresh.checkedAt);
+    assert.deepEqual(cached.news, fresh.news, 'Leer la caché conserva identidad, evidencia y análisis de las tres publicaciones');
+    assert.equal((await server.stats()).extractions > 0, gemini);
   }
 });
 
