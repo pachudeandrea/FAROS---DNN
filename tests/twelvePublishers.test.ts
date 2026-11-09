@@ -85,3 +85,19 @@ test('las portadas nuevas y los artículos no financieros no son fuentes de una 
   assert.equal(isValidArticleUrl('https://www.pagina12.com.ar/secciones/economia'), false);
   assert.equal(isValidArticleUrl('https://www.perfil.com/seccion/economia'), false);
 });
+
+test('los formatos actuales y legados de Página12, Perfil y EconoJournal no se pierden al descubrir artículos', () => {
+  const routes = [
+    ['pagina12.com.ar', '/2026/11/08/el-bcra-informo-sus-reservas-y-la-cotizacion-del-dolar/'],
+    ['perfil.com', '/economia/ypf-presento-su-balance-trimestral-azVga6T6HGsv'],
+    ['econojournal.com.ar', '/2026/11/08/ypf-aumento-su-produccion-de-petroleo/'],
+    ['econojournal.com.ar', '/ypf-aumento-su-produccion-de-petroleo/']
+  ];
+  for (const [domain, path] of routes) {
+    const section = COVERAGE_PUBLISHERS.find(publisher => publisher.domain === domain)!.sections[0];
+    const url = new URL(path, section).href;
+    assert.deepEqual(extractSectionCandidates(`<a href="${path}"><h2>${title}</h2></a>`, section, domain), [{ publisher: domain, url, title }]);
+    assert.equal(validateArticleUrl(url, 200, 'text/html', `<title>${title}</title>`).valid, true);
+  }
+  assert.equal(validateArticleUrl('https://econojournal.com.ar/politica-de-privacidad/', 200, 'text/html', `<title>${title}</title>`).valid, false);
+});

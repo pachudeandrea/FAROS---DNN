@@ -41,12 +41,12 @@ export const ALLOWED_MEDIA_DOMAINS = [
 /** Publishers with article paths outside the common /economia/<slug> shape.
  * An index, author page or section URL must never become a verified article. */
 export const PUBLISHER_ARTICLE_PATHS: Record<string, RegExp> = {
-  'pagina12.com.ar': /^\/(?:\d{5,}-[^/]+|economia\/[^/]+)\/?$/i,
-  'perfil.com': /^\/noticias\/(?:economia|finanzas)\/[^/]+\.phtml\/?$/i,
+  'pagina12.com.ar': /^\/(?:\d{5,}-[^/]+|economia\/[^/]+|\d{4}\/\d{2}\/\d{2}\/[^/]+)\/?$/i,
+  'perfil.com': /^\/(?:noticias\/(?:economia|finanzas)\/[^/]+\.phtml|(?:economia|finanzas)\/[^/]+-[a-z0-9]{8,})\/?$/i,
   'eldestapeweb.com': /^\/(?:economia|economia-y-finanzas)\/[^/]+(?:\/[^/]+)*-\d{8,}\/?$/i,
   'tiempoar.com.ar': /^\/(?:economia\/[^/]+|ta_article\/[^/]+)\/?$/i,
   'eleconomista.com.ar': /^\/(?:economia|finanzas|negocios|energia)\/[^/]+-n\d+\/?$/i,
-  'econojournal.com.ar': /^\/\d{4}\/\d{2}\/[^/]+\/?$/i
+  'econojournal.com.ar': /^\/(?:\d{4}\/\d{2}\/(?:\d{2}\/)?[^/]+|(?!(?:quienes-somos|terminos|politica-de-privacidad|contacto|institucional)(?:\/|$))[a-z0-9]+(?:-[a-z0-9]+){3,})\/?$/i
 };
 
 // Disallowed URL path patterns: foreign national editions, entertainment, sports, lifestyle
