@@ -13,7 +13,8 @@ export const COVERAGE_PUBLISHERS = [
   { domain: 'eldestapeweb.com', sections: ['https://www.eldestapeweb.com/economia'] },
   { domain: 'tiempoar.com.ar', sections: ['https://www.tiempoar.com.ar/economia/'] },
   { domain: 'eleconomista.com.ar', sections: ['https://eleconomista.com.ar/economia/', 'https://eleconomista.com.ar/finanzas/'] },
-  { domain: 'econojournal.com.ar', sections: ['https://econojournal.com.ar/'] }
+  { domain: 'econojournal.com.ar', sections: ['https://econojournal.com.ar/feed/', 'https://econojournal.com.ar/'] },
+  { domain: 'baenegocios.com', sections: ['https://www.baenegocios.com/finanzas/', 'https://www.baenegocios.com/economia/'] }
 ];
 export interface PublicationCandidate { publisher: string; url: string; title: string }
 export interface SectionReport { publisher: string; section: string; status: string; found: number; accepted: number }
@@ -54,14 +55,34 @@ export function extractSectionCandidates(html: string, section: string, publishe
   return [...found.values()];
 }
 
+/** Official RSS/Atom indexes only nominate article URLs. Their titles and
+ * excerpts never replace verification of the publisher's actual article. */
+export function extractPublisherFeedCandidates(xml: string, feedUrl: string, publisher: string): PublicationCandidate[] {
+  const $ = cheerio.load(xml, { xmlMode: true });
+  if (!$('rss,feed').length) return [];
+  // Reuse exactly the same URL/path/hostname checks as the HTML indexes. DOM
+  // setters escape publisher strings; no supplied markup is executed.
+  const page = cheerio.load('<html><body></body></html>');
+  $('item,entry').slice(0,150).each((_, node) => {
+    const link = $(node).find('link').first();
+    const raw = link.attr('href') || link.text().trim();
+    const title = $(node).find('title').first().text();
+    page('body').append(page('<a></a>').attr('href', raw).text(title));
+  });
+  return extractSectionCandidates(page.html(), feedUrl, publisher);
+}
+
 export async function collectPublisherSections(publishers: typeof COVERAGE_PUBLISHERS, reports: SectionReport[], signal: AbortSignal): Promise<PublicationCandidate[]> {
   const batches = await Promise.all(publishers.flatMap(publisher => publisher.sections.map(async section => {
     const report: SectionReport = { publisher: publisher.domain, section: new URL(section).pathname, status: 'pending', found: 0, accepted: 0 };
     reports.push(report);
     const response = await resolveFinalUrl(section, 5000, signal, publisher.domain);
     if (!response) { report.status = signal.aborted ? 'timeout' : 'unavailable'; return []; }
-    if (response.responseStatus !== 200 || !response.contentType.includes('text/html')) { report.status = 'invalid_response'; return []; }
-    const candidates = extractSectionCandidates(response.html, section, publisher.domain);
+    const html = response.contentType.includes('text/html');
+    const feed = /(?:rss|atom|xml)/i.test(response.contentType);
+    if (response.responseStatus !== 200 || !html && !feed) { report.status = 'invalid_response'; return []; }
+    const candidates = feed ? extractPublisherFeedCandidates(response.html, section, publisher.domain)
+      : extractSectionCandidates(response.html, section, publisher.domain);
     report.status = candidates.length ? 'ok' : 'empty';
     report.found = candidates.length; report.accepted = candidates.length;
     return candidates;

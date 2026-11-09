@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { COVERAGE_PUBLISHERS, extractSectionCandidates } from '../src/utils/publisherSections.ts';
+import { COVERAGE_PUBLISHERS, extractSectionCandidates, extractPublisherFeedCandidates } from '../src/utils/publisherSections.ts';
 import { validateArticleUrl, verifySourceUrl, purgeUrlVerificationCache } from '../src/utils/urlResolver.ts';
 import { getMediaNameFromDomain, getPublisherKey, isValidArticleUrl } from '../src/utils/sourceGrounding.ts';
 
@@ -100,4 +100,11 @@ test('los formatos actuales y legados de Página12, Perfil y EconoJournal no se 
     assert.equal(validateArticleUrl(url, 200, 'text/html', `<title>${title}</title>`).valid, true);
   }
   assert.equal(validateArticleUrl('https://econojournal.com.ar/politica-de-privacidad/', 200, 'text/html', `<title>${title}</title>`).valid, false);
+});
+
+test('el RSS oficial permite descubrir artículos aunque la portada no responda, sin aceptar índices ni otro editor', () => {
+  const url = 'https://econojournal.com.ar/2026/11/ypf-aumento-la-produccion-de-petroleo/';
+  const xml = `<rss><channel><item><title>${title}</title><link>${url}</link></item><item><title>${title}</title><link>https://econojournal.com.ar/2026/11/</link></item><item><title>${title}</title><link>https://econojournal.com.ar.example.org/falso</link></item></channel></rss>`;
+  assert.deepEqual(extractPublisherFeedCandidates(xml, 'https://econojournal.com.ar/feed/', 'econojournal.com.ar'), [{ publisher: 'econojournal.com.ar', url, title }]);
+  assert.ok(COVERAGE_PUBLISHERS.some(publisher => publisher.domain === 'baenegocios.com'));
 });
