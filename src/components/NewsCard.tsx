@@ -1,5 +1,6 @@
 import React from 'react';
-import { NewsItem, Asset, RelevanceType, AssetPosition } from '../types';
+import { NewsItem, Asset, RelevanceType, AssetPosition, Portfolio } from '../types';
+import { generatePortfolioNewsScript } from '../utils/dailySummaryGenerator';
 import { getPortfolioAffectedAssetIds, getPortfolioNewsImpact } from '../utils/portfolioNews';
 import { 
   TrendingUp, 
@@ -25,6 +26,7 @@ interface NewsCardProps {
   isSaved?: boolean;
   portfolioAssetIds: string[];
   assetPositions?: Record<string, AssetPosition>;
+  portfolio: Portfolio;
 }
 
 export const getRelevanceLabel = (type: RelevanceType): string => {
@@ -52,9 +54,11 @@ export const NewsCard: React.FC<NewsCardProps> = ({
   savePending = false,
   portfolioAssetIds,
   assetPositions,
+  portfolio,
 }) => {
   const matchingAssetIds = getPortfolioAffectedAssetIds(news, portfolioAssetIds);
   const primaryAssetSymbol = assetsMap[matchingAssetIds[0]]?.symbol || matchingAssetIds[0] || 'MK';
+  const audioDuration = React.useMemo(() => calculateEstimatedDuration(generatePortfolioNewsScript(portfolio, news), 1.0).formatted, [portfolio, news]);
 
   // Calculate effective impact based on portfolio positions (e.g. Short position inverts impact)
   const effectiveImpact = getPortfolioNewsImpact(news, { assetIds: portfolioAssetIds, assetPositions });
@@ -231,7 +235,7 @@ export const NewsCard: React.FC<NewsCardProps> = ({
         >
           <Volume2 className="w-4 h-4 text-brand-800" />
           <span>
-            Escuchar síntesis ({calculateEstimatedDuration(news.audioScript || news.briefSummary, 1.0).formatted} min)
+            Escuchar síntesis ({audioDuration} min)
           </span>
         </button>
 

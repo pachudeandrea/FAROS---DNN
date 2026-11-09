@@ -9,6 +9,7 @@ import {
   MediaCoverage,
 } from '../types';
 import { getPortfolioAffectedAssetIds, getPortfolioNewsImpact } from '../utils/portfolioNews';
+import { generatePortfolioNewsScript } from '../utils/dailySummaryGenerator';
 import { getRelevanceLabel } from './NewsCard';
 import { 
   X, 
@@ -94,6 +95,7 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
   const [copied, setCopied] = useState(false);
   const coverageRef = useRef<HTMLElement>(null);
   const [audioState, setAudioState] = useState<AudioControllerState>(audioController.getState());
+  const audioDuration = useMemo(() => calculateEstimatedDuration(generatePortfolioNewsScript(portfolio, news), 1.0), [portfolio, news]);
 
   useEffect(() => {
     const unsub = audioController.subscribe(setAudioState);
@@ -282,7 +284,7 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
           {(() => {
             const isPlayingThisNews = audioState.isPlaying && audioState.currentTrack?.id === news.id;
             const isPausedThisNews = !audioState.isPlaying && audioState.currentTrack?.id === news.id;
-            const durationEst = calculateEstimatedDuration(news.audioScript || news.briefSummary, 1.0);
+            const durationEst = audioDuration;
 
             return (
               <div className="flex items-center justify-between p-3.5 bg-ink-900 text-paper rounded-2xl shadow-sm border border-brand-900/40">

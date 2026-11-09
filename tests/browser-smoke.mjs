@@ -892,6 +892,53 @@ try {
     await player.waitFor({ state: 'hidden' });
     await context.close();
   });
+  await check('Contenido del audio: explica hechos verificados y su relación con la cartera en el resumen y en cada noticia', async () => {
+    const publications = [
+      { headline: 'YPF presenta su informe operativo para inversores', fact: 'YPF aumentó su producción de petróleo durante el trimestre.', url: 'https://www.ambito.com/energia/audio-content-production-fixture' },
+      { headline: 'Los bonos argentinos registran una jornada de tensión', fact: 'El riesgo país argentino subió durante la rueda y los bonos en dólares cayeron.', url: 'https://www.cronista.com/finanzas-mercados/audio-content-risk-fixture/' }
+    ];
+    const items = publications.map(({ headline, fact, url }, index) => {
+      const analysis = analyzeNewsRelevance(headline, ASSET_CATALOG, fact);
+      const item = structuredClone(news[0]);
+      return { ...item, id: `audio-content-${index}`, headline,
+        briefSummary: 'SÍNTESIS_GENERADA_QUE_NO_DEBE_LEERSE', audioScript: 'GUION_ANTERIOR_QUE_NO_DEBE_USARSE',
+        sources: [{ ...item.sources[0], mediaName: index ? 'El Cronista' : 'Ámbito', originalHeadline: headline, articleSummary: fact, sourceUrl: url }], coverageCount: 1,
+        affectedAssetIds: analysis.affectedAssetIds, impact: analysis.impact, relevanceType: analysis.relevanceType,
+        factCheck: { ...item.factCheck, status: 'confirmado' },
+        portfolioImpactAnalysis: { directExplanation: analysis.explanation, affectedHoldings: Object.entries(analysis.assetImpacts).map(([symbol, impactDirection]) => ({ symbol, impactDirection, relationshipDetail: analysis.relationships[symbol] })) } };
+    });
+    const { context, page, state } = await setup({ audioMode: 'error', newsOverride: items,
+      portfolioOverride: { ...MOCK_PORTFOLIOS[0], assetIds: ['YPFD', 'AL30'], assetPositions: { YPFD: 'long', AL30: 'long' } } });
+    await clickVisible(page, 'Ahora no'); state.audioMode = 'ok';
+    const player = page.getByRole('region', { name: 'Reproductor de audio', exact: true });
+    await clickVisible(page, 'Escuchar resumen del día');
+    await player.getByRole('button', { name: 'Pausar audio', exact: true }).waitFor();
+    await player.getByTitle('Ver transcripción', { exact: true }).click();
+    const daily = (await player.locator('p').allTextContents()).join(' ');
+    assert.ok(daily.includes(publications[0].fact), 'La narración utiliza el dato operativo del artículo original');
+    assert.ok(daily.includes(publications[1].fact), 'El resumen también explica el hecho financiero, sin limitarse al titular');
+    assert.match(daily, /(?:tu bono|tus bonos) A L treinta/);
+    assert.match(daily, /prima|financiar al Estado/);
+    assert.match(daily, /YPF/); assert.match(daily, /generar fondos|actividad del negocio/);
+    assert.doesNotMatch(daily, /SÍNTESIS_GENERADA|GUION_ANTERIOR|Aporta información para la valoración|conviene comprar|conviene vender|deberías comprar|deberías vender/);
+    assert.doesNotMatch(daily, /YPF presenta su informe operativo para inversores/);
+    await player.getByRole('button', { name: 'Cerrar reproductor y detener audio', exact: true }).click();
+    await player.waitFor({ state: 'hidden' });
+    const card = page.locator('article').filter({ has: page.getByRole('button', { name: publications[0].headline, exact: true }) });
+    await card.getByRole('button', { name: /Escuchar síntesis/ }).click();
+    await player.getByRole('button', { name: 'Pausar audio', exact: true }).waitFor();
+    // The drawer can retain the expanded transcript when a new track opens.
+    const transcriptButton = player.getByTitle('Ver transcripción', { exact: true });
+    if (await transcriptButton.count()) await transcriptButton.click();
+    const single = (await player.locator('p').allTextContents()).join(' ');
+    assert.ok(single.includes(publications[0].fact));
+    assert.match(single, /generar fondos|actividad del negocio/);
+    assert.doesNotMatch(single, /SÍNTESIS_GENERADA|GUION_ANTERIOR|conviene comprar|conviene vender/);
+    assert.ok(state.calls.some(call => call.path === '/api/audio/synthesize' && call.body.text.includes('producción de petróleo')), 'El contenido explicado llega a la síntesis de voz y no solo a un texto visual');
+    await page.screenshot({ path: path.join(artifacts, 'audio-portfolio-content-390.png') });
+    await player.getByRole('button', { name: 'Cerrar reproductor y detener audio', exact: true }).click();
+    await context.close();
+  });
   await check('Cerrar mientras se prepara audio impide que una respuesta tardía vuelva a reproducir', async () => {
     const { context, page, state } = await setup({ audioMode: 'error' });
     await clickVisible(page, 'Ahora no'); state.audioMode = 'ok'; state.audioDelay = 700;

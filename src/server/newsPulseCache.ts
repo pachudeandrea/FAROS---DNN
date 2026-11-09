@@ -89,7 +89,10 @@ export async function writePulseSnapshot(scope: string, snapshot: PulseSnapshot)
     await client.query('COMMIT');
     retryAfter = 0;
     // Retire only completed caches from previous Argentina days.
-    void database.query("DELETE FROM faros_news_pulse_cache WHERE checked_at < ($1::date + TIME '03:00') AT TIME ZONE 'UTC'", [day]).catch(() => {});
+    // Finish bounded maintenance before releasing this connection/response.
+    // A queued background query could otherwise be frozen with a serverless
+    // response, or race the next request at the day boundary.
+    await client.query("DELETE FROM faros_news_pulse_cache WHERE checked_at < ($1::date + TIME '03:00') AT TIME ZONE 'UTC'", [day]).catch(() => {});
     return merged;
   } catch {
     if (client) await client.query('ROLLBACK').catch(() => {});

@@ -57,7 +57,7 @@ import {
   AudioControllerState, 
   calculateEstimatedDuration 
 } from './utils/audioController';
-import { generateDailySummaryScript, naturalizeScriptForSpeech } from './utils/dailySummaryGenerator';
+import { generateDailySummaryScript, generatePortfolioNewsScript } from './utils/dailySummaryGenerator';
 import { getVerifiedCalendarEvents } from './utils/calendarGrounding';
 import { getNowAR } from './utils/dateAR';
 import { apiRequest, ApiError } from './utils/apiClient';
@@ -256,18 +256,17 @@ export default function App() {
       ];
 
       newsList.slice(0, 4).forEach(item => {
-        const rawScript = item.audioScript 
-          ? item.audioScript.replace(/^Resumen FAROS\.\s*/i, 'Resumen FAROS: ')
-          : `${item.headline}. ${item.briefSummary}.`;
+        const script = generatePortfolioNewsScript(activePortfolio, item);
+        if (!script) return;
         prefetchItems.push({
           id: item.id,
-          text: naturalizeScriptForSpeech(rawScript)
+          text: script
         });
       });
 
       audioController.prefetchScripts(prefetchItems);
     } catch {}
-  }, [newsList, activePortfolio.id, calendarEvents]);
+  }, [newsList, newsScope, calendarEvents]);
 
   // Tab switcher with instant audio cancellation
   const handleSelectTab = useCallback((tab: 'feed' | 'calendar' | 'settings') => {
@@ -542,11 +541,8 @@ export default function App() {
   // Play audio for an individual news item with real dynamic word-based duration
   const handlePlayNewsAudio = useCallback((news: NewsItem) => {
     trackUsageEvent('audio_listen', { newsId: news.id, title: news.headline, type: 'item' });
-    const rawScript = news.audioScript 
-      ? news.audioScript.replace(/^Resumen FAROS\.\s*/i, 'Resumen FAROS: ')
-      : `${news.headline}. ${news.briefSummary}.`;
-
-    const naturalScript = naturalizeScriptForSpeech(rawScript);
+    const naturalScript = generatePortfolioNewsScript(activePortfolio, news);
+    if (!naturalScript) return;
     const durationEst = calculateEstimatedDuration(naturalScript, 1.0);
 
     const track: AudioTrack = {
@@ -559,9 +555,9 @@ export default function App() {
     };
 
     audioController.playTrack(track);
-  }, [trackUsageEvent]);
+  }, [trackUsageEvent, activePortfolio]);
 
-  // Play audio for "Resumen del día" (Global Daily Summary: STRICTLY 320-450 words, 2-3 mins)
+  // Explain the day's verified news through the portfolio's actual exposure.
   const handlePlayDailySummary = useCallback(() => {
     // If already playing daily summary, toggle pause/play
     if (audioState.isPlaying && audioState.currentTrack?.id.startsWith('daily-summary')) {
@@ -1139,6 +1135,7 @@ export default function App() {
                       isSaved={library.isSaved(news)}
                       portfolioAssetIds={activePortfolio.assetIds}
                       assetPositions={activePortfolio.assetPositions}
+                      portfolio={activePortfolio}
                     />
                   ))}
                 </div>

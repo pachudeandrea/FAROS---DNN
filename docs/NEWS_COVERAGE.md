@@ -86,3 +86,13 @@ Los índices compartidos ahora alimentan también la recopilación de noticias n
 La clasificación usa el texto verificado de cada artículo, sin cuotas por categoría: una colección puede ser neutral cuando la evidencia lo justifica. Las pruebas incluyen novedades independientes favorables, adversas y neutrales de los tres editores que antes no originaban tarjetas, noticias de ayer descartadas y una sola descarga por publicación. Se conservan la actualización horaria, el acumulado del día y el reinicio a las 00:00 de Argentina.
 
 Validación conjunta con la corrección de audio: lint, 230 pruebas unitarias/de integración y las 42 comprobaciones completas de navegador aprobadas. La regresión HTTP comprueba la conexión real del endpoint con los índices, tres publicaciones independientes con evidencia verificada y la conservación del resultado desde caché.
+
+## Pluralidad editorial y más de doce medios argentinos
+
+La recopilación incorpora Página/12, Perfil, El Destape, Tiempo Argentino, El Economista y EconoJournal junto a los seis medios anteriores. Se agregó también BAE Negocios, sumando trece editores configurados. La selección combina diarios generales con líneas editoriales diferentes y publicaciones especializadas en economía y energía; el contenido se evalúa por fuente, fecha, hecho y relación con la cartera, sin cuotas políticas ni de impacto.
+
+Los artículos de Página/12 y Perfil cambiaron de formato: se admiten tanto las URLs históricas como las actuales, manteniendo la exclusión de portadas, secciones y dominios impostores. EconoJournal también puede aportar candidatos por su RSS oficial cuando la portada demora. El RSS solo descubre enlaces; se descarga y verifica el artículo original antes de incorporar una noticia.
+
+Se mantiene el máximo de cuatro verificaciones simultáneas y el mismo presupuesto de recopilación. Cada medio recibe turnos, las URLs se deduplican y una caída de un editor no se presenta como una noticia ni elimina los resultados válidos de los demás. Los medios configurados, índices respondidos y artículos verificados se distinguen en los diagnósticos; su disponibilidad se comprueba con respuestas reales después de cada despliegue.
+
+La comprobación real de los despliegues de esta ampliación verificó artículos originales de Ámbito, El Cronista, Infobae, La Nación, Clarín, iProfesional, Página/12, Perfil, El Destape, Tiempo Argentino, El Economista y BAE Negocios: doce editores distintos. La comprobación distingue disponibilidad por consulta de verificación acumulada: un timeout ocasional de un índice no convierte sus notas anteriores en noticias nuevas. EconoJournal permanece como fuente adicional configurada, sin contar un índice vacío como un artículo verificado.
