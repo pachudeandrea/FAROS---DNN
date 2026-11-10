@@ -1,4 +1,6 @@
 import { useNewsLibrary } from './hooks/useNewsLibrary';
+import { useTourNews } from './hooks/useTourNews';
+import { selectTourNews, tourExamplePortfolio } from './utils/tourNews';
 import { publicationDay, publicationUrls, libraryStorageKey } from './utils/newsLibrary';
 import { readNewsResponse, normalizeNewsError, retryableNewsError, newsRetryDelay } from './utils/newsResponse';
 import { argentinaNewsDay, argentinaNewsHour, nextNewsHourDelay, dailyNewsItems, mergeDailyNews } from './utils/dailyNews';
@@ -25,7 +27,6 @@ import {
 } from './data/mockData';
 import { useAlerts } from './hooks/useAlerts';
 import { NEWS_CLIENT_CACHE_PREFIX, newsClientCacheKey } from './utils/newsCache';
-import { REAL_GROUNDED_NEWS } from './data/groundedRealNews';
 import { readNewsSnapshot, findRecentNewsSnapshot, pruneNewsSnapshotCache, type NewsQueryState } from './utils/newsQuery';
 import { ScreenBoundary } from './components/ScreenBoundary';
 import { usePendingChanges } from './hooks/usePendingChanges';
@@ -88,6 +89,7 @@ export default function App() {
 
   // Active news item for detail modal & audio drawer
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
+  const [selectedTourNews, setSelectedTourNews] = useState<NewsItem | null>(null);
   const [audioState, setAudioState] = useState<AudioControllerState>(audioController.getState());
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
 
@@ -179,6 +181,16 @@ export default function App() {
   }, []);
 
   const [newsList, setNewsList] = useState<NewsItem[]>([]);
+  const tourNews = useTourNews(isTourActive, newsList);
+  const selectedTourPortfolio = useMemo(() => selectedTourNews ? tourExamplePortfolio(selectedTourNews) : null, [selectedTourNews]);
+  const openTourNews = useCallback((item: NewsItem) => {
+    const today = selectTourNews([item]);
+    if (today) setSelectedTourNews(today);
+  }, []);
+  const closeTourNews = useCallback(() => setSelectedTourNews(null), []);
+  useEffect(() => {
+    setSelectedTourNews(previous => isTourActive && previous && selectTourNews([previous], tourNews.day) ? previous : null);
+  }, [isTourActive, tourNews.day]);
   const newsOwner = useRef('');
   const [queryState, setQueryState] = useState<NewsQueryState>({ status: 'idle', checkedAt: null });
   const [isLoadingNews, setIsLoadingNews] = useState(false);
@@ -539,16 +551,16 @@ export default function App() {
   };
 
   // Play audio for an individual news item with real dynamic word-based duration
-  const handlePlayNewsAudio = useCallback((news: NewsItem) => {
+  const handlePlayNewsAudio = useCallback((news: NewsItem, portfolio = activePortfolio) => {
     trackUsageEvent('audio_listen', { newsId: news.id, title: news.headline, type: 'item' });
-    const naturalScript = generatePortfolioNewsScript(activePortfolio, news);
+    const naturalScript = generatePortfolioNewsScript(portfolio, news);
     if (!naturalScript) return;
     const durationEst = calculateEstimatedDuration(naturalScript, 1.0);
 
     const track: AudioTrack = {
       id: news.id,
       title: news.headline,
-      subtitle: 'Noticia en Audio',
+      subtitle: portfolio.id === 'tour-example' ? 'Ejemplo de la guía · Noticia en Audio' : 'Noticia en Audio',
       durationText: `${durationEst.formatted} min`,
       totalSeconds: durationEst.seconds,
       script: naturalScript,
@@ -1230,7 +1242,7 @@ export default function App() {
       {/* Persistent Audio Player Drawer */}
       <AudioPlayerDrawer
         onClose={() => audioController.stopAll('drawer-close')}
-        isModalOpen={!!selectedNews || !!showLoginModal || !!showSignUpModal || showNotifications || showOnboarding || isTourActive}
+        isModalOpen={!!selectedNews || !!selectedTourNews || !!showLoginModal || !!showSignUpModal || showNotifications || showOnboarding || isTourActive}
       />
 
       {/* Mobile Bottom Navigation (3 Tabs) */}
@@ -1241,17 +1253,19 @@ export default function App() {
 
       {/* MODALS */}
       {/* 1. News Detail View */}
-      {selectedNews && (comparisonFirst ? <MediaComparisonModal news={selectedNews} onClose={() => setSelectedNews(null)} onReadImpact={() => setComparisonFirst(false)} /> :
+      {(selectedTourNews || selectedNews) && (comparisonFirst && !selectedTourNews ? <MediaComparisonModal news={selectedNews!} onClose={() => setSelectedNews(null)} onReadImpact={() => setComparisonFirst(false)} /> :
         <NewsDetailModal
-          news={selectedNews}
+          news={selectedTourNews || selectedNews}
+          isTutorialExample={!!selectedTourNews}
           onClose={() => {
             audioController.stopAll('news-modal-closed');
+            setSelectedTourNews(null);
             setSelectedNews(null);
           }}
           assetsMap={assetsMap}
-          onPlayAudio={handlePlayNewsAudio}
-          portfolio={activePortfolio}
-          assetPositions={activePortfolio.assetPositions}
+          onPlayAudio={news => handlePlayNewsAudio(news, selectedTourPortfolio || activePortfolio)}
+          portfolio={selectedTourPortfolio || activePortfolio}
+          assetPositions={(selectedTourPortfolio || activePortfolio).assetPositions}
           isAudioActive={audioState.isPlaying}
           activeTrackId={audioState.currentTrack?.id}
         />
@@ -1355,8 +1369,12 @@ export default function App() {
         onClose={() => setIsTourActive(false)}
         currentTab={currentTab}
         onSelectTab={handleSelectTab}
-        onOpenNewsDetail={(item) => setSelectedNews(item)}
-        sampleNews={newsList[0] || REAL_GROUNDED_NEWS[0]}
+        onOpenNewsDetail={openTourNews}
+        onCloseNewsDetail={closeTourNews}
+        sampleNews={tourNews.sample}
+        sampleNewsStatus={tourNews.status}
+        sampleNewsError={tourNews.error}
+        onRetrySampleNews={tourNews.retry}
       /></Suspense></ScreenBoundary>}
     </div>
   );

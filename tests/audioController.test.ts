@@ -21,8 +21,10 @@ class FakeAudio {
   src = '';
   preload = '';
   muted = false;
-  currentTime = 0;
+  private time = 0;
   duration = NaN;
+  autoMetadata = true;
+  prematureSeeks: number[] = [];
   playbackRate = 1;
   paused = true;
   played: string[] = [];
@@ -30,11 +32,20 @@ class FakeAudio {
   onerror: (() => void) | null = null;
   ontimeupdate: (() => void) | null = null;
   onloadedmetadata: (() => void) | null = null;
+  ondurationchange: (() => void) | null = null;
   onplaying: (() => void) | null = null;
   onwaiting: (() => void) | null = null;
   onstalled: (() => void) | null = null;
   playResult: ((src: string) => Promise<void>) | null = null;
   constructor() { FakeAudio.instances.push(this); }
+  get currentTime() { return this.time; }
+  set currentTime(value: number) {
+    if (value > 0 && !Number.isFinite(this.duration)) {
+      this.prematureSeeks.push(value);
+      throw new Error('Cannot seek before metadata');
+    }
+    this.time = value;
+  }
   getAttribute(name: string) { return name === 'src' ? this.src || null : null; }
   removeAttribute(name: string) { if (name === 'src') this.src = ''; }
   pause() { this.paused = true; }
@@ -44,11 +55,11 @@ class FakeAudio {
     return this.playResult?.(this.src) || Promise.resolve();
   }
   load() {
-    this.currentTime = 0;
+    this.time = 0;
     this.duration = NaN;
     const source = this.src;
     const duration = FakeAudio.durations.get(source);
-    if (duration) queueMicrotask(() => {
+    if (duration && this.autoMetadata) queueMicrotask(() => {
       if (this.src !== source) return;
       this.duration = duration;
       this.onloadedmetadata?.();
@@ -264,24 +275,235 @@ test('clips continue at zero without skipping words and seeking uses measured du
   assert.equal(requests.some(value => value === text), false, 'no background full-file synthesis is assumed');
 });
 
-test('unknown duration disables seek instead of advancing imaginary media time', async t => {
-  const text = Array.from({ length: 100 }, (_, i) => `dato${i}`).join(' ');
+test('seeking beyond the measured prefix prepares real clips and applies the offset only after mounted metadata', async t => {
+  const text = Array.from({ length: 260 }, (_, i) => `dato${i}`).join(' ');
   const chunks = splitSpeechText(text);
-  const next = deferred<Response>();
+  assert.ok(chunks.length >= 4);
+  const later = deferred<Response>();
+  const requests: Array<{ text: string; voice: string; allowVoiceFallback: boolean }> = [];
   const controller = setup(t, async (_, options) => {
-    const part = JSON.parse(options!.body as string).text;
-    return part === chunks[0] ? response(part, null) : next.promise;
+    const body = JSON.parse(options!.body as string);
+    requests.push(body);
+    return body.text === chunks[2] ? later.promise : response(body.text, [3.25, 4.75, 5.5][chunks.indexOf(body.text)] || 6, 'es-AR-ElenaNeural');
   });
   await controller.playTrack(track(text));
-  controller.seek(90);
+  await flush();
+  const active = FakeAudio.instances[0];
+  active.currentTime = 1.25;
+  active.ontimeupdate?.();
+  active.autoMetadata = false;
+  controller.seek(10);
+  await flush();
+  assert.equal(controller.getState().pendingSeekSeconds, 10);
+  assert.equal(controller.getState().isSeeking, true);
+  assert.equal(controller.getState().currentSeconds, 1.25, 'estimated time never masquerades as a completed seek');
+  assert.equal(active.paused, true);
+  later.resolve(response(chunks[2], 5.5, 'es-AR-ElenaNeural'));
+  await flush();
+  assert.equal(active.src, audioUrl(chunks[2]));
+  assert.equal(active.currentTime, 0, 'no write is attempted while metadata is missing');
+  assert.equal(controller.getState().currentSeconds, 1.25);
+  assert.equal(controller.getState().isSeeking, true);
+  active.metadata(5.5);
+  await flush();
+  assert.equal(active.currentTime, 2);
+  assert.equal(controller.getState().currentSeconds, 10);
+  assert.equal(controller.getState().isSeeking, false);
+  assert.equal(controller.getState().pendingSeekSeconds, null);
+  assert.equal(controller.getState().isPlaying, true);
+  assert.equal(controller.getState().error, null);
+  assert.deepEqual(active.prematureSeeks, []);
+  assert.equal(controller.getState().voice, 'es-AR-ElenaNeural');
+  assert.ok(requests.slice(1).every(body => body.voice === 'es-AR-ElenaNeural' && body.allowVoiceFallback === false));
+});
+
+test('rapid forward clicks accumulate intent and an obsolete response cannot override the latest seek', async t => {
+  const text = Array.from({ length: 280 }, (_, i) => `informe${i}`).join(' ');
+  const chunks = splitSpeechText(text);
+  const later = deferred<Response>();
+  let obsoleteSignal!: AbortSignal;
+  const requested: string[] = [];
+  const controller = setup(t, async (_, options) => {
+    const { text } = JSON.parse(options!.body as string);
+    requested.push(text);
+    if (text === chunks[2]) { obsoleteSignal = options!.signal!; return later.promise; }
+    return response(text, 4);
+  });
+  await controller.playTrack(track(text)); await flush();
+  controller.forward(); await flush();
+  assert.equal(controller.getState().pendingSeekSeconds, 10);
+  controller.forward();
+  assert.equal(controller.getState().pendingSeekSeconds, 20);
+  controller.seek(1); await flush();
+  assert.equal(obsoleteSignal.aborted, true);
+  assert.equal(controller.getState().currentSeconds, 1);
+  assert.equal(controller.getState().isSeeking, false);
+  later.resolve(response(chunks[2], 4)); await flush();
+  assert.equal(FakeAudio.instances[0].src, audioUrl(chunks[0]));
+  assert.equal(controller.getState().currentSeconds, 1);
+  assert.equal(controller.getState().isPlaying, true);
+  assert.deepEqual([...new Set(requested)], chunks.slice(0, 3), 'obsolete seeks do not keep synthesizing later clips');
+});
+
+test('a long seek has a total preparation deadline even when each individual response finishes in time', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const text = Array.from({ length: 600 }, (_, i) => `cotizacion${i}`).join(' ');
+  const chunks = splitSpeechText(text);
+  assert.ok(chunks.length >= 6);
+  const pending = new Map<string, ReturnType<typeof deferred<Response>>>();
+  const signals = new Map<string, AbortSignal>();
+  const controller = setup(t, async (_, options) => {
+    const { text } = JSON.parse(options!.body as string);
+    if (chunks.indexOf(text) < 2) return response(text, 4);
+    const request = deferred<Response>();
+    pending.set(text, request);
+    signals.set(text, options!.signal!);
+    return request.promise;
+  });
+  await controller.playTrack(track(text)); await flush();
+  controller.seek(10_000); await flush();
+  for (let index = 2; index < 5; ++index) {
+    assert.ok(pending.has(chunks[index]));
+    t.mock.timers.tick(14_000);
+    pending.get(chunks[index])!.resolve(response(chunks[index], 4));
+    await flush();
+  }
+  assert.equal(controller.getState().isSeeking, true);
+  t.mock.timers.tick(3_000); await flush();
+  assert.match(controller.getState().error!, /preparación del salto tardó demasiado/);
+  assert.equal(controller.getState().isSeeking, false);
+  assert.equal(controller.getState().isLoading, false);
+  assert.equal(controller.getState().pendingSeekSeconds, null);
   assert.equal(controller.getState().currentSeconds, 0);
-  assert.equal(controller.getState().canSeek, false);
-  assert.match(controller.getState().notice!, /preparando/);
-  FakeAudio.instances[0].metadata(3.25);
-  controller.seek(90);
-  assert.equal(controller.getState().currentSeconds, 3.25);
-  assert.equal(FakeAudio.instances[0].currentTime, 3.25);
-  assert.match(controller.getState().notice!, /parte del audio/);
+  assert.equal(signals.get(chunks[5])!.aborted, true);
+  controller.retry(); await flush();
+  assert.equal(controller.getState().error, null);
+  assert.equal(controller.getState().isPlaying, true);
+});
+
+test('missing metadata during a paused seek has a finite error and never starts the unmeasured clip', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const text = Array.from({ length: 280 }, (_, i) => `cotizacion${i}`).join(' ');
+  const chunks = splitSpeechText(text);
+  const controller = setup(t, async (_, options) => {
+    const { text } = JSON.parse(options!.body as string);
+    return response(text, text === chunks[2] ? null : 4);
+  });
+  await controller.playTrack(track(text)); await flush();
+  controller.seek(10); controller.pause(); await flush();
+  t.mock.timers.tick(5_000); await flush();
+  assert.match(controller.getState().error!, /comprobar la duración/);
+  assert.equal(controller.getState().isSeeking, false);
+  assert.equal(controller.getState().isLoading, false);
+  assert.equal(controller.getState().isPlaying, false);
+  assert.equal(FakeAudio.instances[0].played.includes(audioUrl(chunks[2])), false);
+});
+
+test('pause during future preparation keeps the resolved seek paused and closing cancels all late work', async t => {
+  const text = Array.from({ length: 280 }, (_, i) => `mercado${i}`).join(' ');
+  const chunks = splitSpeechText(text);
+  const third = deferred<Response>();
+  const fourth = deferred<Response>();
+  let fourthSignal!: AbortSignal;
+  const controller = setup(t, async (_, options) => {
+    const { text } = JSON.parse(options!.body as string);
+    if (text === chunks[2]) return third.promise;
+    if (text === chunks[3]) { fourthSignal = options!.signal!; return fourth.promise; }
+    return response(text, 4);
+  });
+  await controller.playTrack(track(text)); await flush();
+  const active = FakeAudio.instances[0];
+  controller.seek(10); await flush();
+  controller.pause();
+  third.resolve(response(chunks[2], 4)); await flush();
+  assert.equal(controller.getState().currentSeconds, 10);
+  assert.equal(controller.getState().isSeeking, false);
+  assert.equal(controller.getState().isPlaying, false);
+  assert.equal(active.paused, true);
+  assert.equal(active.played.includes(audioUrl(chunks[2])), false, 'seeking while paused never starts the future clip');
+  controller.seek(15); await flush();
+  const oldMetadata = active.onloadedmetadata;
+  controller.stopAll();
+  assert.equal(fourthSignal.aborted, true);
+  fourth.resolve(response(chunks[3], 4)); oldMetadata?.(); await flush();
+  assert.equal(controller.getState().currentTrack, null);
+  assert.equal(controller.getState().isSeeking, false);
+  assert.equal(controller.getState().pendingSeekSeconds, null);
+  assert.equal(active.src, '');
+  assert.equal(active.paused, true);
+});
+
+test('a replacement track cancels a pending seek even when its old synthesis ignores cancellation', async t => {
+  const text = Array.from({ length: 280 }, (_, i) => `variacion${i}`).join(' ');
+  const chunks = splitSpeechText(text);
+  const later = deferred<Response>();
+  let oldSignal!: AbortSignal;
+  const controller = setup(t, async (_, options) => {
+    const { text } = JSON.parse(options!.body as string);
+    if (text === chunks[2]) { oldSignal = options!.signal!; return later.promise; }
+    return response(text, 4);
+  });
+  await controller.playTrack(track(text)); await flush();
+  controller.seek(10); await flush();
+  assert.equal(controller.getState().isSeeking, true);
+  await controller.playTrack(track('Resumen actualizado de otra cartera.', 'replacement')); await flush();
+  assert.equal(oldSignal.aborted, true);
+  later.resolve(response(chunks[2], 4)); await flush();
+  assert.equal(controller.getState().currentTrack?.id, 'replacement');
+  assert.equal(controller.getState().isSeeking, false);
+  assert.equal(controller.getState().pendingSeekSeconds, null);
+  assert.equal(controller.getState().currentSeconds, 0);
+  assert.equal(controller.getState().isPlaying, true);
+  assert.equal(FakeAudio.instances[0].src, audioUrl('Resumen actualizado de otra cartera.'));
+});
+
+test('exact clip boundaries start the next clip at zero and the final endpoint remains safely paused', async t => {
+  const text = Array.from({ length: 140 }, (_, i) => `activo${i}`).join(' ');
+  const chunks = splitSpeechText(text);
+  const controller = setup(t, async (_, options) => response(JSON.parse(options!.body as string).text, 4));
+  await controller.playTrack(track(text)); await flush();
+  const active = FakeAudio.instances[0];
+  controller.seek(4); await flush();
+  assert.equal(active.src, audioUrl(chunks[1]));
+  assert.equal(active.currentTime, 0);
+  assert.equal(controller.getState().currentSeconds, 4);
+  controller.seek(1_000); await flush();
+  const total = chunks.length * 4;
+  assert.equal(controller.getState().totalDuration, total);
+  assert.equal(controller.getState().currentSeconds, total);
+  assert.equal(controller.getState().isPlaying, false);
+  assert.equal(controller.getState().currentTrack?.script, text);
+  active.finish(); await flush();
+  assert.equal(controller.getState().currentTrack?.script, text, 'an ended event queued by the seek does not close the drawer');
+  controller.resume(); await flush();
+  assert.equal(active.src, audioUrl(chunks[0]));
+  assert.equal(active.currentTime, 0);
+  assert.equal(controller.getState().isPlaying, true);
+  controller.seek(total - 1); await flush();
+  controller.seek(total); await flush();
+  active.finish(); await flush();
+  assert.equal(controller.getState().currentTrack?.script, text, 'the already mounted final clip also keeps a stable endpoint');
+  assert.equal(controller.getState().currentSeconds, total);
+  assert.equal(controller.getState().error, null);
+});
+
+test('an ended event queued before seeking back cannot stop the resumed mounted clip', async t => {
+  const controller = setup(t, async (_, options) => response(JSON.parse(options!.body as string).text, 4));
+  await controller.playTrack(track('Una noticia breve.')); await flush();
+  const active = FakeAudio.instances[0];
+  const queuedEnded = active.onended;
+  controller.seek(4); await flush();
+  assert.equal(controller.getState().isPlaying, false);
+  controller.resume(); await flush();
+  assert.equal(active.currentTime, 0);
+  assert.equal(controller.getState().isPlaying, true);
+  queuedEnded?.(); await flush();
+  assert.equal(controller.getState().currentTrack?.script, 'Una noticia breve.');
+  assert.equal(controller.getState().currentSeconds, 0);
+  assert.equal(controller.getState().isPlaying, true);
+  assert.equal(controller.getState().error, null);
+  active.finish(); await flush();
+  assert.equal(controller.getState().currentTrack, null, 'a subsequent real ending still completes playback');
 });
 
 test('public prefetch warms only the first clip, serially, and deduplicates exact text', async t => {

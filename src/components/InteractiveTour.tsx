@@ -190,8 +190,15 @@ interface InteractiveTourProps {
   onSelectTab: (tab: 'settings' | 'feed' | 'calendar') => void;
   currentTab: 'settings' | 'feed' | 'calendar';
   onOpenNewsDetail?: (news: NewsItem) => void;
+  onCloseNewsDetail?: () => void;
   sampleNews?: NewsItem;
+  sampleNewsStatus?: 'loading' | 'ready' | 'empty' | 'error';
+  sampleNewsError?: string;
+  onRetrySampleNews?: () => void;
 }
+
+const findTourTarget = (targetId: string): HTMLElement | null => document.querySelector<HTMLElement>(`[role="dialog"][data-tour="${targetId}"]`)
+  || document.querySelector<HTMLElement>(`[data-tour="${targetId}"]`);
 
 export const InteractiveTour: React.FC<InteractiveTourProps> = ({
   isActive,
@@ -199,15 +206,36 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
   onSelectTab,
   currentTab,
   onOpenNewsDetail,
-  sampleNews
+  onCloseNewsDetail,
+  sampleNews,
+  sampleNewsStatus = 'loading',
+  sampleNewsError,
+  onRetrySampleNews,
 }) => {
   const [stepIndex, setStepIndex] = useState<number>(0);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const [hasInteracted, setHasInteracted] = useState<boolean>(false);
   const [showCompletionModal, setShowCompletionModal] = useState<boolean>(false);
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
+  const [openedExampleKey, setOpenedExampleKey] = useState<string | null>(null);
 
   const currentStep = TOUR_STEPS[stepIndex] || TOUR_STEPS[0];
+  const isNewsDetailStep = currentStep.targetId === 'feed-card-detail';
+  const exampleKey = sampleNews ? `${sampleNews.sources[0]?.sourceUrl}:${sampleNews.sources[0]?.publishedTimestamp || sampleNews.sources[0]?.publishedDateIso}` : null;
+  const awaitingNewsExample = isNewsDetailStep && (!exampleKey || openedExampleKey !== exampleKey);
+
+  // The example can arrive after entering the step, including via an NDJSON
+  // progress frame. Never depend on the account having configured any assets.
+  useEffect(() => {
+    if (!isActive || !isNewsDetailStep || !sampleNews) {
+      setOpenedExampleKey(null);
+      onCloseNewsDetail?.();
+      return;
+    }
+    if (!onOpenNewsDetail) return;
+    onOpenNewsDetail(sampleNews);
+    setOpenedExampleKey(exampleKey);
+  }, [isActive, isNewsDetailStep, sampleNews, exampleKey, onOpenNewsDetail, onCloseNewsDetail]);
 
   // Reset step index and interaction when activated
   useEffect(() => {
@@ -229,7 +257,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
   const updateTargetRect = useCallback(() => {
     if (!isActive) return;
 
-    const el = document.querySelector(`[data-tour="${currentStep.targetId}"]`);
+    const el = findTourTarget(currentStep.targetId);
     if (el) {
       const rect = el.getBoundingClientRect();
       setTargetRect(rect);
@@ -354,7 +382,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
     if (!isActive) return;
 
     const timer = setTimeout(() => {
-      const el = document.querySelector(`[data-tour="${currentStep.targetId}"]`) as HTMLElement | null;
+      const el = findTourTarget(currentStep.targetId);
       if (!el) return;
 
       const rect = el.getBoundingClientRect();
@@ -436,7 +464,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
   useEffect(() => {
     if (!isActive) return;
 
-    const el = document.querySelector(`[data-tour="${currentStep.targetId}"]`) as HTMLElement | null;
+    const el = findTourTarget(currentStep.targetId);
     if (el) {
       const prevPosition = el.style.position;
       const prevZIndex = el.style.zIndex;
@@ -455,7 +483,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
     setHasInteracted(false);
     if (!isActive) return;
 
-    const el = document.querySelector(`[data-tour="${currentStep.targetId}"]`);
+    const el = findTourTarget(currentStep.targetId);
     if (!el) return;
 
     const onUserAction = () => {
@@ -474,6 +502,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
   }, [isActive, currentStep.targetId, stepIndex]);
 
   const handleNext = () => {
+    if (awaitingNewsExample) return;
     if (currentStep.isStageEnd && currentStep.stage === 3) {
       // Completed full 15-step tour!
       setShowCompletionModal(true);
@@ -596,7 +625,8 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
               <button
                 type="button"
                 onClick={handleNext}
-                className="px-2 py-0.5 bg-brand-800 hover:bg-brand-950 text-paper text-[10px] font-bold rounded-full transition-colors cursor-pointer"
+                disabled={awaitingNewsExample}
+                className="px-2 py-0.5 bg-brand-800 hover:bg-brand-950 text-paper text-[10px] font-bold rounded-full transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-wait"
                 title="Siguiente"
               >
                 ›
@@ -656,8 +686,26 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
             {/* Body: exactly 1 or 2 concise practical sentences */}
             <div className="py-2">
               <p className="text-xs sm:text-[13px] text-muted leading-snug font-normal">
-                {currentStep.description}
+                {isNewsDetailStep ? sampleNews
+                  ? 'Este ejemplo real de hoy muestra el análisis económico y las fuentes originales, aunque todavía no hayas cargado activos.'
+                  : sampleNewsStatus === 'loading'
+                    ? 'Estamos buscando una noticia verificada de hoy en Argentina. El ejemplo se abrirá automáticamente cuando llegue.'
+                    : sampleNewsStatus === 'error'
+                      ? sampleNewsError || 'No pudimos consultar las noticias de hoy. Volvé a intentar para abrir el ejemplo.'
+                      : 'Todavía no encontramos una noticia verificada de hoy en Argentina. Podés volver a buscar.'
+                  : currentStep.description}
               </p>
+              {isNewsDetailStep && !sampleNews && sampleNewsStatus === 'loading' && <p role="status" className="mt-2 text-xs font-semibold text-brand-900">Buscando ejemplo de hoy…</p>}
+              {isNewsDetailStep && !sampleNews && sampleNewsStatus !== 'loading' && <button
+                type="button"
+                onClick={onRetrySampleNews}
+                className="mt-2 text-xs font-bold text-brand-900 underline underline-offset-2 cursor-pointer"
+              >Volver a buscar ejemplo de hoy</button>}
+              {isNewsDetailStep && sampleNews && <button
+                type="button"
+                onClick={() => onOpenNewsDetail?.(sampleNews)}
+                className="mt-2 text-xs font-bold text-brand-900 underline underline-offset-2 cursor-pointer"
+              >Abrir ejemplo de hoy</button>}
             </div>
 
             {/* Divider & Footer */}
@@ -686,7 +734,8 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
               <button
                 type="button"
                 onClick={handleNext}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-paper text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer active:scale-95 ${
+                disabled={awaitingNewsExample}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-paper text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer active:scale-95 disabled:opacity-40 disabled:cursor-wait ${
                   hasInteracted ? 'bg-brand-800 hover:bg-brand-950 ring-2 ring-brand-400/40' : 'bg-brand-800 hover:bg-brand-950'
                 }`}
               >

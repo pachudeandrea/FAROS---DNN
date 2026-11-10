@@ -45,6 +45,7 @@ interface NewsDetailModalProps {
   assetPositions?: Record<string, AssetPosition>;
   isAudioActive?: boolean;
   activeTrackId?: string;
+  isTutorialExample?: boolean;
 }
 
 import { distinctMediaSources } from '../utils/sourceGrounding';
@@ -88,10 +89,11 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
   assetPositions,
   isAudioActive = false,
   activeTrackId,
+  isTutorialExample = false,
 }) => {
   if (!news) return null;
 
-  const modalRef = useModalFocus(onClose);
+  const modalRef = useModalFocus(onClose, !isTutorialExample);
   const [copied, setCopied] = useState(false);
   const coverageRef = useRef<HTMLElement>(null);
   const [audioState, setAudioState] = useState<AudioControllerState>(audioController.getState());
@@ -191,7 +193,8 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
         ref={modalRef}
         tabIndex={-1}
         role="dialog"
-        aria-modal="true"
+        data-tour="feed-card-detail"
+        aria-modal={!isTutorialExample}
         aria-labelledby="news-detail-title"
         className="bg-paper rounded-3xl max-w-2xl w-full border border-ink-200 shadow-2xl overflow-hidden flex flex-col max-h-[90dvh] animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
@@ -231,6 +234,12 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
 
         {/* Content Body */}
         <div className={`min-h-0 p-4 sm:p-6 overflow-y-auto space-y-6 text-ink-800 transition-all ${isAudioActive ? 'pb-48 sm:pb-52' : 'pb-6'}`}>
+          {isTutorialExample && (
+            <div role="note" className="rounded-2xl border border-brand-200 bg-brand-50 p-3.5 text-xs leading-relaxed text-brand-950">
+              <p className="font-bold">Ejemplo de la guía · noticia de hoy</p>
+              <p className="mt-1">Esta noticia real muestra cómo funciona el análisis con una cartera de ejemplo. Los activos del ejemplo no se agregan a tu cartera.</p>
+            </div>
+          )}
           
           {/* BLOQUE 2: Etiqueta de efecto (Favorable / Desfavorable / Neutral) y título de la noticia */}
           <div>

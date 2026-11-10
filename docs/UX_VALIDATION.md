@@ -16,16 +16,25 @@ edad y términos en dos pasos. Perfil e intereses se configuran después; el bro
 opcional se puede guardar desde Cuenta y privacidad. No se agrega verificación
 por correo. El tutorial sigue disponible, sin ser obligatorio al primer ingreso.
 
+El paso de detalle de noticia usa una consulta general independiente de la cartera,
+incluso cuando la cuenta no tiene activos. Elige una publicación verificada del día
+en Argentina, prioriza una favorable o desfavorable y acepta una neutral si no hay
+otra. La ventana identifica la noticia como ejemplo y usa una cartera temporal
+solo para explicar el análisis; no incorpora activos a la cuenta. Mientras busca,
+la guía espera en ese paso y ofrece reintento ante un error o falta de publicaciones.
+La consulta se renueva por hora y al cambiar de fecha a las 00:00 de Argentina;
+las respuestas tardías del día anterior no se muestran como noticias de hoy.
+
 En celular el calendario abre en agenda. La vista mensual, fuentes, formularios,
 recordatorios y alertas siguen disponibles. Los cambios solo se confirman después
 de guardarse; ante un error se conserva el formulario para reintentar.
 
 ## Consultas, caché y versiones
 
-- `v5_query_coverage` conserva el agrupamiento por acontecimiento e incorpora el
-  horario confirmado de la consulta en el caché del cliente, incluso si está vacío.
-  Se purgan únicamente los cachés antiguos de noticias. No se borran sesiones ni
-  calendarios personales.
+- `v16_daily_news` conserva el agrupamiento por acontecimiento y acumula las
+  publicaciones de la jornada argentina con actualizaciones por hora. A las
+  00:00 comienza una nueva colección. Se purgan únicamente cachés antiguos de
+  noticias; no se borran sesiones ni calendarios personales.
 - Una consulta fallida conserva las publicaciones anteriores. Una caída de todas
   las fuentes RSS produce un error controlado, en lugar de simular una consulta
   vacía exitosa. La lista filtrada vuelve a calcularse al cambiar las noticias.

@@ -7,10 +7,24 @@ La voz preferida es `es-AR-TomasNeural` (Tomás, español de Argentina). Si fall
 - El texto se divide conservando todas las palabras y su orden. El primer segmento es breve y el siguiente se prepara mientras se reproduce.
 - Cada petición termina con el segmento completo en base64. No se responde con un archivo de `/tmp` que otra instancia de Vercel quizá no tenga, ni se deja un trabajo de síntesis completo en segundo plano después de responder.
 - La continuación empieza en el segundo cero del siguiente segmento. Se eliminó el salto por una duración estimada que podía repetir o saltear palabras.
-- Un solo elemento reproduce audio; otro puede medir metadatos sin reproducir. Duración y saltos usan el prefijo con duración real medida, y la duración total estimada se marca como aproximada mientras falta medir el resto.
+- Un solo elemento reproduce audio; otro puede medir metadatos sin reproducir. La duración total se marca como aproximada mientras falta medir el resto. La barra y los botones permiten elegir también un fragmento pendiente: el controlador lo prepara y mide las duraciones anteriores antes de aplicar el salto. La posición reproducida no avanza hasta confirmar el destino.
 - La caché distingue texto, versión y voz, incluso si el ID de la noticia/resumen no cambia. Tiene límites de tamaño y cantidad. Las peticiones duplicadas comparten trabajo y la cancelación de un oyente no cancela a los demás.
 - Cierre, cambio de pista, pausa durante preparación y respuestas tardías tienen controles de generación y cancelación. Una respuesta vieja no puede volver a iniciar otra pista.
 - El servidor tiene un plazo total de 12,5 segundos por petición; el cliente corta a los 16 segundos. Los bloqueos de reproducción tienen un plazo propio. Los errores ofrecen reintento y transcripción, sin un indicador de carga indefinido.
+
+Los saltos entre fragmentos esperan los metadatos antes de asignar `currentTime`,
+incluido al volver a cargar el mismo elemento en iOS. Los clics consecutivos de
+avance se acumulan; un salto más reciente reemplaza al anterior. Buscar una
+posición mientras está pausado conserva la pausa. La preparación del salto tiene
+un plazo total de 45 segundos, además de los plazos individuales, y se cancela al
+cerrar o cambiar de pista. El extremo final queda pausado y permite volver a
+reproducir desde el principio.
+
+Validación de saltos y guía diaria: lint de cliente/servidor, 259 pruebas
+unitarias/de integración con PostgreSQL local, cero omitidas y 47 comprobaciones
+completas de navegador. Incluye fragmentos pendientes, metadatos tardíos, clics
+consecutivos, pausa, cambio/cierre de pista, plazo total, final y eventos atrasados;
+también guía con cartera vacía en escritorio/celular y medianoche argentina.
 
 El resumen hablado usa frases más breves y posiciones compradas/vendidas. Conserva fuentes, límites de la información y advertencias sobre hechos en análisis; no recita las etiquetas de verificación en cada noticia ni agrega recomendaciones o hechos de relleno.
 
@@ -20,7 +34,7 @@ El resumen hablado usa frases más breves y posiciones compradas/vendidas. Conse
 
 Referencia del catálogo de voces: https://learn.microsoft.com/azure/ai-services/speech-service/language-support?tabs=tts#supported-languages . El paquete instalado documenta el mecanismo Read Aloud y su catálogo en `speech.platform.bing.com`.
 
-La política activa de este entorno rechazó el acceso al proveedor con CONNECT 403. Los dominios de voz y publicaciones quedaron añadidos al borrador de configuración para aplicar desde el entorno. Por eso no se afirma haber escuchado Tomás en vivo, medido su latencia de red real ni verificado el despliegue de producción. Las pruebas locales comprueban el código y las condiciones de fallo con datos de prueba explícitos.
+En la verificación inicial, la política del entorno rechazó el acceso directo al proveedor con CONNECT 403. Los dominios de voz y publicaciones quedaron añadidos al borrador de configuración. Las comprobaciones públicas posteriores del servicio de la aplicación se describen abajo; las pruebas locales usan datos de prueba explícitos para reproducir condiciones de fallo.
 
 ## Voz estable durante la reproducción
 

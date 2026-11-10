@@ -73,7 +73,7 @@ const browser = await chromium.launch({ executablePath, headless: true, args: ['
 const pageErrors = [];
 let checks = 0;
 async function check(name, run) { if (process.env.BROWSER_CHECK && !name.includes(process.env.BROWSER_CHECK)) return; await run(); checks++; console.log(`ok ${checks} - ${name}`); }
-async function setup({ anonymous = false, admin = false, permission = 'granted', longName = false, legacyNews = false, portfolioOverride, newsOverride, audioMode = 'ok', audioDelay = 0, progressiveNews = false, pulseFailures = [], pulseCacheSeeds = [], clockAt, savedNewsOverride, ...options } = {}) {
+async function setup({ anonymous = false, admin = false, permission = 'granted', longName = false, legacyNews = false, portfolioOverride, newsOverride, tourNewsOverride, tourPulseResponses = [], accountCreatedAt, audioMode = 'ok', audioDelay = 0, audioContinuationDelay = 0, progressiveNews = false, pulseFailures = [], pulseCacheSeeds = [], clockAt, savedNewsOverride, ...options } = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, ...options });
   if (pulseCacheSeeds.length) await context.addInitScript(entries => { for (const [key, value] of entries) localStorage.setItem(key, value); }, pulseCacheSeeds);
   if (legacyNews) await context.addInitScript(({ item, portfolioId, version }) => {
@@ -98,8 +98,9 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
     PushManager.prototype.subscribe = async () => { localStorage.setItem('test_push', 'yes'); return local(); };
   }, { permission, subscription });
   const libraries = new Map();
-  const state = { librarySaveFailure: false, pulseFailures: [...pulseFailures], libraries, user: structuredClone(fixture), active: false, calls: [], events: [], newsData: news, newsMode: 'ok', revision: null, saveFailure: false, delayNews: 0, audioMode, audioDelay, checkedAt: clockAt || new Date().toISOString() };
+  const state = { librarySaveFailure: false, pulseFailures: [...pulseFailures], libraries, user: structuredClone(fixture), active: false, calls: [], events: [], newsData: news, tourNewsData: structuredClone(tourNewsOverride || news), tourPulseResponses: [...tourPulseResponses], releaseTourResponses: [], newsMode: 'ok', revision: null, saveFailure: false, delayNews: 0, audioMode, audioDelay, audioContinuationDelay, checkedAt: clockAt || new Date().toISOString() };
   if (portfolioOverride) state.user.portfolio = structuredClone(portfolioOverride);
+  if (accountCreatedAt) state.user.createdAt = accountCreatedAt;
   if (newsOverride) state.newsData = structuredClone(newsOverride);
   if (savedNewsOverride) libraries.set(state.user.id, savedNewsOverride.map((item, index) => ({
     id: `saved-fixture-${index}`, news: structuredClone(item), day: publicationDay(item), urls: publicationUrls(item), savedAt: state.checkedAt, seenAt: state.checkedAt
@@ -116,9 +117,18 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
     let status = 200;
     if (url.pathname === '/api/auth/me') data = anonymous ? { authenticated: false } : { authenticated: true, user: state.user };
     if (url.pathname === '/api/news/pulse') {
-      if (state.delayNews) await new Promise(resolve => setTimeout(resolve, state.delayNews));
-      status = state.pulseFailures.shift() || (state.newsMode === 'error' ? 503 : 200);
-      data = status !== 200 ? { code: status === 404 ? 'API_NOT_FOUND' : 'NEWS_SOURCES_UNAVAILABLE', error: 'Fuentes no disponibles.' } : { news: state.newsMode === 'empty' ? [] : state.newsData, checkedAt: state.checkedAt };
+      if (body.portfolioId === 'tour-general') {
+        // Capture the publication day when this request starts. A held response
+        // can then arrive after midnight without being relabeled by the fixture.
+        const response = state.tourPulseResponses.shift() || { news: state.tourNewsData, checkedAt: state.checkedAt };
+        data = structuredClone({ news: response.news, checkedAt: response.checkedAt || state.checkedAt });
+        if (response.hold) await new Promise(resolve => state.releaseTourResponses.push(resolve));
+        status = response.status || 200;
+      } else {
+        if (state.delayNews) await new Promise(resolve => setTimeout(resolve, state.delayNews));
+        status = state.pulseFailures.shift() || (state.newsMode === 'error' ? 503 : 200);
+        data = status !== 200 ? { code: status === 404 ? 'API_NOT_FOUND' : 'NEWS_SOURCES_UNAVAILABLE', error: 'Fuentes no disponibles.' } : { news: state.newsMode === 'empty' ? [] : state.newsData, checkedAt: state.checkedAt };
+      }
     }
     if (url.pathname === '/api/news/library' || url.pathname.startsWith('/api/news/library/')) {
       const owner = state.user.id;
@@ -149,7 +159,8 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
     }
     if (url.pathname === '/api/auth/register') { state.user = { ...state.user, ...body, preferences: { ...state.user.preferences, ...body.preferences }, portfolio: { ...state.user.portfolio, assetIds: [], assetPositions: {} } }; data = { success: true, user: state.user, token: 'local-browser-test' }; }
     if (url.pathname === '/api/audio/synthesize') {
-      if (state.audioDelay) await new Promise(resolve => setTimeout(resolve, state.audioDelay));
+      const delay = body.allowVoiceFallback === false ? state.audioContinuationDelay || state.audioDelay : state.audioDelay;
+      if (delay) await new Promise(resolve => setTimeout(resolve, delay));
       status = state.audioMode === 'error' ? 503 : 200;
       data = state.audioMode === 'error' ? { success: false, error: 'Fallo simulado del proveedor de audio.' }
         : state.audioMode === 'fallback' ? {
@@ -171,7 +182,7 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
       data = { success: true, events: state.events };
       }
     }
-    try { await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) }); } catch (error) { if (url.pathname !== '/api/audio/synthesize') throw error; }
+    try { await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) }); } catch (error) { if (url.pathname !== '/api/audio/synthesize' && !(url.pathname === '/api/news/pulse' && body.portfolioId === 'tour-general')) throw error; }
   });
   if (progressiveNews) await context.addInitScript(({ items }) => {
     const original = window.fetch.bind(window);
@@ -205,6 +216,30 @@ async function clickVisible(page, name) {
   try { await matches.first().waitFor({ state: 'visible', timeout: 10000 }); } catch (error) { console.error({ name, pageErrors, text: (await page.locator('body').innerText()).slice(0, 5000) }); throw error; }
   for (const match of await matches.all()) if (await match.isVisible()) { await match.click(); return; }
   throw new Error(`No se encontró el botón visible: ${name}`);
+}
+function tutorialPublication(id, headline, at) {
+  const analysis = analyzeNewsRelevance(headline, ASSET_CATALOG);
+  return {
+    ...structuredClone(news[0]), id, headline, briefSummary: headline, fullSynthesis: [analysis.explanation],
+    publishedAgo: 'Hoy', impact: analysis.impact, relevanceType: analysis.relevanceType, affectedAssetIds: analysis.affectedAssetIds,
+    sources: [{ mediaName: 'Ámbito', domain: 'ambito.com', sourceUrl: `https://www.ambito.com/finanzas/${id}`,
+      originalHeadline: headline, articleSummary: headline, publishedDateIso: at, publishedTimestamp: Date.parse(at) }], coverageCount: 1,
+    portfolioImpactAnalysis: { directExplanation: analysis.explanation, affectedHoldings: Object.entries(analysis.assetImpacts)
+      .map(([symbol, impactDirection]) => ({ symbol, impactDirection, relationshipDetail: analysis.relationships[symbol] })) }
+  };
+}
+async function openTutorialNewsStep(page) {
+  if (page.viewportSize().width < 640) {
+    await clickVisible(page, 'Mi cartera');
+    await clickVisible(page, 'Ver tutorial interactivo');
+  } else {
+    await page.getByTitle('Iniciar tutorial interactivo de FAROS', { exact: true }).click();
+  }
+  for (let step = 1; step < 10; step++) {
+    await page.getByText(`${step}/15`, { exact: true }).waitFor();
+    await page.getByRole('button', { name: /^Siguiente/ }).or(page.getByTitle('Siguiente', { exact: true })).filter({ visible: true }).click();
+  }
+  await page.getByText('10/15', { exact: true }).waitFor();
 }
 async function fits(page, label) {
   const size = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth }));
@@ -882,7 +917,7 @@ try {
     assert.ok(Math.abs(Number(await progress.getAttribute('aria-valuenow')) - paused) < 0.2);
     await player.getByRole('button', { name: '1.25x', exact: true }).click();
     await player.getByRole('button', { name: 'Retroceder 10 segundos', exact: true }).click();
-    assert.ok(Number(await progress.getAttribute('aria-valuenow')) < 0.2, 'Retroceder conserva el primer fragmento de la misma voz');
+    await page.waitForFunction(() => Number(document.querySelector('[aria-label="Reproductor de audio"] [role="slider"]')?.getAttribute('aria-valuenow')) < 0.2);
     await player.getByRole('button', { name: 'Reproducir audio', exact: true }).click();
     await player.getByRole('button', { name: 'Pausar audio', exact: true }).waitFor();
     await player.getByText(/Voz argentina.*Elena/).filter({ visible: true }).waitFor();
@@ -890,6 +925,51 @@ try {
     await page.screenshot({ path: path.join(artifacts, 'audio-single-voice-1280.png') });
     await player.getByRole('button', { name: 'Cerrar reproductor y detener audio', exact: true }).click();
     await player.waitFor({ state: 'hidden' });
+    await context.close();
+  });
+  await check('Audio permite adelantar a fragmentos pendientes y mover la barra sin trabarse ni reanudar una pausa', async () => {
+    const { context, page, state } = await setup({ audioMode: 'error', viewport: { width: 1280, height: 900 } });
+    await clickVisible(page, 'Ahora no');
+    const before = state.calls.length;
+    state.audioMode = 'ok'; state.audioContinuationDelay = 1200;
+    await clickVisible(page, 'Escuchar resumen del día');
+    const player = page.getByRole('region', { name: 'Reproductor de audio', exact: true });
+    const progress = player.getByRole('slider', { name: 'Progreso del audio', exact: true });
+    await player.getByRole('button', { name: 'Pausar audio', exact: true }).waitFor();
+    const start = Number(await progress.getAttribute('aria-valuenow'));
+    assert.ok(start < 1, 'El salto comienza en el primer WAV de cuatro segundos');
+    assert.ok(Number(await progress.getAttribute('aria-valuemax')) > 14, 'La barra representa el resumen completo antes de preparar todas sus partes');
+    await player.getByRole('button', { name: 'Avanzar 10 segundos', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('[aria-label="Progreso del audio"]')?.getAttribute('aria-busy') === 'true');
+    await player.getByRole('status').filter({ hasText: /Preparando salto a/ }).filter({ visible: true }).waitFor();
+    await page.waitForFunction(() => {
+      const slider = document.querySelector('[aria-label="Progreso del audio"]');
+      return slider?.getAttribute('aria-busy') === 'false' && Number(slider.getAttribute('aria-valuenow')) >= 10;
+    });
+    await player.getByRole('button', { name: 'Pausar audio', exact: true }).waitFor();
+    const resumedAt = Number(await progress.getAttribute('aria-valuenow'));
+    await page.waitForFunction(at => Number(document.querySelector('[aria-label="Progreso del audio"]')?.getAttribute('aria-valuenow')) > at + 0.15, resumedAt);
+    assert.ok(state.calls.slice(before).filter(call => call.path === '/api/audio/synthesize').length >= 3, 'El salto atraviesa varios archivos de audio reales');
+    assert.equal(await player.getByRole('alert').count(), 0);
+
+    await player.getByRole('button', { name: 'Pausar audio', exact: true }).click();
+    const maximum = Number(await progress.getAttribute('aria-valuemax'));
+    const bounds = await progress.boundingBox();
+    assert.ok(bounds && maximum > 14.25);
+    await progress.click({ position: { x: bounds.width * 14.25 / maximum, y: bounds.height / 2 } });
+    await page.waitForFunction(() => {
+      const slider = document.querySelector('[aria-label="Progreso del audio"]');
+      return slider?.getAttribute('aria-busy') === 'false' && Math.abs(Number(slider.getAttribute('aria-valuenow')) - 14.25) < 0.3;
+    });
+    await player.getByRole('button', { name: 'Reproducir audio', exact: true }).waitFor();
+    const pausedAt = Number(await progress.getAttribute('aria-valuenow'));
+    await page.waitForTimeout(350);
+    assert.ok(Math.abs(Number(await progress.getAttribute('aria-valuenow')) - pausedAt) < 0.15, 'Mover la barra conserva la intención de pausa');
+    await player.getByRole('button', { name: 'Reproducir audio', exact: true }).click();
+    await page.waitForFunction(at => Number(document.querySelector('[aria-label="Progreso del audio"]')?.getAttribute('aria-valuenow')) > at + 0.15, pausedAt);
+    assert.equal(await player.getByRole('alert').count(), 0);
+    await page.screenshot({ path: path.join(artifacts, 'audio-seek-pending-1280.png') });
+    await player.getByRole('button', { name: 'Cerrar reproductor y detener audio', exact: true }).click();
     await context.close();
   });
   await check('Contenido del audio: explica hechos verificados y su relación con la cartera en el resumen y en cada noticia', async () => {
@@ -1034,6 +1114,109 @@ try {
     assert.equal(registration.body.termsAccepted, true); assert.equal(registration.body.notificationsOptIn, false);
     assert.equal(registration.body.recoveryKey, '0042'); assert.equal(registration.body.birthDate, '1990-01-01');
     assert.equal(await page.getByText('¡Bienvenido a FAROS!', { exact: true }).count(), 0);
+    await context.close();
+  });
+  await check('Guía con cuenta nueva y cartera vacía abre una noticia verificada de hoy y prefiere una señal direccional', async () => {
+    const clockAt = '2030-06-15T16:30:00Z';
+    const neutral = tutorialPublication('tutorial-neutral-today', 'YPF presenta su agenda institucional', '2030-06-15T15:00:00Z');
+    const favorable = tutorialPublication('tutorial-favorable-today', 'YPF aumentó 12% su producción de petróleo', '2030-06-15T15:30:00Z');
+    assert.equal(favorable.impact, 'favorable');
+    const emptyPortfolio = { ...structuredClone(MOCK_PORTFOLIOS[0]), assetIds: [], assetPositions: {} };
+    const { context, page, state } = await setup({ clockAt, accountCreatedAt: clockAt, portfolioOverride: emptyPortfolio, newsOverride: [],
+      tourPulseResponses: [{ news: [neutral, favorable], checkedAt: clockAt, hold: true }], viewport: { width: 1280, height: 900 } });
+    await clickVisible(page, 'Ahora no');
+    await openTutorialNewsStep(page);
+    await page.getByRole('status').filter({ hasText: 'Buscando ejemplo de hoy…' }).waitFor();
+    assert.equal(await page.getByRole('dialog').count(), 0, 'La guía espera una publicación del día en lugar de abrir el ejemplo histórico incorporado');
+    assert.ok(await page.getByRole('button', { name: /^Siguiente/ }).filter({ visible: true }).isDisabled());
+    const request = state.calls.find(call => call.path === '/api/news/pulse' && call.body.portfolioId === 'tour-general');
+    assert.deepEqual(request?.body.tickers, [], 'El ejemplo consulta el mercado general aunque la cuenta no tenga tickers');
+    assert.equal(state.releaseTourResponses.length, 1);
+    state.releaseTourResponses.shift()();
+    const detail = page.getByRole('dialog', { name: favorable.headline, exact: true });
+    await detail.waitFor();
+    await detail.getByText('Ejemplo de la guía · noticia de hoy', { exact: true }).waitFor();
+    await detail.getByText('Favorable', { exact: true }).waitFor();
+    const publicationDate = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', dateStyle: 'short', timeStyle: 'short' }).format(new Date(favorable.sources[0].publishedDateIso));
+    await detail.getByText(`${publicationDate} (Buenos Aires)`, { exact: true }).waitFor();
+    assert.equal(await detail.getByRole('link', { name: 'Ver noticia en Ámbito', exact: true }).getAttribute('href'), favorable.sources[0].sourceUrl);
+    assert.equal(await page.getByRole('heading', { name: neutral.headline, exact: true }).count(), 0, 'La primera nota neutral no desplaza una señal favorable disponible');
+    assert.deepEqual(state.user.portfolio.assetIds, [], 'El ejemplo no agrega instrumentos a la cuenta nueva');
+    assert.equal(await page.locator('#news-feed-section article').count(), 0);
+    await page.screenshot({ path: path.join(artifacts, 'tutorial-empty-portfolio-current-news-1280.png') });
+    assert.equal(await detail.getAttribute('aria-modal'), 'false', 'El detalle de ejemplo permite interactuar con los controles de la guía');
+    await detail.getByRole('button', { name: 'Cerrar detalle', exact: true }).focus();
+    const next = page.getByRole('button', { name: /^Siguiente/ }).filter({ visible: true });
+    for (let attempt = 0; attempt < 7 && !await next.evaluate(element => element === document.activeElement); attempt++) await page.keyboard.press('Tab');
+    assert.ok(await next.evaluate(element => element === document.activeElement), 'El teclado puede salir del detalle y llegar a Siguiente');
+    await page.keyboard.press('Enter');
+    await page.getByRole('heading', { name: 'Métricas de calendario', exact: true }).waitFor();
+    await detail.waitFor({ state: 'hidden' });
+    await context.close();
+  });
+  await check('Guía cambia de fecha a medianoche argentina, descarta la respuesta de ayer y admite un ejemplo neutral de hoy', async () => {
+    const clockAt = '2030-06-16T02:59:30Z'; // 23:59 del15 en Argentina.
+    const yesterday = tutorialPublication('tutorial-late-yesterday', 'YPF aumentó 12% su producción de petróleo', '2030-06-16T02:30:00Z');
+    const today = tutorialPublication('tutorial-neutral-next-day', 'YPF presenta su agenda institucional del día', '2030-06-16T03:00:00Z');
+    assert.equal(today.impact, 'neutral');
+    const { context, page, state } = await setup({ clockAt, accountCreatedAt: clockAt, newsOverride: [],
+      portfolioOverride: { ...structuredClone(MOCK_PORTFOLIOS[0]), assetIds: [], assetPositions: {} },
+      tourPulseResponses: [
+        { news: [yesterday], checkedAt: clockAt, hold: true },
+        { news: [yesterday, today], checkedAt: '2030-06-16T03:00:00Z', hold: true }
+      ], viewport: { width: 1280, height: 900 } });
+    await clickVisible(page, 'Ahora no');
+    await openTutorialNewsStep(page);
+    await page.getByRole('status').filter({ hasText: 'Buscando ejemplo de hoy…' }).waitFor();
+    const nextRequest = page.waitForRequest(request => new URL(request.url()).pathname === '/api/news/pulse' && request.postDataJSON()?.portfolioId === 'tour-general');
+    await page.clock.runFor(31_000);
+    await nextRequest;
+    for (let attempt = 0; attempt < 20 && state.releaseTourResponses.length < 2; attempt++) await page.waitForTimeout(25);
+    assert.equal(state.releaseTourResponses.length, 2, 'El cambio de jornada inicia otra consulta aunque la anterior siga pendiente');
+    state.releaseTourResponses.shift()();
+    await page.waitForTimeout(150);
+    assert.equal(await page.getByRole('dialog').count(), 0, 'Una respuesta tardía de la jornada anterior no abre ni reetiqueta su artículo');
+    state.releaseTourResponses.shift()();
+    const detail = page.getByRole('dialog', { name: today.headline, exact: true });
+    await detail.waitFor();
+    await detail.getByText('Neutral', { exact: true }).first().waitFor();
+    await detail.getByText('Ejemplo de la guía · noticia de hoy', { exact: true }).waitFor();
+    const publicationDate = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', dateStyle: 'short', timeStyle: 'short' }).format(new Date(today.sources[0].publishedDateIso));
+    await detail.getByText(`${publicationDate} (Buenos Aires)`, { exact: true }).waitFor();
+    assert.equal(await page.getByRole('heading', { name: yesterday.headline, exact: true }).count(), 0, 'Ayer queda fuera aunque tuviera una señal favorable');
+    assert.deepEqual(state.user.portfolio.assetIds, []);
+    await context.close();
+  });
+  await check('Guía móvil con cartera vacía permite leer el ejemplo de hoy y avanzar desde la pastilla', async () => {
+    const clockAt = '2030-06-15T16:30:00Z';
+    const example = tutorialPublication('tutorial-mobile-today', 'YPF aumentó 12% su producción de petróleo', '2030-06-15T15:30:00Z');
+    const { context, page, state } = await setup({ clockAt, accountCreatedAt: clockAt, newsOverride: [], tourNewsOverride: [example],
+      portfolioOverride: { ...structuredClone(MOCK_PORTFOLIOS[0]), assetIds: [], assetPositions: {} }, viewport: { width: 390, height: 844 } });
+    await clickVisible(page, 'Ahora no');
+    await openTutorialNewsStep(page);
+    const detail = page.getByRole('dialog', { name: example.headline, exact: true });
+    await detail.waitFor();
+    await detail.getByRole('heading', { name: example.headline, exact: true }).waitFor();
+    await detail.getByText('Ejemplo de la guía · noticia de hoy', { exact: true }).waitFor();
+    await dialogFits(page); await fits(page, 'Guía con noticia de ejemplo en móvil');
+    const source = detail.getByRole('link', { name: 'Ver noticia en Ámbito', exact: true });
+    await source.scrollIntoViewIfNeeded();
+    const publicationDate = new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', dateStyle: 'short', timeStyle: 'short' }).format(new Date(example.sources[0].publishedDateIso));
+    await detail.getByText(`${publicationDate} (Buenos Aires)`, { exact: true }).waitFor();
+    assert.equal(await source.getAttribute('href'), example.sources[0].sourceUrl);
+    assert.ok(await source.evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      const target = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return element === target || element.contains(target);
+    }), 'El enlace a la publicación original queda accesible junto a los controles de la guía');
+    const expand = page.getByTitle('Expandir instructivo', { exact: true });
+    if (!await expand.isVisible()) await page.getByTitle('Minimizar instructivo', { exact: true }).click();
+    await expand.waitFor();
+    await page.screenshot({ path: path.join(artifacts, 'tutorial-empty-portfolio-current-news-390.png') });
+    await page.getByTitle('Siguiente', { exact: true }).click();
+    await page.getByText('11/15', { exact: true }).waitFor();
+    await detail.waitFor({ state: 'hidden' });
+    assert.deepEqual(state.user.portfolio.assetIds, []);
     await context.close();
   });
   await check('Única fuente verificada y recuperación cuando falla la carga de una pantalla', async () => {

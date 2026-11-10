@@ -52,17 +52,19 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
   };
 
   const seekableDuration = Math.max(0, audioState.seekableDuration ?? 0);
-  const canSeek = audioState.canSeek === true && seekableDuration > 0;
+  const canSeek = audioState.canSeek === true && audioState.totalDuration > 0;
   const isLoading = audioState.isLoading && !audioState.error;
+  const isSeeking = audioState.isSeeking === true && !audioState.error;
+  const seekTarget = audioState.pendingSeekSeconds ?? audioState.currentSeconds;
   const voiceLabel = audioState.voice === 'es-AR-TomasNeural'
     ? 'Voz argentina · Tomás'
     : audioState.voice === 'es-AR-ElenaNeural'
       ? 'Voz argentina · Elena'
       : null;
 
-  const seekToAvailableTime = (seconds: number) => {
+  const seekToTime = (seconds: number) => {
     if (!canSeek) return;
-    audioController.seek(Math.max(0, Math.min(seekableDuration, seconds)));
+    audioController.seek(Math.max(0, Math.min(audioState.totalDuration, seconds)));
   };
 
   const handleProgressBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -70,19 +72,19 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
     const rect = e.currentTarget.getBoundingClientRect();
     if (rect.width === 0) return;
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    seekToAvailableTime(ratio * audioState.totalDuration);
+    seekToTime(ratio * audioState.totalDuration);
   };
 
   const handleProgressBarKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (!canSeek) return;
-    const nextTime = e.key === 'ArrowLeft' ? audioState.currentSeconds - 10
-      : e.key === 'ArrowRight' ? audioState.currentSeconds + 10
+    const nextTime = e.key === 'ArrowLeft' ? seekTarget - 10
+      : e.key === 'ArrowRight' ? seekTarget + 10
         : e.key === 'Home' ? 0
-          : e.key === 'End' ? seekableDuration
+          : e.key === 'End' ? audioState.totalDuration
             : null;
     if (nextTime === null) return;
     e.preventDefault();
-    seekToAvailableTime(nextTime);
+    seekToTime(nextTime);
   };
 
   const handlePlaybackClick = () => {
@@ -222,11 +224,12 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
                 aria-label="Progreso del audio"
                 aria-disabled={!canSeek}
                 aria-valuemin={0}
-                aria-valuemax={seekableDuration}
-                aria-valuenow={Math.min(seekableDuration, Math.max(0, audioState.currentSeconds))}
-                aria-valuetext={`${formatTime(audioState.currentSeconds)} reproducidos; ${formatTime(seekableDuration)} disponibles`}
+                aria-valuemax={audioState.totalDuration}
+                aria-valuenow={Math.min(audioState.totalDuration, Math.max(0, audioState.currentSeconds))}
+                aria-valuetext={isSeeking ? `${formatTime(audioState.currentSeconds)} reproducidos; preparando salto a ${formatTime(seekTarget)}` : `${formatTime(audioState.currentSeconds)} de ${audioState.isDurationEstimated ? 'aproximadamente ' : ''}${formatTime(audioState.totalDuration)}`}
+                aria-busy={isSeeking}
                 className={`w-full bg-ink-800 rounded-full h-2 relative overflow-hidden transition-colors py-0.5 ${canSeek ? 'hover:bg-ink-700/80 cursor-pointer' : 'cursor-default'}`}
-                title={!canSeek ? 'El audio se está preparando' : audioState.isDurationEstimated ? 'Podés avanzar en el audio disponible; el resto se está preparando' : 'Avanzar o retroceder'}
+                title={!canSeek ? 'El audio se está preparando' : 'Elegí dónde continuar; prepararemos ese fragmento si hace falta'}
               >
                 <div
                   className="absolute inset-y-0 left-0 bg-brand-900/70 rounded-full"
@@ -245,6 +248,12 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
                   {audioState.isDurationEstimated ? '≈ ' : ''}-{formatTime(audioState.remainingSeconds)}
                 </span>
               </div>
+              {isSeeking && (
+                <p role="status" aria-live="polite" className="flex items-center gap-1.5 text-[10px] text-brand-300">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Preparando salto a {formatTime(seekTarget)}…
+                </p>
+              )}
             </div>
 
             {/* Bottom Controls Row: Speed selector, 10s back/forward, play/pause */}
@@ -291,8 +300,8 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
                 {/* Retroceder 10 segundos */}
                 <button
                   type="button"
-                  onClick={() => seekToAvailableTime(audioState.currentSeconds - 10)}
-                  disabled={!canSeek || audioState.currentSeconds <= 0}
+                  onClick={() => audioController.rewind(10)}
+                  disabled={!canSeek || seekTarget <= 0}
                   className="p-2 text-ink-300 hover:text-paper hover:bg-ink-800/80 rounded-full transition-colors cursor-pointer relative group disabled:opacity-40"
                   title="Retroceder 10 segundos"
                   aria-label="Retroceder 10 segundos"
@@ -312,8 +321,8 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
                       ? 'bg-brand-900/80 text-brand-300'
                       : 'bg-brand-500 hover:bg-brand-400 text-ink-950 shadow-brand-950/50'
                   }`}
-                  aria-label={isLoading ? 'Cancelar preparación del audio' : audioState.error ? 'Reintentar audio' : audioState.isPlaying ? 'Pausar audio' : 'Reproducir audio'}
-                  title={isLoading ? 'Cancelar preparación del audio' : audioState.error ? 'Reintentar audio' : audioState.isPlaying ? 'Pausar' : 'Reproducir'}
+                  aria-label={isLoading ? isSeeking ? 'Pausar audio' : 'Cancelar preparación del audio' : audioState.error ? 'Reintentar audio' : audioState.isPlaying ? 'Pausar audio' : 'Reproducir audio'}
+                  title={isLoading ? isSeeking ? 'Pausar mientras se prepara el salto' : 'Cancelar preparación del audio' : audioState.error ? 'Reintentar audio' : audioState.isPlaying ? 'Pausar' : 'Reproducir'}
                 >
                   {isLoading ? (
                     <Loader2 className="w-4 h-4 animate-spin text-brand-300" />
@@ -327,10 +336,10 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
                 {/* Avanzar 10 segundos */}
                 <button
                   type="button"
-                  onClick={() => seekToAvailableTime(audioState.currentSeconds + 10)}
-                  disabled={!canSeek || audioState.currentSeconds >= seekableDuration - 0.05}
+                  onClick={() => audioController.forward(10)}
+                  disabled={!canSeek || (!audioState.isDurationEstimated && seekTarget >= audioState.totalDuration - 0.05)}
                   className="p-2 text-ink-300 hover:text-paper hover:bg-ink-800/80 rounded-full transition-colors cursor-pointer relative group disabled:opacity-40"
-                  title={audioState.isDurationEstimated ? 'Avanzar en el audio disponible; el resto se está preparando' : 'Avanzar 10 segundos'}
+                  title="Avanzar 10 segundos"
                   aria-label="Avanzar 10 segundos"
                 >
                   <RotateCw className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
@@ -345,7 +354,7 @@ export const AudioPlayerDrawer: React.FC<AudioPlayerDrawerProps> = ({
                 {isLoading ? (
                   <span className="text-brand-300/90 flex items-center gap-1 animate-pulse">
                     <Loader2 className="w-3 h-3 animate-spin text-brand-text" />
-                    <span>Preparando audio...</span>
+                    <span>{isSeeking ? 'Preparando el salto…' : 'Preparando audio...'}</span>
                   </span>
                 ) : (
                   <span className="text-brand-text/90">{voiceLabel}</span>
