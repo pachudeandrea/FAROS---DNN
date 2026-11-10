@@ -1,0 +1,206 @@
+[
+  {
+    "id": "live-news-1f0596004e0d0217",
+    "headline": "Las acciones de Nvidia caen casi 5% tras el escándalo de la relación de su CEO con una espía china",
+    "briefSummary": "Las acciones de Nvidia caen casi 5% tras el escándalo de la relación de su CEO con una espía china. Información publicada en Ámbito.",
+    "fullSynthesis": [
+      "Hecho concreto informado en Ámbito (9 de noviembre a las 12:39 p. m.).",
+      "La publicación informa una variación de cotización de instrumentos identificados. Esa observación no establece su evolución futura.",
+      "Información respaldada directamente por las publicaciones originales de los medios consultados."
+    ],
+    "publishedAgo": "9 de noviembre a las 12:39 p. m.",
+    "timestamp": "9 de noviembre a las 12:39 p. m.",
+    "coverageCount": 1,
+    "sources": [
+      {
+        "mediaName": "Ámbito",
+        "originalHeadline": "Las acciones de Nvidia caen casi 5% tras el escándalo de la relación de su CEO con una espía china",
+        "articleSummary": "Nvidia anunció que investiga la relación del CEO Jensen Huang con una presunta espía china después de admitir la infidelidad. Las acciones caen en Wall Street. Las acciones de Nvidia caen 4,5% después de que el gigante de los semiconductores informara que su consejo de administración investiga si el CEO Jensen Huang fue objetivo de un esfuerzo de inteligencia extranjera. La investigación surge tras un reporte mediático que alega que mantuvo una relación cercana con una espía china que habría pasado información a Beijing. En un mensaje a sus empleados, Huang reconoció haber sido infiel a su esposa y asumió \\\"toda la responsabilidad\\\" por sus acciones. Nvidia señaló que no tiene razones para creer que la seguridad nacional de Estados Unidos o los secretos de la empresa hayan sido comprometidos. En su declaración a los empleados, Huang dijo que apoyaba la investigación y que cooperaría con la misma, dijo: \\\"Amo a nuestro país y a nuestra empresa, y estoy comprometido a proteger a Nvidia y a apoyar la seguridad nacional de Estados Unidos\\\". Estiman que el patrimonio neto de Jensen Huang asciende a u$s162.200 millones, lo que lo convierte en la octava persona más rica del mundo a fecha",
+        "sourceUrl": "https://www.ambito.com/finanzas/las-acciones-nvidia-caen-casi-5-el-escandalo-la-relacion-su-ceo-una-espia-china-n6343203",
+        "publishedTime": "9 de noviembre a las 12:39 p. m.",
+        "domain": "ambito.com",
+        "publishedDateIso": "2026-11-09T12:39:00-03:00",
+        "publishedTimestamp": 1794238740000
+      }
+    ],
+    "affectedAssetIds": [
+      "NVDA"
+    ],
+    "impact": "alerta",
+    "relevanceType": "impacto_precio",
+    "portfolioImpactAnalysis": {
+      "directExplanation": "La publicación informa una variación de cotización de instrumentos identificados. Esa observación no establece su evolución futura.",
+      "affectedHoldings": [
+        {
+          "symbol": "NVDA",
+          "impactDirection": "alerta",
+          "relationshipDetail": "La publicación menciona al emisor de NVDA, NVIDIA. La dirección se limita al hecho expresado en el texto verificado, sin proyectar una cotización futura."
+        }
+      ]
+    },
+    "audioDuration": "1:00 min",
+    "audioScript": "Resumen FAROS. Las acciones de Nvidia caen casi 5% tras el escándalo de la relación de su CEO con una espía china. La publicación informa una variación de cotización de instrumentos identificados. Esa observación no establece su evolución futura. Publicado en Ámbito.",
+    "factCheck": {
+      "status": "confirmado",
+      "officialSource": "Ámbito",
+      "detail": "Reportado en publicaciones periodísticas con fecha 9 de noviembre a las 12:39 p. m.."
+    },
+    "topicCategory": "cedears_tech"
+  },
+  {
+    "id": "live-news-ba99af3d09223b51",
+    "headline": "El petróleo cae más de 5% y las acciones en Wall Street suben pese a las turbulencias en Nvidia",
+    "briefSummary": "El petróleo cae más de 5% y las acciones en Wall Street suben pese a las turbulencias en Nvidia. Información publicada en Ámbito.",
+    "fullSynthesis": [
+      "Hecho concreto informado en Ámbito (9 de noviembre a las 11:34 a. m.).",
+      "La publicación no aporta evidencia suficiente de un efecto direccional sobre los instrumentos; las opiniones o expectativas no se tratan como hechos confirmados.",
+      "Información respaldada directamente por las publicaciones originales de los medios consultados."
+    ],
+    "publishedAgo": "9 de noviembre a las 11:34 a. m.",
+    "timestamp": "9 de noviembre a las 11:34 a. m.",
+    "coverageCount": 1,
+    "sources": [
+      {
+        "mediaName": "Ámbito",
+        "originalHeadline": "El petróleo cae más de 5% y las acciones en Wall Street suben pese a las turbulencias en Nvidia",
+        "articleSummary": "Las bolsas asiáticas recuperan terreno y Europa opera estable, mientras Wall Street sortearía el conflicto en Nvidia. El petróleo retrocede por las expectativas de distensión entre EEUU e Irán y el oro avanza. Los mercados internacionales comenzaron este lunes 9 de noviembre con rebote, después de las fuertes caídas registradas durante la semana pasada. La baja del petróleo y una menor tensión en torno al conflicto entre Estados Unidos e Irán aportan algo de alivio a los inversores, aunque persisten las dudas sobre el negocio de la inteligencia artificial (IA), las valuaciones tecnológicas y el rumbo de las tasas de interés. En ese marco, el petróleo Brent baja 5,4% a u$s93,02, mientras que el WTI caía 4,7% a u$93,02. Esta baja podría deberse a que circuló la información de que Irán en un comunicado relajó sus demandas sobre Ormuz. Asimismo los principales índices de Wall Street avanzan hasta 1,1% de la mano del Dow Jones, seguido por el S&P 500 con el 1,4% y el Nasdaq con el 1,3%. Cabe resaltar que la dinámica de Wall Street está marcada por la reorganización política tras las elecciones de medio término en Estados Unidos, la alta volatilidad en el sector tecnológico y la lectura",
+        "sourceUrl": "https://www.ambito.com/finanzas/las-bolsas-globales-ensayan-un-rebote-el-oro-sube-y-la-incertidumbre-condiciona-wall-street-n6343100",
+        "publishedTime": "9 de noviembre a las 11:34 a. m.",
+        "domain": "ambito.com",
+        "publishedDateIso": "2026-11-09T11:34:00-03:00",
+        "publishedTimestamp": 1794234840000
+      }
+    ],
+    "affectedAssetIds": [
+      "NVDA",
+      "SPY"
+    ],
+    "impact": "neutral",
+    "relevanceType": "ruido",
+    "portfolioImpactAnalysis": {
+      "directExplanation": "La publicación no aporta evidencia suficiente de un efecto direccional sobre los instrumentos; las opiniones o expectativas no se tratan como hechos confirmados.",
+      "affectedHoldings": [
+        {
+          "symbol": "NVDA",
+          "impactDirection": "neutral",
+          "relationshipDetail": "La publicación menciona al emisor de NVDA, NVIDIA. No se establece una dirección de cotización para esta especie."
+        },
+        {
+          "symbol": "SPY",
+          "impactDirection": "neutral",
+          "relationshipDetail": "La publicación menciona el índice o referencia del ETF de SPY, sin demostrar la cotización local del CEDEAR. No se establece una dirección de cotización para esta especie."
+        }
+      ]
+    },
+    "audioDuration": "1:00 min",
+    "audioScript": "Resumen FAROS. El petróleo cae más de 5% y las acciones en Wall Street suben pese a las turbulencias en Nvidia. La publicación no aporta evidencia suficiente de un efecto direccional sobre los instrumentos; las opiniones o expectativas no se tratan como hechos confirmados. Publicado en Ámbito.",
+    "factCheck": {
+      "status": "en_analisis",
+      "officialSource": "Ámbito",
+      "detail": "Publicación verificada en Ámbito; su contenido no se trata como un hecho financiero confirmado."
+    },
+    "topicCategory": "cedears_tech"
+  },
+  {
+    "id": "live-news-c78ee1c295a99719",
+    "headline": "Nvidia se desplomó más de 8% en Wall Street por el escándalo de espionaje que involucra a su CEO, pero las bolsas suben",
+    "briefSummary": "Nvidia se desplomó más de 8% en Wall Street por el escándalo de espionaje que involucra a su CEO, pero las bolsas suben. Información publicada en Perfil.",
+    "fullSynthesis": [
+      "Hecho concreto informado en Perfil (9 de noviembre a las 12:24 p. m.).",
+      "La publicación informa una variación de cotización de instrumentos identificados. Esa observación no establece su evolución futura.",
+      "Información respaldada directamente por las publicaciones originales de los medios consultados."
+    ],
+    "publishedAgo": "9 de noviembre a las 12:24 p. m.",
+    "timestamp": "9 de noviembre a las 12:24 p. m.",
+    "coverageCount": 1,
+    "sources": [
+      {
+        "mediaName": "Perfil",
+        "originalHeadline": "Nvidia se desplomó más de 8% en Wall Street por el escándalo de espionaje que involucra a su CEO, pero las bolsas suben",
+        "articleSummary": "Las acciones del gigante de los semiconductores llegaron a perder cerca de USD 300.000 millones de valor bursátil tras conocerse una investigación sobre Jensen Huang. Sin embargo, el Nasdaq, el S&P 500 y el Dow Jones operan con fuertes ganancias.",
+        "sourceUrl": "https://www.perfil.com/economia/nvidia-se-desplomo-mas-de-8-en-wall-street-por-el-escandalo-de-espionaje-que-involucra-a-su-ceo-pero-las-bolsas-suben-aLcUb0v1SGHW",
+        "publishedTime": "9 de noviembre a las 12:24 p. m.",
+        "domain": "perfil.com",
+        "publishedDateIso": "2026-11-09T12:24:00-03:00",
+        "publishedTimestamp": 1794237894106
+      }
+    ],
+    "affectedAssetIds": [
+      "NVDA",
+      "SPY"
+    ],
+    "impact": "alerta",
+    "relevanceType": "impacto_precio",
+    "portfolioImpactAnalysis": {
+      "directExplanation": "La publicación informa una variación de cotización de instrumentos identificados. Esa observación no establece su evolución futura.",
+      "affectedHoldings": [
+        {
+          "symbol": "NVDA",
+          "impactDirection": "alerta",
+          "relationshipDetail": "La publicación menciona al emisor de NVDA, NVIDIA. La dirección se limita al hecho expresado en el texto verificado, sin proyectar una cotización futura."
+        },
+        {
+          "symbol": "SPY",
+          "impactDirection": "neutral",
+          "relationshipDetail": "El asunto judicial requiere seguimiento por su relación con SPY. El texto verificado no acredita una nueva obligación de la compañía, un cambio de control concreto o una resolución direccional; la responsabilidad del Estado no se trata automáticamente como deuda de la empresa."
+        }
+      ]
+    },
+    "audioDuration": "1:00 min",
+    "audioScript": "Resumen FAROS. Nvidia se desplomó más de 8% en Wall Street por el escándalo de espionaje que involucra a su CEO, pero las bolsas suben. La publicación informa una variación de cotización de instrumentos identificados. Esa observación no establece su evolución futura. Publicado en Perfil.",
+    "factCheck": {
+      "status": "confirmado",
+      "officialSource": "Perfil",
+      "detail": "Reportado en publicaciones periodísticas con fecha 9 de noviembre a las 12:24 p. m.."
+    },
+    "topicCategory": "cedears_tech"
+  },
+  {
+    "id": "live-news-fac675b1500dd810",
+    "headline": "Las acciones de Nvidia caen 5% en Wall Street y se disparan las de sus competidores mientras avanza la investigación",
+    "briefSummary": "Las acciones de Nvidia caen 5% en Wall Street y se disparan las de sus competidores mientras avanza la investigación. Información publicada en Infobae.",
+    "fullSynthesis": [
+      "Hecho concreto informado en Infobae (9 de noviembre a las 01:08 p. m.).",
+      "La publicación informa una variación de cotización de instrumentos identificados. Esa observación no establece su evolución futura.",
+      "Información respaldada directamente por las publicaciones originales de los medios consultados."
+    ],
+    "publishedAgo": "9 de noviembre a las 01:08 p. m.",
+    "timestamp": "9 de noviembre a las 01:08 p. m.",
+    "coverageCount": 1,
+    "sources": [
+      {
+        "mediaName": "Infobae",
+        "originalHeadline": "Las acciones de Nvidia caen 5% en Wall Street y se disparan las de sus competidores mientras avanza la investigación",
+        "articleSummary": "La compañía fabricante de chips es de las más valiosas de Wall Street y sufre una rueda de ventas por la relación extramatrimonial de su CEO con una supuesta espía china. Las acciones de otras compañías del sector escalan hasta 9% Las acciones de Nvidia cayeron hasta un 8% en los primeros negocios, para acotar las pérdidas de este lunes a un 5% pasado el mediodía, después de que la junta directiva del fabricante de chips anunciara que investigaría la relación entre el director ejecutivo Jensen Huang y una mujer que la comunidad de inteligencia cree que podría ser una espía china. En un memorando enviado el domingo a los empleados, Jensen Huang admitió haber tenido una aventura extramatrimonial, disculpándose con su familia y personal, y comprometiéndose a cooperar plenamente con una investigación independiente del consejo de administración. Los analistas de Wall Street no tardaron en señalar el elevado riesgo que esto representa para el principal fabricante mundial de chips de inteligencia artificial, que depende en gran medida de una persona clave. “Jensen es la esencia de Nvidia, y su éxito y ambiciones en inteligencia artificial dependen en gran medida de que siga siendo directo",
+        "sourceUrl": "https://www.infobae.com/economia/2026/11/09/las-acciones-de-nvidia-caen-5-en-wall-street-y-se-disparan-las-de-sus-competidores-mientras-avanza-la-investigacion/",
+        "publishedTime": "9 de noviembre a las 01:08 p. m.",
+        "domain": "infobae.com",
+        "publishedDateIso": "2026-11-09T13:08:00-03:00",
+        "publishedTimestamp": 1794240486000
+      }
+    ],
+    "affectedAssetIds": [
+      "NVDA"
+    ],
+    "impact": "alerta",
+    "relevanceType": "impacto_precio",
+    "portfolioImpactAnalysis": {
+      "directExplanation": "La publicación informa una variación de cotización de instrumentos identificados. Esa observación no establece su evolución futura.",
+      "affectedHoldings": [
+        {
+          "symbol": "NVDA",
+          "impactDirection": "alerta",
+          "relationshipDetail": "La publicación menciona al emisor de NVDA, NVIDIA. La dirección se limita al hecho expresado en el texto verificado, sin proyectar una cotización futura."
+        }
+      ]
+    },
+    "audioDuration": "1:00 min",
+    "audioScript": "Resumen FAROS. Las acciones de Nvidia caen 5% en Wall Street y se disparan las de sus competidores mientras avanza la investigación. La publicación informa una variación de cotización de instrumentos identificados. Esa observación no establece su evolución futura. Publicado en Infobae.",
+    "factCheck": {
+      "status": "confirmado",
+      "officialSource": "Infobae",
+      "detail": "Reportado en publicaciones periodísticas con fecha 9 de noviembre a las 01:08 p. m.."
+    },
+    "topicCategory": "cedears_tech"
+  }
+]

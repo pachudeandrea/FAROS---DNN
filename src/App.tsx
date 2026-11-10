@@ -7,6 +7,7 @@ import { argentinaNewsDay, argentinaNewsHour, nextNewsHourDelay, dailyNewsItems,
 import { portfolioNewsScope } from './utils/newsCache';
 import { getPortfolioAffectedAssetIds, getPortfolioNewsImpact } from './utils/portfolioNews';
 import { reclassifyCachedNews } from './utils/newsClassification';
+import { coalesceNewsEvents } from './utils/newsCoverage';
 import { portfolioAssets } from './data/assetCatalog';
 import React, { useState, useMemo, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { 
@@ -605,7 +606,13 @@ export default function App() {
 
   // Filtered News stream (based on verified grounded newsList)
   const filteredNews = useMemo(() => {
-    const items = newsView === 'latest' ? newsList : library.items.map(entry => entry.news);
+    const byDay = new Map<string, NewsItem[]>();
+    if (newsView !== 'latest') for (const entry of library.items) {
+      const items = byDay.get(entry.day) || [];
+      items.push(entry.news);
+      byDay.set(entry.day, items);
+    }
+    const items = newsView === 'latest' ? newsList : [...byDay.values()].flatMap(items => coalesceNewsEvents(items));
     return items.filter(item => {
 
       // 2. Search query filter
@@ -613,8 +620,9 @@ export default function App() {
         const query = searchQuery.toLowerCase();
         const matchesHeadline = item.headline.toLowerCase().includes(query);
         const matchesSummary = item.briefSummary.toLowerCase().includes(query);
+        const matchesSources = item.sources.some(source => source.originalHeadline.toLowerCase().includes(query) || source.mediaName.toLowerCase().includes(query));
         const matchesAssets = (newsView === 'latest' ? getPortfolioAffectedAssetIds(item, activePortfolio.assetIds) : item.affectedAssetIds).some(aid => aid.toLowerCase().includes(query));
-        if (!matchesHeadline && !matchesSummary && !matchesAssets) return false;
+        if (!matchesHeadline && !matchesSummary && !matchesSources && !matchesAssets) return false;
       }
 
       // 3. Relevance Type filter

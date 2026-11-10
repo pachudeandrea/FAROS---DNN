@@ -22,7 +22,7 @@ export function usablePulseSnapshot(value: PulseSnapshot, now = Date.now()): Pul
   const news = dailyNewsItems(value.news, day);
   // A previous-day publication is not a successful empty query for this day.
   if (value.news.length && !news.length) return null;
-  return { ...value, news: reclassifyCachedNews(news) };
+  return { ...value, news: reclassifyCachedNews(news, undefined, { preserveRelatedAssetScope: true }) };
 }
 
 function pool(bypassCooldown = false): Pool | null {

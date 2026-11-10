@@ -193,6 +193,7 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
       const encoder = new TextEncoder();
       const stream = new ReadableStream({ start(controller) {
         const send = frame => controller.enqueue(encoder.encode(JSON.stringify(frame) + '\n'));
+        window.__progressNews = nextItems => send({ type: 'progress', news: nextItems, checkedAt: new Date().toISOString() });
         window.__finishNews = () => { send({ type: 'complete', news: items, checkedAt: new Date().toISOString() }); controller.close(); };
         window.__failNews = () => controller.error(new Error('Interrupción de prueba'));
         send({ type: 'progress', news: items.slice(0, 1), checkedAt: new Date().toISOString() });
@@ -226,6 +227,20 @@ function tutorialPublication(id, headline, at) {
       originalHeadline: headline, articleSummary: headline, publishedDateIso: at, publishedTimestamp: Date.parse(at) }], coverageCount: 1,
     portfolioImpactAnalysis: { directExplanation: analysis.explanation, affectedHoldings: Object.entries(analysis.assetImpacts)
       .map(([symbol, impactDirection]) => ({ symbol, impactDirection, relationshipDetail: analysis.relationships[symbol] })) }
+  };
+}
+// Controlled publishers/dates for grouping regressions. These fixtures are not
+// fetched from a live outlet or presented as today's real publications.
+function groupingPublication(id, headline, mediaName, domain, at, articleSummary = headline) {
+  const analysis = analyzeNewsRelevance(headline, ASSET_CATALOG, articleSummary);
+  return {
+    ...structuredClone(news[0]), id, headline, briefSummary: headline, fullSynthesis: [analysis.explanation],
+    publishedAgo: 'Publicación de prueba', timestamp: at,
+    impact: analysis.impact, relevanceType: analysis.relevanceType, affectedAssetIds: analysis.affectedAssetIds,
+    sources: [{ mediaName, domain, sourceUrl: `https://www.${domain}/economia/${id}-grouping-fixture`, originalHeadline: headline,
+      articleSummary, publishedDateIso: at, publishedTimestamp: Date.parse(at) }], coverageCount: 1,
+    portfolioImpactAnalysis: { directExplanation: analysis.explanation, affectedHoldings: Object.entries(analysis.assetImpacts)
+      .map(([symbol, impactDirection]) => ({ symbol, impactDirection, relationshipDetail: analysis.relationships[symbol] })) },
   };
 }
 async function openTutorialNewsStep(page) {
@@ -474,6 +489,98 @@ try {
     await page.keyboard.press('Escape');
     await dialog.waitFor({ state: 'hidden' });
     await clickVisible(page, 'Calendario'); await clickVisible(page, 'Noticias');
+    await context.close();
+  });
+  await check('Cobertura general: agrupa las tres noticias reales de Nvidia desde la caché y conserva cifras, enlaces y otro hecho separado', async () => {
+    // Historical public collection from the user's 9 November report. The
+    // browser clock matches that date; no publication is relabeled as today.
+    const publications = JSON.parse(readFileSync(new URL('./fixtures/nvidia-coverage-production-2026-11-09.json', import.meta.url), 'utf8'));
+    const nvidia = ['Infobae', 'Ámbito', 'Perfil'].map(media => publications.find(item => item.sources[0].mediaName === media && !item.headline.startsWith('El petróleo')));
+    const oil = publications.find(item => item.headline.startsWith('El petróleo'));
+    assert.ok(nvidia.every(Boolean) && oil);
+    assert.equal(nvidia[2].affectedAssetIds.includes('SPY'), true, 'La fuente de Perfil también informa contexto del índice');
+    const clockAt = '2026-11-09T20:30:00Z';
+    const checkedAt = '2026-11-09T20:05:00Z';
+    const portfolio = { ...structuredClone(MOCK_PORTFOLIOS[0]), assetIds: ['NVDA', 'SPY'], assetPositions: { NVDA: 'long', SPY: 'long' } };
+    const scope = `${portfolio.id}_${portfolioNewsScope(portfolio.assetIds, portfolio.profile, portfolio.assetPositions, portfolio.customAssets)}`;
+    const cacheKey = newsClientCacheKey(scope, argentinaNewsHour(Date.parse(clockAt)));
+    const separateCards = [...nvidia, oil];
+    const { context, page, state } = await setup({ clockAt, portfolioOverride: portfolio, newsOverride: separateCards,
+      pulseCacheSeeds: [[cacheKey, JSON.stringify({ news: separateCards, checkedAt })]], viewport: { width: 390, height: 844 } });
+    await clickVisible(page, 'Ahora no');
+    const compare = page.getByRole('button', { name: 'Comparar 3 medios', exact: true });
+    await compare.waitFor();
+    assert.equal(await page.locator('#news-feed-section article').count(), 2, 'Un acontecimiento de Nvidia y otro distinto sobre petróleo');
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse').length, 0, 'La caché existente se normaliza sin esperar otra consulta');
+    const card = page.locator('#news-feed-section article').filter({ has: compare });
+    await card.getByText('NVDA', { exact: true }).waitFor();
+    await card.getByText('SPY', { exact: true }).waitFor();
+    await card.getByText('Alerta', { exact: true }).waitFor();
+    await page.getByRole('button', { name: oil.headline, exact: true }).waitFor();
+    await compare.click();
+    const comparison = page.getByRole('region', { name: 'Comparación de medios', exact: true });
+    await comparison.getByRole('heading', { name: 'El mismo hecho en 3 medios', exact: true }).waitFor();
+    const links = comparison.getByRole('link', { name: /^Ver noticia en / });
+    assert.deepEqual((await links.evaluateAll(items => items.map(item => item.href))).sort(), nvidia.map(item => item.sources[0].sourceUrl).sort());
+    for (const item of nvidia) await comparison.getByText(`“${item.sources[0].originalHeadline}”`, { exact: true }).waitFor();
+    assert.equal(await comparison.getByText(`“${oil.headline}”`, { exact: true }).count(), 0, 'Mencionar Nvidia en otro hecho no basta para combinarlo');
+    await page.screenshot({ path: path.join(artifacts, 'coverage-nvidia-three-original-publishers-390.png') });
+    await page.keyboard.press('Escape');
+    await page.getByRole('dialog').waitFor({ state: 'hidden' });
+    await clickVisible(page, 'Actualizar pulso');
+    await page.getByRole('region', { name: 'Resumen de tu cartera' }).getByRole('status').filter({ hasText: 'Actualización completada.' }).waitFor();
+    assert.equal(await compare.count(), 1);
+    assert.equal(await page.locator('#news-feed-section article').count(), 2, 'La misma respuesta separada no vuelve a crear duplicados');
+    const snapshot = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), cacheKey);
+    assert.equal(snapshot.news.length, 2);
+    assert.equal(snapshot.news.filter(item => item.sources.length === 3).length, 1);
+    await page.reload({ waitUntil: 'networkidle' });
+    await compare.waitFor();
+    assert.equal(await page.locator('#news-feed-section article').count(), 2);
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse').length, 1, 'Recargar conserva el agrupamiento completado sin otra consulta');
+    await context.close();
+  });
+  await check('Cobertura general: otro emisor agrupa medios progresivos con cifras de cotización cambiantes y resiste nuevas actualizaciones', async () => {
+    const clockAt = '2030-06-15T16:30:00Z';
+    const headlines = [
+      'Las acciones de Tesla caen 3% tras una investigación de las autoridades sobre su sistema de conducción autónoma',
+      'Tesla se desplomó 6% mientras avanza la investigación de su sistema de conducción autónoma',
+      'Los papeles de Tesla pierden 4% por la pesquisa regulatoria sobre la conducción autónoma',
+    ];
+    const media = [['Infobae', 'infobae.com'], ['Ámbito', 'ambito.com'], ['Perfil', 'perfil.com']];
+    const items = headlines.map((headline, index) => groupingPublication(`tesla-investigation-${index}`, headline, ...media[index],
+      `2030-06-15T15:${String(index * 10).padStart(2, '0')}:00Z`, 'Las autoridades investigan la seguridad del sistema de conducción autónoma de Tesla. Sus acciones caen en Wall Street por esa pesquisa.'));
+    const dividend = groupingPublication('tesla-dividend', 'Tesla anunció el pago de un dividendo extraordinario', 'El Cronista', 'cronista.com', '2030-06-15T15:25:00Z');
+    const portfolio = { ...structuredClone(MOCK_PORTFOLIOS[0]), assetIds: ['TSLA'], assetPositions: { TSLA: 'long' } };
+    const { context, page } = await setup({ clockAt, progressiveNews: true, newsOverride: [...items, dividend], portfolioOverride: portfolio, viewport: { width: 1280, height: 900 } });
+    await clickVisible(page, 'Ahora no');
+    assert.equal(await page.locator('#news-feed-section article').count(), 1);
+    await page.evaluate(next => window.__progressNews(next), [items[1]]);
+    await page.getByRole('button', { name: 'Comparar 2 medios', exact: true }).waitFor();
+    assert.equal(await page.locator('#news-feed-section article').count(), 1);
+    await page.evaluate(next => window.__progressNews(next), [items[2], dividend]);
+    const compare = page.getByRole('button', { name: 'Comparar 3 medios', exact: true });
+    await compare.waitFor();
+    assert.equal(await page.locator('#news-feed-section article').count(), 2, 'El dividendo es otro acontecimiento del mismo emisor');
+    assert.equal(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('faros_news_')).length), 0, 'La cobertura parcial no se guarda como respuesta completa');
+    await page.evaluate(() => window.__finishNews());
+    const hero = page.getByRole('region', { name: 'Resumen de tu cartera' });
+    await hero.getByRole('status').filter({ hasText: 'Actualización completada.' }).waitFor();
+    await compare.click();
+    const comparison = page.getByRole('region', { name: 'Comparación de medios', exact: true });
+    for (const item of items) await comparison.getByText(`“${item.headline}”`, { exact: true }).waitFor();
+    assert.deepEqual((await comparison.getByRole('link', { name: /^Ver noticia en / }).evaluateAll(links => links.map(link => link.href))).sort(), items.map(item => item.sources[0].sourceUrl).sort());
+    await page.screenshot({ path: path.join(artifacts, 'coverage-general-tesla-three-publishers-1280.png') });
+    await page.keyboard.press('Escape');
+    await page.getByRole('dialog').waitFor({ state: 'hidden' });
+    await clickVisible(page, 'Actualizar pulso');
+    await hero.getByRole('status').filter({ hasText: 'Completando la comparación entre medios.' }).waitFor();
+    assert.equal(await compare.count(), 1, 'Una actualización parcial no reduce la cobertura ya verificada');
+    await page.evaluate(() => window.__finishNews());
+    await hero.getByRole('status').filter({ hasText: 'Actualización completada.' }).waitFor();
+    assert.equal(await compare.count(), 1);
+    assert.equal(await page.locator('#news-feed-section article').count(), 2);
+    assert.equal(await page.evaluate(() => window.__newsStarts), 2);
     await context.close();
   });
   await check('Nombres largos, búsqueda y formularios del calendario en pantalla corta', async () => {

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import * as cheerio from 'cheerio';
 import { recognizeAssetIds } from './assetNews.js';
 import { analyzeNewsRelevance } from './newsRelevance.js';
+import { analyzeVerifiedCoverage } from './newsClassification.js';
 import { ASSET_CATALOG } from '../data/assetCatalog.js';
 import type { Asset } from '../types/index.js';
 import { NewsItem, MediaCoverage } from '../types/index.js';
@@ -516,7 +517,7 @@ function buildVerifiedNews(verifiedSources: VerifiedSource[], userTickers: strin
 
   for (const src of verifiedSources) {
     // Only group with an existing cluster if the two articles speak of the EXACT SAME EVENT
-    const matchedCluster = clusters.find(cl => sourcesCoverSameEvent(cl.sources[0], src));
+    const matchedCluster = clusters.find(cl => cl.sources.every(source => sourcesCoverSameEvent(source, src)));
 
     if (matchedCluster) {
       // Deduplicate within cluster by media name or URL
@@ -542,14 +543,18 @@ function buildVerifiedNews(verifiedSources: VerifiedSource[], userTickers: strin
   // Convert clusters to NewsItems
   const newsItems: NewsItem[] = [];
 
-  clusters.sort((a, b) => Number(b.tickers.some(id => userTickers.includes(id))) - Number(a.tickers.some(id => userTickers.includes(id))));
-  for (const cluster of clusters) {
+  // A secondary verified publication can identify another affected instrument.
+  // Recompute before prioritizing/filtering, rather than freezing the first
+  // publisher's ticker list and silently losing the other position's context.
+  const coveredClusters = clusters.map(cluster => ({ cluster, analysis: analyzeVerifiedCoverage(cluster.sources, assets) }));
+  coveredClusters.sort((a, b) => Number(b.analysis.affectedAssetIds.some(id => userTickers.includes(id))) - Number(a.analysis.affectedAssetIds.some(id => userTickers.includes(id))));
+  for (const { cluster, analysis } of coveredClusters) {
     // Check ticker intersection if user provided tickers
-    const matchesUserTickers = userTickers.length === 0 || cluster.tickers.some(t => userTickers.includes(t));
+    const matchesUserTickers = userTickers.length === 0 || analysis.affectedAssetIds.some(t => userTickers.includes(t));
     if (!matchesUserTickers) { diagnostics.discarded.unrelated++; continue; }
+    const relatedIds = userTickers.length ? analysis.affectedAssetIds.filter(id => userTickers.includes(id)) : analysis.affectedAssetIds;
 
     const primarySource = cluster.sources[0];
-    const analysis = analyzeNewsRelevance(cluster.headline, assets, primarySource.articleSummary);
     const mediaNames = cluster.sources.map(s => s.mediaName).join(' y ');
     const displayTimestamp = primarySource.publishedTime || argInfo.formattedSpanish;
 
@@ -579,12 +584,12 @@ function buildVerifiedNews(verifiedSources: VerifiedSource[], userTickers: strin
         publishedTimestamp: s.publishedTimestamp,
         domain: s.domain
       })),
-      affectedAssetIds: cluster.tickers,
-      impact: cluster.impact,
+      affectedAssetIds: relatedIds,
+      impact: analysis.impact,
       relevanceType: analysis.relevanceType,
       portfolioImpactAnalysis: {
         directExplanation: analysis.explanation,
-        affectedHoldings: cluster.tickers.map(sym => ({
+        affectedHoldings: relatedIds.map(sym => ({
           symbol: sym,
           impactDirection: analysis.assetImpacts[sym] || 'neutral',
           relationshipDetail: analysis.relationships[sym]

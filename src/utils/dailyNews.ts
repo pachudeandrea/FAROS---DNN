@@ -1,7 +1,5 @@
 import type { MediaCoverage, NewsItem } from '../types/index.js';
-import { sourcesCoverSameEvent } from './newsCoverage.js';
-import { getPublisherKey } from './sourceGrounding.js';
-import { publicationUrls } from './newsLibrary.js';
+import { coalesceNewsEvents } from './newsCoverage.js';
 
 const formatter = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23'
@@ -33,27 +31,8 @@ export function dailyNewsItems(news: NewsItem[], day = argentinaNewsDay()): News
     return [{ ...item, sources, coverageCount: sources.length }];
   });
 }
-function sameItem(a: NewsItem, b: NewsItem): boolean {
-  const urls = publicationUrls(a);
-  return publicationUrls(b).some(url => urls.includes(url)) || sourcesCoverSameEvent(a.sources[0], b.sources[0]);
-}
 /** Keep the day's verified news; refresh repeated articles rather than making
  * another card, and combine only publications about the same concrete event. */
 export function mergeDailyNews(previous: NewsItem[], incoming: NewsItem[], day = argentinaNewsDay()): NewsItem[] {
-  const merged = dailyNewsItems(previous, day);
-  for (const item of dailyNewsItems(incoming, day)) {
-    const index = merged.findIndex(old => sameItem(old, item));
-    if (index < 0) { merged.push(item); continue; }
-    const old = merged[index];
-    const anchor = item.sources[0];
-    const publishers = new Set<string>();
-    const sources: MediaCoverage[] = [];
-    for (const source of [...item.sources, ...old.sources]) {
-      const publisher = getPublisherKey(source);
-      if (publishers.has(publisher) || sources.length >= 5 || !item.sources.includes(source) && !sourcesCoverSameEvent(anchor, source)) continue;
-      publishers.add(publisher); sources.push(source);
-    }
-    merged[index] = { ...item, sources, coverageCount: sources.length };
-  }
-  return merged;
+  return coalesceNewsEvents([...dailyNewsItems(previous, day), ...dailyNewsItems(incoming, day)], true);
 }

@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import type { MediaCoverage, NewsItem } from '../src/types';
 import { enrichNewsCoverage, mergeVerifiedNews, sourcesCoverSameEvent } from '../src/utils/newsCoverage';
@@ -129,4 +130,98 @@ test('recuperación amplia: no une movimientos opuestos del mismo activo ni toma
     ['Los bonos argentinos suben tras la elección', 'Los bonos argentinos caen tras la elección']
   ]) assert.equal(sourcesCoverSameEvent(fixture(a), fixture(b, 'cronista.com')), false, `${a} / ${b}`);
   assert.equal(sourcesCoverSameEvent(fixture('Las acciones de Apple suben mientras las acciones de Microsoft caen'), fixture('Las acciones de Apple caen mientras las acciones de Microsoft suben', 'cronista.com')), false);
+});
+
+test('publicaciones reales: agrupa la caída intradiaria y la investigación con los tres titulares originales', () => {
+  const captured = JSON.parse(readFileSync(new URL('./fixtures/nvidia-coverage-production-2026-11-09.json', import.meta.url), 'utf8')) as NewsItem[];
+  const publications = captured.filter(item => item.impact === 'alerta').map(item => item.sources[0]);
+  assert.equal(publications.length, 3);
+  for (const primary of publications) for (const candidate of publications) {
+    assert.equal(sourcesCoverSameEvent(primary, candidate), true, `${primary.mediaName} / ${candidate.mediaName}`);
+  }
+  const generalMarket = captured.find(item => item.impact === 'neutral')!.sources[0];
+  for (const publication of publications) {
+    assert.equal(sourcesCoverSameEvent(publication, generalMarket), false, 'La mención contextual de Nvidia en una nota de petróleo no comparte su caída');
+    assert.equal(sourcesCoverSameEvent(generalMarket, publication), false);
+  }
+  const originals = structuredClone(publications);
+  const item = { ...captured[0], sources: [publications[0]] };
+  const grouped = enrichNewsCoverage([item], publications, new Date('2026-11-09T17:00:00Z'))[0];
+  assert.equal(grouped.coverageCount, 3);
+  assert.deepEqual(JSON.parse(JSON.stringify(grouped.sources)), originals, 'Las cifras5/8%, fechas, extractos y enlaces originales se conservan para comparar');
+});
+
+test('regla general: otros emisores comparten un catalizador aunque cambie la cotización y el vocabulario', () => {
+  const sets = [
+    [
+      'Las acciones de Tesla caen 3% tras una investigación de las autoridades sobre su sistema de conducción autónoma',
+      'Tesla se desplomó 6% mientras avanza la investigación de su sistema de conducción autónoma',
+      'Los papeles de Tesla pierden 4% por la pesquisa regulatoria sobre la conducción autónoma'
+    ],
+    [
+      'Las acciones de Microsoft suben 3% tras ganancias trimestrales que crecieron 12%',
+      'Los papeles de Microsoft escalan 5% después de resultados con ganancias que crecieron 12 por ciento'
+    ],
+    [
+      'Las acciones de Apple caen 2% tras una multa por prácticas antimonopolio',
+      'Apple se hundió 4% en la bolsa por la sanción por prácticas antimonopolio'
+    ]
+  ];
+  for (const headlines of sets) for (const primary of headlines) for (const candidate of headlines) {
+    assert.equal(sourcesCoverSameEvent(fixture(primary), fixture(candidate, 'cronista.com')), true, `${primary} / ${candidate}`);
+  }
+});
+
+test('cifras variables solo en cotización: no absorbe porcentajes de resultados, producción, dividendos o estadísticas', () => {
+  const pairs = [
+    ['Las acciones de Microsoft suben 3% tras ganancias trimestrales que crecieron 12%', 'Las acciones de Microsoft suben 5% tras ganancias trimestrales que crecieron 15%'],
+    ['Las ganancias de Microsoft subieron 12% en el trimestre', 'Las ganancias de Microsoft subieron 15% en el trimestre'],
+    ['La producción de Tesla cayó 3% mientras avanza una investigación', 'La producción de Tesla cayó 6% mientras avanza una investigación'],
+    ['Tesla anunció un dividendo de 3%', 'Tesla anunció un dividendo de 6%'],
+    ['El INDEC publicó una inflación de noviembre del 3%', 'El INDEC publicó una inflación de noviembre del 6%'],
+    ['La Fed recortó la tasa en 25 puntos básicos', 'La Fed recortó la tasa en 50 puntos básicos'],
+    ['Apple cayó 3% tras una multa de USD125 millones', 'Apple cayó 5% tras una multa de USD130 millones']
+  ];
+  for (const [a, b] of pairs) for (const [primary, candidate] of [[a, b], [b, a]]) {
+    assert.equal(sourcesCoverSameEvent(fixture(primary), fixture(candidate, 'cronista.com')), false, `${primary} / ${candidate}`);
+  }
+});
+
+test('una empresa y una caída no bastan: exige la misma causa, dirección y jornada comprobada', () => {
+  const pairs = [
+    ['Tesla cae 3% tras una investigación sobre su conducción autónoma', 'Tesla cae 6% por una pesquisa antimonopolio'],
+    ['Apple cae 3% tras una investigación por espionaje', 'Apple cae 6% tras una investigación por fraude'],
+    ['Tesla cae 3% tras una investigación', 'Tesla cae 6% tras su balance trimestral'],
+    ['Tesla cae hoy 3% tras una investigación', 'Tesla cayó ayer 3% tras una investigación'],
+    ['Las acciones de Apple caen 3% tras su balance Q2', 'Las acciones de Apple caen 3% tras su balance Q3'],
+    ['Las acciones de Apple caen 3% tras su balance del primer trimestre', 'Las acciones de Apple caen 3% tras su balance del tercer trimestre'],
+    ['Apple se hunde 3% tras una multa', 'Apple rebota 5% tras una multa'],
+    ['Las acciones de Apple caen 3% tras su balance', 'Las acciones de Microsoft caen 3% tras su balance']
+  ];
+  for (const [a, b] of pairs) for (const [primary, candidate] of [[a, b], [b, a]]) {
+    assert.equal(sourcesCoverSameEvent(fixture(primary), fixture(candidate, 'cronista.com')), false, `${primary} / ${candidate}`);
+  }
+  const title = 'Tesla cae 3% tras una investigación de su conducción autónoma';
+  assert.equal(sourcesCoverSameEvent(fixture(title), fixture(title, 'cronista.com', '2030-06-14T16:00:00Z')), false);
+  const distinctQuote = fixture('Tesla cae 6% tras una pesquisa de su conducción autónoma', 'cronista.com');
+  assert.equal(sourcesCoverSameEvent(fixture(title), { ...distinctQuote, publishedTimestamp: NaN, publishedDateIso: undefined }), false);
+});
+
+test('una investigación genérica no une casos concretos diferentes ni depende de una lista cerrada de delitos', () => {
+  const fiscal = fixture('Las acciones de Tesla caen 5% por una investigación sobre evasión fiscal');
+  for (const percentage of [5, 8]) {
+    const espionage = fixture(`Tesla se desploma ${percentage}% por una investigación sobre espionaje de su CEO`, 'cronista.com');
+    assert.equal(sourcesCoverSameEvent(fiscal, espionage), false);
+    assert.equal(sourcesCoverSameEvent(espionage, fiscal), false, 'También se separan con la misma cotización, antes del fallback léxico');
+  }
+  const sameUnknownCause = fixture('Los papeles de Tesla pierden 8% por una pesquisa sobre evasión fiscal', 'cronista.com');
+  assert.equal(sourcesCoverSameEvent(fiscal, sameUnknownCause), true, 'Un caso no enumerado también se reconoce por sus detalles sustantivos');
+  const unrelatedUnknownCause = fixture('Los papeles de Tesla pierden 8% por una pesquisa sobre abuso laboral', 'cronista.com');
+  assert.equal(sourcesCoverSameEvent(fiscal, unrelatedUnknownCause), false);
+  const vague = fixture('Los papeles de Tesla pierden 8% mientras avanza una investigación', 'cronista.com');
+  assert.equal(sourcesCoverSameEvent(fiscal, vague), false, 'Empresa, caída e investigación sin caso concreto no alcanzan');
+  const verifiedDetail = { ...vague, articleSummary: 'La autoridad inició una pesquisa sobre evasión fiscal de la compañía.' };
+  assert.equal(sourcesCoverSameEvent(fiscal, verifiedDetail), true, 'El extracto original del editor puede aclarar el caso del titular genérico');
+  const differentDetail = { ...vague, articleSummary: 'La autoridad inició una pesquisa sobre abuso laboral de la compañía.' };
+  assert.equal(sourcesCoverSameEvent(fiscal, differentDetail), false);
 });

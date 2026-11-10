@@ -36,7 +36,7 @@ Las regresiones controladas cubren seis acontecimientos distintos (reservas, tas
 
 ## Correlación
 
-Se comparan titulares originales, fecha, protagonista, acción, mercado, importes y porcentajes. Se reconocen sinónimos como BCRA/autoridad monetaria y mantener/dejar sin cambios. Se separan movimientos opuestos de un mismo activo con los verbos atribuidos a su propia cláusula, países y bancos centrales, subas/bajas/mantenimiento, tasas/encajes, compras/ventas/no compras, cifras incompatibles y otra rueda diaria. No se fusionan publicaciones por compartir solo un ticker o una categoría general. Cada candidato debe concordar con la publicación principal; no se agregan cadenas de semejanzas entre secundarios.
+Se comparan titulares originales, fecha, protagonista, acción, mercado, importes y porcentajes. Se reconocen sinónimos como BCRA/autoridad monetaria y mantener/dejar sin cambios. Se separan movimientos opuestos de un mismo activo con los verbos atribuidos a su propia cláusula, países y bancos centrales, subas/bajas/mantenimiento, tasas/encajes, compras/ventas/no compras, cifras incompatibles y otra rueda diaria. No se fusionan publicaciones por compartir solo un ticker o una categoría general. Cada candidato debe concordar con todas las publicaciones del grupo; no se agregan cadenas de semejanzas entre secundarios.
 
 El banco central de Australia no es el BCRA y no genera automáticamente una relación con AL30, GD30, MEP o CCL. Una cartera con activos seleccionados solo recibe los hechos con relación identificada a esas tenencias. Sin selección se permite consultar el panorama general, sin presentar esos instrumentos como propios.
 
@@ -50,7 +50,7 @@ El espacio de caché actual es `v16_daily_news`, compartido por cliente y servid
 
 Las pruebas cubren RSS simultáneos, un medio lento o caído, reparto entre editoriales, deduplicación, plazos, reintento de errores transitorios y tres medios para un mismo acontecimiento. Las pruebas de API demuestran que RSS agrega El Cronista e Infobae cuando la búsqueda simulada de Gemini solo encuentra Ámbito. También verifican que otros pagos, fechas, países, cifras o decisiones permanezcan separados. Los transportes son fixtures explícitos y no sustituyen consultas periodísticas en vivo.
 
-La red de este entorno todavía deniega las consultas directas a los sitios periodísticos y a producción. Los dominios quedaron declarados en el borrador de configuración; deben estar aplicados para verificar cobertura y despliegue reales. Publicar código en Git no demuestra por sí solo que Vercel haya finalizado el despliegue.
+La verificación inicial estuvo limitada por la política de red. Las comprobaciones posteriores de publicaciones y despliegues se describen abajo. Publicar código en Git no demuestra por sí solo que Vercel haya finalizado el despliegue.
 
 
 ## Evidencia de producción aportada
@@ -96,3 +96,43 @@ Los artículos de Página/12 y Perfil cambiaron de formato: se admiten tanto las
 Se mantiene el máximo de cuatro verificaciones simultáneas y el mismo presupuesto de recopilación. Cada medio recibe turnos, las URLs se deduplican y una caída de un editor no se presenta como una noticia ni elimina los resultados válidos de los demás. Los medios configurados, índices respondidos y artículos verificados se distinguen en los diagnósticos; su disponibilidad se comprueba con respuestas reales después de cada despliegue.
 
 La comprobación real de los despliegues de esta ampliación verificó artículos originales de Ámbito, El Cronista, Infobae, La Nación, Clarín, iProfesional, Página/12, Perfil, El Destape, Tiempo Argentino, El Economista y BAE Negocios: doce editores distintos. La comprobación distingue disponibilidad por consulta de verificación acumulada: un timeout ocasional de un índice no convierte sus notas anteriores en noticias nuevas. EconoJournal permanece como fuente adicional configurada, sin contar un índice vacío como un artículo verificado.
+
+## Un acontecimiento con varias coberturas
+
+El agrupamiento aplica a todas las noticias y emisores. Una cotización puede
+variar mientras distintos medios cubren el mismo episodio: se admite la diferencia
+porcentual del movimiento bursátil cuando coinciden el activo, la dirección, la
+jornada argentina y el catalizador respaldado por las publicaciones. Esto no
+relaja las cifras de inflación, tasas, balances, dividendos, producción o pagos.
+Una investigación sobre otro hecho, otra dirección o un período contable distinto
+continúa separado. Los extractos usados como evidencia pertenecen al editor
+verificado; las síntesis generadas no sirven para justificar una coincidencia.
+
+El caso público del 9/11/2026 reproduce Ámbito, Infobae y Perfil sobre Nvidia:
+Infobae describe la caída inicial del 8% y la variación al 5% al mediodía. La tarjeta
+común conserva cada titular, cifra, fecha y enlace original. La nota sobre petróleo
+y rebote global queda aparte aunque mencione a Nvidia. Las regresiones generales
+incluyen otros emisores y causas diferentes; no hay una excepción por ticker.
+
+La consolidación vuelve a recorrer todo el acumulado del día, incluidos duplicados
+ya existentes en `v16_daily_news`, y se aplica al recibir avances, completar una
+consulta y restaurar cachés de cliente/servidor. Se conserva `checkedAt` y no se
+borra el acumulado. Las vistas de Guardadas e historial agrupan por la fecha de
+publicación para mostrar las coberturas juntas; sus snapshots y vencimientos
+persistidos permanecen independientes. La búsqueda contempla los titulares de
+todas las fuentes del grupo.
+
+Una URL secundaria compartida no permite eliminar otro acontecimiento. Las
+fuentes deben ser compatibles entre sí también durante la recopilación RSS y el
+enriquecimiento. Cuando un editor cambia una publicación ya incorporada, se retira
+su versión anterior antes de reconciliarla. El análisis por activo se reconstruye
+con todas las publicaciones: conserva activos secundarios, posiciones LONG/SHORT
+y límites de contexto, sin copiar la caída de una empresa a un índice mencionado
+en otro párrafo.
+
+Validación del agrupamiento general: lint de cliente/servidor, 277 pruebas
+unitarias/de integración con PostgreSQL local, cero omitidas y 49 comprobaciones
+completas de navegador. Incluyen el caso original en cualquier orden, la caché
+anterior, fuentes progresivas de otro emisor, comparación de titulares/cifras/URLs,
+actualización y recarga, separación de causas distintas, URL secundaria revisada,
+activos personalizados y conservación de comparaciones ya verificadas.
