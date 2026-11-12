@@ -98,7 +98,7 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
     PushManager.prototype.subscribe = async () => { localStorage.setItem('test_push', 'yes'); return local(); };
   }, { permission, subscription });
   const libraries = new Map();
-  const state = { librarySaveFailure: false, pulseFailures: [...pulseFailures], libraries, user: structuredClone(fixture), active: false, calls: [], events: [], newsData: news, tourNewsData: structuredClone(tourNewsOverride || news), tourPulseResponses: [...tourPulseResponses], releaseTourResponses: [], newsMode: 'ok', revision: null, saveFailure: false, delayNews: 0, audioMode, audioDelay, audioContinuationDelay, checkedAt: clockAt || new Date().toISOString() };
+  const state = { librarySaveFailure: false, pulseFailures: [...pulseFailures], libraries, user: structuredClone(fixture), authenticated: !anonymous, active: false, calls: [], events: [], newsData: news, tourNewsData: structuredClone(tourNewsOverride || news), tourPulseResponses: [...tourPulseResponses], releaseTourResponses: [], newsMode: 'ok', revision: null, saveFailure: false, delayNews: 0, audioMode, audioDelay, audioContinuationDelay, checkedAt: clockAt || new Date().toISOString() };
   if (portfolioOverride) state.user.portfolio = structuredClone(portfolioOverride);
   if (accountCreatedAt) state.user.createdAt = accountCreatedAt;
   if (newsOverride) state.newsData = structuredClone(newsOverride);
@@ -115,7 +115,9 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
     state.calls.push({ path: url.pathname, method: request.method(), body });
     let data = { success: true };
     let status = 200;
-    if (url.pathname === '/api/auth/me') data = anonymous ? { authenticated: false } : { authenticated: true, user: state.user };
+    if (url.pathname === '/api/auth/me') data = state.authenticated ? { authenticated: true, user: state.user } : { authenticated: false };
+    if (url.pathname === '/api/auth/login') { state.authenticated = true; data = { success: true, user: state.user, token: 'local-browser-test' }; }
+    if (url.pathname === '/api/auth/logout') state.authenticated = false;
     if (url.pathname === '/api/news/pulse') {
       if (body.portfolioId === 'tour-general') {
         // Capture the publication day when this request starts. A held response
@@ -157,7 +159,7 @@ async function setup({ anonymous = false, admin = false, permission = 'granted',
       state.user = { ...state.user, ...body };
       data = { success: true, user: state.user };
     }
-    if (url.pathname === '/api/auth/register') { state.user = { ...state.user, ...body, preferences: { ...state.user.preferences, ...body.preferences }, portfolio: { ...state.user.portfolio, assetIds: [], assetPositions: {} } }; data = { success: true, user: state.user, token: 'local-browser-test' }; }
+    if (url.pathname === '/api/auth/register') { state.authenticated = true; state.user = { ...state.user, ...body, preferences: { ...state.user.preferences, ...body.preferences }, portfolio: { ...state.user.portfolio, assetIds: [], assetPositions: {} } }; data = { success: true, user: state.user, token: 'local-browser-test' }; }
     if (url.pathname === '/api/audio/synthesize') {
       const delay = body.allowVoiceFallback === false ? state.audioContinuationDelay || state.audioDelay : state.audioDelay;
       if (delay) await new Promise(resolve => setTimeout(resolve, delay));
@@ -627,6 +629,47 @@ try {
     await page.getByPlaceholder('4 dígitos').fill('0042'); await dialogFits(page);
     await page.setViewportSize({ width: 320, height: 568 }); await dialogFits(page); await fits(page, 'Recuperación');
     await page.screenshot({ path: path.join(artifacts, 'recovery-320.png') });
+    await context.close();
+  });
+  await check('Código de recuperación valida campo vacío y acepta autocompletado sin eventos en celular', async () => {
+    const { context, page, state } = await setup({ anonymous: true, viewport: { width: 390, height: 844 } });
+    await clickVisible(page, 'Crear cuenta');
+    await page.getByLabel('Nombre', { exact: true }).fill('Nueva cuenta');
+    await page.getByLabel('Correo electrónico', { exact: true }).fill('autofill@example.test');
+    await page.getByLabel('Contraseña', { exact: true }).fill('PasswordTest42!');
+    await page.getByLabel('Confirmar contraseña', { exact: true }).fill('PasswordTest42!');
+    await page.getByLabel('Repetir código de recuperación', { exact: true }).fill('1024');
+    await clickVisible(page, 'Continuar');
+    const recovery = page.locator('#signup-recovery-key');
+    assert.equal(await recovery.getAttribute('aria-invalid'), 'true');
+    assert.ok(await recovery.evaluate(input => input === document.activeElement), 'El error debe enfocar el primer código vacío');
+    assert.equal(await page.getByLabel('Fecha de nacimiento', { exact: false }).count(), 0, 'La confirmación sola no permite avanzar');
+    await recovery.pressSequentially('1024');
+    await clickVisible(page, 'Mostrar código de recuperación');
+    assert.equal(await recovery.inputValue(), '1024');
+    assert.equal(await page.locator('#signup-recovery-confirmation').inputValue(), '1024');
+    await clickVisible(page, 'Ocultar código de recuperación');
+    assert.equal(await recovery.inputValue(), '1024', 'Ocultar el código conserva sus cuatro dígitos');
+    await page.getByLabel('Repetir código de recuperación', { exact: true }).fill('1025');
+    await clickVisible(page, 'Continuar');
+    assert.equal(await page.locator('#signup-recovery-confirmation').getAttribute('aria-invalid'), 'true');
+    assert.ok(await page.locator('#signup-recovery-confirmation').evaluate(input => input === document.activeElement));
+    await page.getByRole('alert').getByText('Los códigos de recuperación no coinciden.', { exact: true }).waitFor();
+    // Some mobile autofill tools update the native inputs without notifying React.
+    await page.evaluate(() => {
+      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setValue.call(document.querySelector('#signup-recovery-key'), '0042');
+      setValue.call(document.querySelector('#signup-recovery-confirmation'), '0042');
+    });
+    await clickVisible(page, 'Continuar');
+    await page.getByLabel('Fecha de nacimiento', { exact: false }).waitFor();
+    await dialogFits(page);
+    await page.getByLabel('Fecha de nacimiento', { exact: false }).fill('1990-01-01');
+    await page.getByRole('checkbox').first().check();
+    await clickVisible(page, 'Crear mi cuenta en FAROS');
+    await page.getByRole('dialog', { name: '¡Bienvenido a FAROS!' }).waitFor();
+    const registration = state.calls.find(call => call.path === '/api/auth/register');
+    assert.equal(registration.body.recoveryKey, '0042', 'El alta envía el código visible y conserva los ceros iniciales');
     await context.close();
   });
   await check('Permiso por clic, alta con consentimiento, prueba y desactivación', async () => {
@@ -1205,8 +1248,9 @@ try {
     await page.screenshot({ path: path.join(artifacts, 'landscape-768.png') });
     await context.close();
   });
-  await check('Registro de dos pasos lleva a elegir activos sin tutorial obligatorio', async () => {
-    const { context, page, state } = await setup({ anonymous: true });
+  await check('Onboarding primero al crear cuenta en celular y escritorio; login existente sin bienvenida', async () => {
+    for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 900 }]) {
+    const { context, page, state } = await setup({ anonymous: true, viewport });
     await clickVisible(page, 'Crear cuenta');
     await page.getByLabel('Nombre', { exact: true }).fill('Nueva cuenta');
     await page.getByLabel('Correo electrónico', { exact: true }).fill('nueva@example.test');
@@ -1216,12 +1260,40 @@ try {
     await page.getByLabel('Repetir código de recuperación', { exact: true }).fill('0042');
     await clickVisible(page, 'Continuar'); await page.getByLabel('Fecha de nacimiento', { exact: false }).fill('1990-01-01'); await page.getByRole('checkbox').first().check();
     await clickVisible(page, 'Crear mi cuenta en FAROS');
-    await page.getByText('Buscá tu primer activo, elegí LONG o SHORT y agregalo a tu cartera.', { exact: true }).waitFor();
+    await page.getByRole('dialog', { name: '¡Bienvenido a FAROS!' }).waitFor();
+    assert.equal(await page.getByRole('navigation', { name: 'Secciones de Mi cartera' }).count(), 0, 'El onboarding precede a la cartera');
+    assert.equal(await page.getByRole('heading', { name: '¿Querés recibir alertas de FAROS?' }).count(), 0, 'Ningún otro aviso precede al onboarding');
+    await dialogFits(page); await fits(page, `Bienvenida ${viewport.width}`);
+    await page.screenshot({ path: path.join(artifacts, `welcome-onboarding-${viewport.width}.png`) });
+    await page.keyboard.press('Shift+Tab');
+    assert.ok(await page.getByRole('dialog').evaluate(el => el.contains(document.activeElement)), 'El foco permanece en onboarding');
     const registration = state.calls.find(call => call.path === '/api/auth/register');
     assert.equal(registration.body.termsAccepted, true); assert.equal(registration.body.notificationsOptIn, false);
     assert.equal(registration.body.recoveryKey, '0042'); assert.equal(registration.body.birthDate, '1990-01-01');
-    assert.equal(await page.getByText('¡Bienvenido a FAROS!', { exact: true }).count(), 0);
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('dialog', { name: '¡Bienvenido a FAROS!' }).waitFor();
+    if (viewport.width < 500) {
+      await page.setViewportSize({ width: 568, height: 320 }); await dialogFits(page);
+      await page.setViewportSize(viewport);
+      await clickVisible(page, 'Comenzar recorrido');
+      await page.getByText('1/15', { exact: true }).waitFor();
+      await page.getByTitle('Salir del tutorial', { exact: true }).click();
+    } else await clickVisible(page, 'Explorar por mi cuenta');
+    await page.getByRole('navigation', { name: 'Secciones de Mi cartera' }).waitFor();
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: '¿Querés recibir alertas de FAROS?' }).waitFor();
+    assert.equal(await page.getByRole('dialog', { name: '¡Bienvenido a FAROS!' }).count(), 0, 'La sesión restaurada no repite la bienvenida ya vista');
+    state.authenticated = false;
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.evaluate(userId => sessionStorage.setItem(`faros_welcome_onboarding_pending:${userId}`, 'true'), state.user.id);
+    await clickVisible(page, 'Iniciar sesión');
+    await page.getByPlaceholder('inversor@ejemplo.com').fill('nueva@example.test');
+    await page.getByPlaceholder('Tu contraseña').fill('PasswordTest42!');
+    await page.getByRole('dialog').getByRole('button', { name: 'Iniciar sesión', exact: true }).click();
+    await page.getByRole('heading', { name: '¿Querés recibir alertas de FAROS?' }).waitFor();
+    assert.equal(await page.getByRole('dialog', { name: '¡Bienvenido a FAROS!' }).count(), 0, 'El login existente no muestra onboarding');
     await context.close();
+    }
   });
   await check('Guía con cuenta nueva y cartera vacía abre una noticia verificada de hoy y prefiere una señal direccional', async () => {
     const clockAt = '2030-06-15T16:30:00Z';

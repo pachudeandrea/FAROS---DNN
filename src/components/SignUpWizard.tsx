@@ -1,6 +1,6 @@
 import { usePendingChanges } from '../hooks/usePendingChanges';
 import { useModalFocus } from '../hooks/useModalFocus';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { BrandLogo } from './BrandLogo';
 import { 
   X, 
@@ -18,7 +18,7 @@ import {
 import { RiskProfile, UserAccount, OnboardingDraft } from '../types';
 import { apiRequest } from '../utils/apiClient';
 import { getRecoveryKeyError } from '../utils/recoveryKey';
-import { RecoveryKeyFields } from './RecoveryKeyFields';
+import { RecoveryKeyFields, type RecoveryKeyFieldError } from './RecoveryKeyFields';
 
 interface SignUpWizardProps {
   isOpen: boolean;
@@ -34,6 +34,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
   onSwitchToLogin
 }) => {
   const modalRef = useModalFocus(onClose);
+  const accountFormRef = useRef<HTMLFormElement>(null);
   // Two steps: account credentials, then required age and consent.
   const [step, setStep] = useState<number>(1);
 
@@ -61,6 +62,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
   // UI status
   const [isLoading, setIsLoading] = useState(false);
   const [stepError, setStepError] = useState<string | null>(null);
+  const [recoveryFieldError, setRecoveryFieldError] = useState<RecoveryKeyFieldError | null>(null);
   usePendingChanges(isOpen && (!!name || !!email || !!password || !!recoveryKey || isLoading));
 
   // Load draft from localStorage on mount
@@ -128,6 +130,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
   // Step validation and transition
   const handleNextStep = () => {
     setStepError(null);
+    setRecoveryFieldError(null);
 
     // Step 1: Cuenta
     if (step === 1) {
@@ -148,9 +151,23 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
         setStepError('Las contraseñas ingresadas no coinciden.');
         return;
       }
-      const recoveryError = getRecoveryKeyError(recoveryKey, password);
-      if (recoveryError) { setStepError(recoveryError); return; }
-      if (recoveryKey !== confirmRecoveryKey) { setStepError('Los códigos de recuperación no coinciden.'); return; }
+      // Read the submitted inputs as well as state: mobile autofill may not
+      // dispatch the change event that updates a controlled React input.
+      const form = accountFormRef.current;
+      const fields = form ? new FormData(form) : null;
+      const submittedKey = String(fields?.get('recoveryKey') ?? recoveryKey);
+      const submittedConfirmation = String(fields?.get('confirmRecoveryKey') ?? confirmRecoveryKey);
+      setRecoveryKey(submittedKey);
+      setConfirmRecoveryKey(submittedConfirmation);
+      const showRecoveryError = (field: RecoveryKeyFieldError['field'], message: string) => {
+        setRecoveryFieldError({ field, message });
+        const input = form?.elements.namedItem(field === 'key' ? 'recoveryKey' : 'confirmRecoveryKey');
+        if (input instanceof HTMLInputElement) input.focus();
+      };
+      const recoveryError = getRecoveryKeyError(submittedKey, password);
+      if (recoveryError) { showRecoveryError('key', submittedKey ? recoveryError : 'Ingresá tu código de 4 dígitos en el primer campo.'); return; }
+      if (!/^[0-9]{4}$/.test(submittedConfirmation)) { showRecoveryError('confirmation', 'Repetí tu código de 4 dígitos en el segundo campo.'); return; }
+      if (submittedKey !== submittedConfirmation) { showRecoveryError('confirmation', 'Los códigos de recuperación no coinciden.'); return; }
       setStep(2);
       return;
     }
@@ -275,7 +292,7 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
 
           {/* ================= STEP 1: CUENTA ================= */}
           {step === 1 && (
-            <div className="space-y-5">
+            <form id="signup-account-form" ref={accountFormRef} noValidate onSubmit={event => { event.preventDefault(); handleNextStep(); }} className="space-y-5">
               {/* Email Form */}
               <div className="space-y-4">
                 <div>
@@ -384,10 +401,9 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
                   </div>
                 </div>
               </div>
-            </div>
+              <RecoveryKeyFields idPrefix="signup-recovery" value={recoveryKey} confirmation={confirmRecoveryKey} error={recoveryFieldError} onChange={value => { setRecoveryKey(value); setRecoveryFieldError(null); }} onConfirmationChange={value => { setConfirmRecoveryKey(value); setRecoveryFieldError(null); }} />
+            </form>
           )}
-
-          {step === 1 && <RecoveryKeyFields idPrefix="signup-recovery" value={recoveryKey} confirmation={confirmRecoveryKey} onChange={setRecoveryKey} onConfirmationChange={setConfirmRecoveryKey} />}
 
           {/* ================= STEP 2: DATOS Y TÉRMINOS ================= */}
           {step === 2 && (
@@ -455,8 +471,8 @@ export const SignUpWizard: React.FC<SignUpWizardProps> = ({
 
           {step < 2 ? (
             <button
-              type="button"
-              onClick={handleNextStep}
+              type="submit"
+              form="signup-account-form"
               className="inline-flex items-center gap-1.5 px-6 py-2.5 bg-brand-950 hover:bg-brand-900 text-paper text-xs font-extrabold rounded-xl transition-all shadow-xs cursor-pointer ml-auto"
             >
               <span>Continuar</span>

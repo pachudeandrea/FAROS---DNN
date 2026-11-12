@@ -47,6 +47,8 @@ import { NotificationsModal } from './components/NotificationsModal';
 import { AudioPlayerDrawer } from './components/AudioPlayerDrawer';
 import { OnboardingModal } from './components/OnboardingModal';
 import { WelcomeScreen } from './components/WelcomeScreen';
+import { WelcomeOnboarding } from './components/WelcomeOnboarding';
+import { prepareWelcomeOnboarding, completeWelcomeOnboarding } from './utils/welcomeOnboarding';
 import { LoginForm } from './components/LoginForm';
 import { SignUpWizard } from './components/SignUpWizard';
 const InteractiveTour = lazy(() => import('./components/InteractiveTour').then(m => ({ default: m.InteractiveTour })));
@@ -425,7 +427,9 @@ export default function App() {
     };
   }, [fetchPulseNews, isSessionLoading, currentUser?.id]);
 
-  const handleSessionSuccess = useCallback((user: UserAccount, token?: string, isNewRegistration: boolean = false) => {
+  const handleSessionSuccess = useCallback((user: UserAccount, token?: string, isNewRegistration: boolean = false, source: 'login' | 'restore' = 'login') => {
+    const welcomePending = prepareWelcomeOnboarding(user.id, isNewRegistration ? 'registration' : source);
+    setShowWelcomeOnboardingModal(welcomePending);
     setCurrentUser(user);
     try { if (token) localStorage.setItem('faros_session_token', token); } catch {}
     setAccountError(null);
@@ -442,10 +446,11 @@ export default function App() {
     setShowLoginModal(false);
     setShowSignUpModal(false);
 
-    if (isNewRegistration) {
-      // Direct new user immediately to Mi Cartera (settings tab)
+    if (welcomePending) {
+      // The welcome gate is the first authenticated screen, before the tour
+      // or the empty portfolio. Keep deep-link dialogs from interrupting it.
       setCurrentTab('settings');
-      setShowWelcomeOnboardingModal(false);
+      setShowNotifications(false);
     }
   }, []);
 
@@ -461,7 +466,7 @@ export default function App() {
           localStorage.removeItem('faros_active_session_user');
         } catch {}
         const data = await apiRequest('/api/auth/me');
-        if (data.authenticated && data.user && isMounted) handleSessionSuccess(data.user);
+        if (data.authenticated && data.user && isMounted) handleSessionSuccess(data.user, undefined, false, 'restore');
       } catch (error) {
         if (isMounted && error instanceof ApiError && error.status === 401) {
           try { localStorage.removeItem('faros_session_token'); } catch {}
@@ -479,6 +484,9 @@ export default function App() {
   }, [handleSessionSuccess]);
 
   const clearSessionView = () => {
+    if (currentUser) completeWelcomeOnboarding(currentUser.id);
+    setShowWelcomeOnboardingModal(false);
+    setIsTourActive(false);
     newsRequest.current?.abort(); newsRequest.current = null; newsPortfolio.current = ''; newsOwner.current = '';
     visibleNews.current = []; completedNews.current = []; newsHour.current = ''; setNewsList([]); setSelectedNews(null);
     setQueryState({ status: 'idle', checkedAt: null });
@@ -496,6 +504,12 @@ export default function App() {
     setPreferences(DEFAULT_PREFERENCES);
     setCurrentTab('feed');
     setAccountError(null);
+  };
+
+  const finishWelcomeOnboarding = (startTour: boolean) => {
+    if (currentUser) completeWelcomeOnboarding(currentUser.id);
+    setShowWelcomeOnboardingModal(false);
+    setIsTourActive(startTour);
   };
 
   const handleLogout = async () => {
@@ -758,6 +772,11 @@ export default function App() {
         </div>
       </div>
     );
+  }
+
+  // New accounts always see onboarding before any authenticated screen.
+  if (currentUser && showWelcomeOnboardingModal) {
+    return <WelcomeOnboarding onStartTour={() => finishWelcomeOnboarding(true)} onExplore={() => finishWelcomeOnboarding(false)} />;
   }
 
   // Admin View: If /admin URL or state is active, render AdminPanel directly
@@ -1331,44 +1350,6 @@ export default function App() {
             setShowSignUpModal(true);
           }}
         />
-      )}
-
-      {/* 6. Initial Welcome Onboarding Modal for New Registrations */}
-      {showWelcomeOnboardingModal && (
-        <div className="fixed inset-0 z-50 bg-ink-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-paper rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-ink-100 text-center space-y-6">
-            <div className="w-16 h-16 rounded-3xl bg-brand-950 text-paper flex items-center justify-center mx-auto shadow-md">
-              <BrandLogo size="lg" tone="dark" />
-            </div>
-            <div className="space-y-2">
-              <h3 className="text-2xl font-bold text-ink-900 tracking-tight">
-                ¡Bienvenido a FAROS!
-              </h3>
-              <p className="text-sm text-muted leading-relaxed">
-                Te vamos a mostrar cómo funciona la plataforma. No necesitás configurar todo ahora: podés agregar tus inversiones y personalizar tus preferencias cuando quieras.
-              </p>
-            </div>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowWelcomeOnboardingModal(false);
-                  setIsTourActive(true);
-                }}
-                className="w-full sm:w-auto px-6 py-3.5 bg-brand-950 hover:bg-brand-900 text-paper font-extrabold rounded-2xl shadow-md transition-all active:scale-95 cursor-pointer text-sm"
-              >
-                Comenzar recorrido
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowWelcomeOnboardingModal(false)}
-                className="w-full sm:w-auto px-6 py-3.5 bg-ink-100 hover:bg-ink-200 text-muted font-bold rounded-2xl transition-all cursor-pointer text-sm"
-              >
-                Explorar por mi cuenta
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* 7. Comprehensive 3-Stage Guided Interactive Tour (15 Steps) */}
