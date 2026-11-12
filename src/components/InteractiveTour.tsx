@@ -217,25 +217,24 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
   const [hasInteracted, setHasInteracted] = useState<boolean>(false);
   const [showCompletionModal, setShowCompletionModal] = useState<boolean>(false);
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
-  const [openedExampleKey, setOpenedExampleKey] = useState<string | null>(null);
+  const [viewport, setViewport] = useState(() => ({
+    width: window.visualViewport?.width ?? window.innerWidth,
+    height: window.visualViewport?.height ?? window.innerHeight,
+  }));
 
   const currentStep = TOUR_STEPS[stepIndex] || TOUR_STEPS[0];
   const isNewsDetailStep = currentStep.targetId === 'feed-card-detail';
-  const exampleKey = sampleNews ? `${sampleNews.sources[0]?.sourceUrl}:${sampleNews.sources[0]?.publishedTimestamp || sampleNews.sources[0]?.publishedDateIso}` : null;
-  const awaitingNewsExample = isNewsDetailStep && (!exampleKey || openedExampleKey !== exampleKey);
 
   // The example can arrive after entering the step, including via an NDJSON
   // progress frame. Never depend on the account having configured any assets.
   useEffect(() => {
     if (!isActive || !isNewsDetailStep || !sampleNews) {
-      setOpenedExampleKey(null);
       onCloseNewsDetail?.();
       return;
     }
     if (!onOpenNewsDetail) return;
     onOpenNewsDetail(sampleNews);
-    setOpenedExampleKey(exampleKey);
-  }, [isActive, isNewsDetailStep, sampleNews, exampleKey, onOpenNewsDetail, onCloseNewsDetail]);
+  }, [isActive, isNewsDetailStep, sampleNews, onOpenNewsDetail, onCloseNewsDetail]);
 
   // Reset step index and interaction when activated
   useEffect(() => {
@@ -257,10 +256,16 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
   const updateTargetRect = useCallback(() => {
     if (!isActive) return;
 
+    const width = window.visualViewport?.width ?? window.innerWidth;
+    const height = window.visualViewport?.height ?? window.innerHeight;
+    setViewport(previous => previous.width === width && previous.height === height ? previous : { width, height });
     const el = findTourTarget(currentStep.targetId);
     if (el) {
       const rect = el.getBoundingClientRect();
-      setTargetRect(rect);
+      // A DOMRect is a new object on every read. Reuse the previous state when
+      // geometry is unchanged so unrelated DOM mutations do not repaint the tour.
+      setTargetRect(previous => previous && previous.x === rect.x && previous.y === rect.y
+        && previous.width === rect.width && previous.height === rect.height ? previous : rect);
     } else {
       setTargetRect(null);
     }
@@ -271,8 +276,8 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
   // - If target is in UPPER area -> FORCES card to the BOTTOM
   // - If target is in LOWER area -> FORCES card to the TOP
   const computePlacement = useCallback(() => {
-    const vpWidth = window.visualViewport ? window.visualViewport.width : window.innerWidth;
-    const vpHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    const vpWidth = viewport.width;
+    const vpHeight = viewport.height;
     const isDesktop = vpWidth >= 1024;
 
     if (!targetRect) {
@@ -371,7 +376,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
         } as React.CSSProperties,
       };
     }
-  }, [targetRect]);
+  }, [targetRect, viewport]);
 
   const placement = computePlacement();
 
@@ -381,6 +386,8 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
   useEffect(() => {
     if (!isActive) return;
 
+    let followUp: ReturnType<typeof setTimeout> | undefined;
+    let settled: ReturnType<typeof setTimeout> | undefined;
     const timer = setTimeout(() => {
       const el = findTourTarget(currentStep.targetId);
       if (!el) return;
@@ -410,19 +417,24 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
       }
 
       updateTargetRect();
-      setTimeout(updateTargetRect, 200);
-      setTimeout(updateTargetRect, 450);
+      followUp = setTimeout(updateTargetRect, 200);
+      settled = setTimeout(updateTargetRect, 450);
     }, 180);
 
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); clearTimeout(followUp); clearTimeout(settled); };
   }, [isActive, stepIndex, currentTab, currentStep.targetId, updateTargetRect]);
 
   // Listen to window resize, scroll, visualViewport and DOM mutations (menus, modals, accordions)
   useEffect(() => {
     if (!isActive) return;
 
+    let frame = 0;
     const handleUpdate = () => {
-      updateTargetRect();
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        updateTargetRect();
+      });
     };
 
     window.addEventListener('resize', handleUpdate);
@@ -434,7 +446,11 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
       vv.addEventListener('scroll', handleUpdate);
     }
 
-    const observer = new MutationObserver(handleUpdate);
+    const observer = new MutationObserver(records => {
+      // The spotlight and guide card themselves never change the target's
+      // geometry. Ignore their renders instead of observing our own updates.
+      if (records.some(record => !(record.target instanceof Element) || !record.target.closest('[data-tour-chrome]'))) handleUpdate();
+    });
     observer.observe(document.body, { childList: true, subtree: true, attributes: true });
 
     return () => {
@@ -445,6 +461,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
         vv.removeEventListener('scroll', handleUpdate);
       }
       observer.disconnect();
+      window.cancelAnimationFrame(frame);
     };
   }, [updateTargetRect, isActive]);
 
@@ -502,7 +519,6 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
   }, [isActive, currentStep.targetId, stepIndex]);
 
   const handleNext = () => {
-    if (awaitingNewsExample) return;
     if (currentStep.isStageEnd && currentStep.stage === 3) {
       // Completed full 15-step tour!
       setShowCompletionModal(true);
@@ -562,6 +578,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
       {/* Semi-transparent dark overlay with inverted cutout polygon */}
       {/* Clicks inside the hole pass right through to the underlying element! */}
       <div 
+        data-tour-chrome
         style={clipPathStyle}
         className="fixed inset-0 z-40 bg-ink-950/65 backdrop-blur-[1px] transition-all duration-200 pointer-events-auto"
         onClick={(e) => e.stopPropagation()}
@@ -570,6 +587,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
       {/* Target spotlight glowing ring directly framing the interactive area */}
       {targetRect && (
         <div
+          data-tour-chrome
           style={{
             position: 'fixed',
             top: t,
@@ -592,6 +610,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
       {/* Minimized Pill */}
       {isMinimized ? (
         <div 
+          data-tour-chrome
           style={placement.pillStyle}
           className="fixed z-50 pointer-events-auto"
         >
@@ -625,8 +644,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
               <button
                 type="button"
                 onClick={handleNext}
-                disabled={awaitingNewsExample}
-                className="px-2 py-0.5 bg-brand-800 hover:bg-brand-950 text-paper text-[10px] font-bold rounded-full transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-wait"
+                className="px-2 py-0.5 bg-brand-800 hover:bg-brand-950 text-paper text-[10px] font-bold rounded-full transition-colors cursor-pointer"
                 title="Siguiente"
               >
                 ›
@@ -645,6 +663,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
       ) : (
         /* Mini Floating Card */
         <div 
+          data-tour-chrome
           style={placement.style}
           className="fixed z-50 pointer-events-auto"
         >
@@ -689,10 +708,10 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
                 {isNewsDetailStep ? sampleNews
                   ? 'Este ejemplo real de hoy muestra el análisis económico y las fuentes originales, aunque todavía no hayas cargado activos.'
                   : sampleNewsStatus === 'loading'
-                    ? 'Estamos buscando una noticia verificada de hoy en Argentina. El ejemplo se abrirá automáticamente cuando llegue.'
+                    ? 'El ejemplo de hoy se está cargando. Podés seguir con Calendario y volver a este paso cuando quieras.'
                     : sampleNewsStatus === 'error'
-                      ? sampleNewsError || 'No pudimos consultar las noticias de hoy. Volvé a intentar para abrir el ejemplo.'
-                      : 'Todavía no encontramos una noticia verificada de hoy en Argentina. Podés volver a buscar.'
+                      ? `${sampleNewsError || 'No pudimos cargar el ejemplo de hoy.'} Podés seguir con Calendario o volver a buscar.`
+                      : 'Todavía no encontramos una noticia verificada de hoy. Podés seguir con Calendario o volver a buscar.'
                   : currentStep.description}
               </p>
               {isNewsDetailStep && !sampleNews && sampleNewsStatus === 'loading' && <p role="status" className="mt-2 text-xs font-semibold text-brand-900">Buscando ejemplo de hoy…</p>}
@@ -734,8 +753,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
               <button
                 type="button"
                 onClick={handleNext}
-                disabled={awaitingNewsExample}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-paper text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer active:scale-95 disabled:opacity-40 disabled:cursor-wait ${
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-paper text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer active:scale-95 ${
                   hasInteracted ? 'bg-brand-800 hover:bg-brand-950 ring-2 ring-brand-400/40' : 'bg-brand-800 hover:bg-brand-950'
                 }`}
               >
@@ -749,7 +767,7 @@ export const InteractiveTour: React.FC<InteractiveTourProps> = ({
 
       {/* Tour Completion Celebration Modal */}
       {showCompletionModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-ink-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+        <div data-tour-chrome className="fixed inset-0 z-50 overflow-y-auto bg-ink-950/80 backdrop-blur-xs flex items-center justify-center p-4">
           <div 
             className="bg-paper rounded-3xl max-w-md w-full border border-ink-200 shadow-2xl p-6 sm:p-8 text-center space-y-5 animate-in fade-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}

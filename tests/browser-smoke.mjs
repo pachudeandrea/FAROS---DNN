@@ -245,7 +245,7 @@ function groupingPublication(id, headline, mediaName, domain, at, articleSummary
       .map(([symbol, impactDirection]) => ({ symbol, impactDirection, relationshipDetail: analysis.relationships[symbol] })) },
   };
 }
-async function openTutorialNewsStep(page) {
+async function openTutorialNewsStep(page, afterStart) {
   if (page.viewportSize().width < 640) {
     await clickVisible(page, 'Mi cartera');
     await clickVisible(page, 'Ver tutorial interactivo');
@@ -254,9 +254,14 @@ async function openTutorialNewsStep(page) {
   }
   for (let step = 1; step < 10; step++) {
     await page.getByText(`${step}/15`, { exact: true }).waitFor();
+    if (step === 1) await afterStart?.();
     await page.getByRole('button', { name: /^Siguiente/ }).or(page.getByTitle('Siguiente', { exact: true })).filter({ visible: true }).click();
   }
   await page.getByText('10/15', { exact: true }).waitFor();
+}
+async function waitForHeldTourResponses(page, state, count = 1) {
+  for (let attempt = 0; attempt < 100 && state.releaseTourResponses.length < count; attempt++) await page.waitForTimeout(25);
+  assert.equal(state.releaseTourResponses.length, count);
 }
 async function fits(page, label) {
   const size = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth }));
@@ -1307,10 +1312,10 @@ try {
     await openTutorialNewsStep(page);
     await page.getByRole('status').filter({ hasText: 'Buscando ejemplo de hoy…' }).waitFor();
     assert.equal(await page.getByRole('dialog').count(), 0, 'La guía espera una publicación del día en lugar de abrir el ejemplo histórico incorporado');
-    assert.ok(await page.getByRole('button', { name: /^Siguiente/ }).filter({ visible: true }).isDisabled());
+    assert.ok(await page.getByRole('button', { name: /^Siguiente/ }).filter({ visible: true }).isEnabled(), 'La carga del ejemplo nunca bloquea el recorrido');
+    await waitForHeldTourResponses(page, state);
     const request = state.calls.find(call => call.path === '/api/news/pulse' && call.body.portfolioId === 'tour-general');
     assert.deepEqual(request?.body.tickers, [], 'El ejemplo consulta el mercado general aunque la cuenta no tenga tickers');
-    assert.equal(state.releaseTourResponses.length, 1);
     state.releaseTourResponses.shift()();
     const detail = page.getByRole('dialog', { name: favorable.headline, exact: true });
     await detail.waitFor();
@@ -1348,7 +1353,7 @@ try {
     await openTutorialNewsStep(page);
     await page.getByRole('status').filter({ hasText: 'Buscando ejemplo de hoy…' }).waitFor();
     const nextRequest = page.waitForRequest(request => new URL(request.url()).pathname === '/api/news/pulse' && request.postDataJSON()?.portfolioId === 'tour-general');
-    await page.clock.runFor(31_000);
+    await page.clock.runFor(33_000);
     await nextRequest;
     for (let attempt = 0; attempt < 20 && state.releaseTourResponses.length < 2; attempt++) await page.waitForTimeout(25);
     assert.equal(state.releaseTourResponses.length, 2, 'El cambio de jornada inicia otra consulta aunque la anterior siga pendiente');
@@ -1396,6 +1401,112 @@ try {
     await page.getByText('11/15', { exact: true }).waitFor();
     await detail.waitFor({ state: 'hidden' });
     assert.deepEqual(state.user.portfolio.assetIds, []);
+    await context.close();
+  });
+  await check('Guía fluida: una noticia lenta permite avanzar en celular y escritorio sin abrir un detalle tardío', async () => {
+    const clockAt = '2030-06-15T16:30:00Z';
+    const example = tutorialPublication('tutorial-late-after-next', 'YPF aumentó 12% su producción de petróleo', '2030-06-15T15:30:00Z');
+    for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+      const { context, page, state } = await setup({ clockAt, newsOverride: [],
+        portfolioOverride: { ...structuredClone(MOCK_PORTFOLIOS[0]), assetIds: [], assetPositions: {} },
+        tourPulseResponses: [{ news: [example], hold: true }], viewport });
+      await clickVisible(page, 'Ahora no');
+      await openTutorialNewsStep(page);
+      const next = page.getByRole('button', { name: /^Siguiente/ }).or(page.getByTitle('Siguiente', { exact: true })).filter({ visible: true });
+      assert.ok(await next.isEnabled(), 'El usuario puede seguir sin esperar el límite de red');
+      await next.click();
+      await page.getByText('11/15', { exact: true }).waitFor();
+      await page.getByRole('heading', { name: 'Métricas de calendario', exact: true }).waitFor();
+      await waitForHeldTourResponses(page, state);
+      state.releaseTourResponses.shift()();
+      // Wait for a rendered frame after the response rather than relying on
+      // the sample being absent merely because its network task has not run.
+      await page.waitForTimeout(150);
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      assert.equal(await page.getByRole('dialog', { name: example.headline, exact: true }).count(), 0, 'La respuesta tardía no interrumpe Calendario');
+      await page.getByText('11/15', { exact: true }).waitFor();
+      await page.getByTitle('Salir del tutorial', { exact: true }).click();
+      assert.deepEqual(state.user.portfolio.assetIds, []);
+      await context.close();
+    }
+  });
+  await check('Guía fluida: sin noticia o con fuentes caídas permite reintentar y continuar al calendario', async () => {
+    const clockAt = '2030-06-15T16:30:00Z';
+    const example = tutorialPublication('tutorial-after-retry', 'YPF aumentó 12% su producción de petróleo', '2030-06-15T15:30:00Z');
+    for (const status of [200, 503]) {
+      const { context, page, state } = await setup({ clockAt, newsOverride: [],
+        tourPulseResponses: [{ news: [], status }, { news: [example], hold: true }], viewport: { width: 1280, height: 900 } });
+      await clickVisible(page, 'Ahora no');
+      await openTutorialNewsStep(page);
+      await page.getByRole('button', { name: 'Volver a buscar ejemplo de hoy', exact: true }).click();
+      const next = page.getByRole('button', { name: /^Siguiente/ }).filter({ visible: true });
+      assert.ok(await next.isEnabled(), 'Reintentar la noticia no bloquea el resto de la guía');
+      await waitForHeldTourResponses(page, state);
+      state.releaseTourResponses.shift()();
+      const detail = page.getByRole('dialog', { name: example.headline, exact: true });
+      await detail.waitFor();
+      await detail.getByText('Ejemplo de la guía · noticia de hoy', { exact: true }).waitFor();
+      await next.click();
+      await page.getByText('11/15', { exact: true }).waitFor();
+      await detail.waitFor({ state: 'hidden' });
+      await context.close();
+    }
+  });
+  await check('Guía fluida: reutiliza una noticia actual ya cargada sin otra consulta general', async () => {
+    const clockAt = '2030-06-15T16:30:00Z';
+    const example = tutorialPublication('tutorial-reused-from-feed', 'YPF aumentó 12% su producción de petróleo', '2030-06-15T15:30:00Z');
+    const { context, page, state } = await setup({ clockAt, newsOverride: [example], viewport: { width: 1280, height: 900 } });
+    await clickVisible(page, 'Ahora no');
+    await page.getByRole('button', { name: example.headline, exact: true }).waitFor();
+    await openTutorialNewsStep(page);
+    const detail = page.getByRole('dialog', { name: example.headline, exact: true });
+    await detail.waitFor();
+    await detail.getByText('Ejemplo de la guía · noticia de hoy', { exact: true }).waitFor();
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse' && call.body.portfolioId === 'tour-general').length, 0, 'La guía usa el feed listo en lugar de duplicar la carga');
+    await context.close();
+  });
+  await check('Guía fluida: una noticia del feed que llega durante la espera evita duplicar la consulta', async () => {
+    const clockAt = '2030-06-15T16:30:00Z';
+    const example = tutorialPublication('tutorial-pending-feed', 'YPF aumentó 12% su producción de petróleo', '2030-06-15T15:30:00Z');
+    const { context, page, state } = await setup({ clockAt, newsOverride: [], viewport: { width: 1280, height: 900 } });
+    await clickVisible(page, 'Ahora no');
+    let releaseFeed;
+    await page.route('**/api/news/pulse', async route => {
+      if (route.request().postDataJSON()?.portfolioId === 'tour-general') return route.fallback();
+      await new Promise(resolve => { releaseFeed = resolve; });
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ news: [example], checkedAt: clockAt }) });
+    });
+    await clickVisible(page, 'Actualizar pulso');
+    await openTutorialNewsStep(page, async () => {
+      // Let the lazily loaded guide mount before pausing its grace timer.
+      await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now() + 1)));
+    });
+    assert.equal(typeof releaseFeed, 'function');
+    releaseFeed();
+    await page.getByRole('dialog', { name: example.headline, exact: true }).waitFor();
+    await page.clock.runFor(2_000);
+    assert.equal(state.calls.filter(call => call.path === '/api/news/pulse' && call.body.portfolioId === 'tour-general').length, 0, 'El feed que termina durante la gracia cancela la consulta adicional');
+    await context.close();
+  });
+  await check('Guía fluida: agota la espera de red sin bloquear y cerrar cancela el ejemplo pendiente', async () => {
+    const clockAt = '2030-06-15T16:30:00Z';
+    const example = tutorialPublication('tutorial-timeout', 'YPF aumentó 12% su producción de petróleo', '2030-06-15T15:30:00Z');
+    const { context, page, state } = await setup({ clockAt, newsOverride: [],
+      tourPulseResponses: [{ news: [example], hold: true }, { news: [example], hold: true }], viewport: { width: 1280, height: 900 } });
+    await clickVisible(page, 'Ahora no');
+    await openTutorialNewsStep(page);
+    await page.clock.runFor(1_500);
+    await waitForHeldTourResponses(page, state);
+    await page.clock.runFor(12_500);
+    await page.getByRole('button', { name: 'Volver a buscar ejemplo de hoy', exact: true }).click();
+    await page.clock.runFor(1_500);
+    await waitForHeldTourResponses(page, state, 2);
+    assert.ok(await page.getByRole('button', { name: /^Siguiente/ }).filter({ visible: true }).isEnabled());
+    await page.getByTitle('Salir del tutorial', { exact: true }).click();
+    for (const release of state.releaseTourResponses.splice(0)) release();
+    await page.waitForTimeout(150);
+    assert.equal(await page.getByRole('dialog', { name: example.headline, exact: true }).count(), 0, 'Ni el timeout ni salir permiten que una respuesta pendiente abra el detalle');
+    assert.equal(await page.getByText('10/15', { exact: true }).count(), 0);
     await context.close();
   });
   await check('Única fuente verificada y recuperación cuando falla la carga de una pantalla', async () => {

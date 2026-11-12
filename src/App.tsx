@@ -184,7 +184,7 @@ export default function App() {
   }, []);
 
   const [newsList, setNewsList] = useState<NewsItem[]>([]);
-  const tourNews = useTourNews(isTourActive, newsList);
+  const tourNews = useTourNews(isTourActive || showWelcomeOnboardingModal, newsList);
   const selectedTourPortfolio = useMemo(() => selectedTourNews ? tourExamplePortfolio(selectedTourNews) : null, [selectedTourNews]);
   const openTourNews = useCallback((item: NewsItem) => {
     const today = selectTourNews([item]);
