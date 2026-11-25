@@ -119,3 +119,33 @@ test('un error de stream conserva su código y un EOF incompleto es recuperable,
     assert.ok(error instanceof NewsRequestError); assert.equal(error.code, 'NEWS_STREAM_INCOMPLETE'); assert.equal(retryableNewsError(error), true); return true;
   });
 });
+
+test('lee los avances aunque un proxy quite el tipo NDJSON y reintenta una respuesta ilegible', async () => {
+  const frames = [
+    { type: 'progress', news: [{ id: 'a' }], checkedAt: null },
+    { type: 'complete', news: [{ id: 'a' }, { id: 'b' }], checkedAt: '2026-11-25T13:00:00.000Z' }
+  ].map(frame => JSON.stringify(frame)).join('\n') + '\n';
+  const progress: unknown[] = [];
+  for (const contentType of ['text/plain; charset=utf-8', 'application/octet-stream', '']) {
+    const response = new Response(frames, { status: 200, headers: contentType ? { 'content-type': contentType } : {} });
+    if (!contentType) response.headers.delete('content-type');
+    const data = await readNewsResponse(response, value => progress.push(value));
+    assert.equal(data.news.length, 2);
+  }
+  assert.equal(progress.length, 3);
+  // Only progress arrived: shown, never stored as a completed result.
+  await assert.rejects(readNewsResponse(new Response(frames.split('\n')[0] + '\n', { headers: { 'content-type': 'text/plain' } }), () => {}), (error: unknown) => {
+    assert.ok(error instanceof NewsRequestError); assert.equal(error.code, 'NEWS_STREAM_INCOMPLETE'); return true;
+  });
+  // A source error frame keeps its meaning.
+  await assert.rejects(readNewsResponse(new Response(JSON.stringify({ type: 'error', code: 'NEWS_SOURCES_UNAVAILABLE', news: [] }), { headers: { 'content-type': 'text/plain' } }), () => {}), (error: unknown) => {
+    assert.ok(error instanceof NewsRequestError); assert.equal(error.code, 'NEWS_SOURCES_UNAVAILABLE'); return true;
+  });
+  // A truncated/HTML body is retried automatically instead of ending the update.
+  await assert.rejects(readNewsResponse(new Response('{"news":[{"id":"a"', { headers: { 'content-type': 'application/json' } }), () => {}), (error: unknown) => {
+    assert.ok(error instanceof NewsRequestError); assert.equal(error.code, 'NEWS_INVALID_RESPONSE'); assert.equal(retryableNewsError(error), true); return true;
+  });
+  // The usual JSON response is unchanged.
+  const plain = await readNewsResponse(new Response(JSON.stringify({ news: [{ id: 'x' }], cached: true }), { headers: { 'content-type': 'application/json' } }), () => {});
+  assert.equal(plain.cached, true);
+});

@@ -20,7 +20,9 @@ export function normalizeNewsError(error: unknown, timedOut = false): NewsReques
   return new NewsRequestError('La conexión con las noticias se interrumpió.', 'NETWORK_ERROR');
 }
 export function retryableNewsError(error: NewsRequestError): boolean {
-  return [408, 429].includes(error.status) || error.status >= 500 || ['NETWORK_ERROR', 'NEWS_STREAM_INTERRUPTED', 'NEWS_STREAM_INCOMPLETE'].includes(error.code);
+  // An unreadable/truncated body is a transport failure (proxy, CDN, cut
+  // connection), not a final answer: it is retried like an interruption.
+  return [408, 429].includes(error.status) || error.status >= 500 || ['NETWORK_ERROR', 'NEWS_STREAM_INTERRUPTED', 'NEWS_STREAM_INCOMPLETE', 'NEWS_INVALID_RESPONSE'].includes(error.code);
 }
 export function newsRetryDelay(error: NewsRequestError, attempt: number): number {
   return Math.max(attempt === 0 ? 2000 : 5000, error.retryAfterMs);
@@ -38,12 +40,41 @@ async function responseError(response: Response): Promise<NewsRequestError> {
   return new NewsRequestError(safeErrorMessage(code, response.status), code, response.status, retryAfterMs);
 }
 
+/** NDJSON frames received in one already-read body (content type lost on the way). */
+function readNewsFrames(text: string, status: number, onProgress: (data: NewsResponse) => void): NewsResponse {
+  let complete: NewsResponse | undefined;
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    let data: NewsResponse;
+    try { data = JSON.parse(line); } catch { break; }
+    if (!data || typeof data !== 'object' || !Array.isArray(data.news) && data.type !== 'error') throw new NewsRequestError('La respuesta de noticias no es válida.', 'NEWS_INVALID_RESPONSE', status);
+    if (data.type === 'error') {
+      const code = /^[A-Z][A-Z0-9_]{0,79}$/.test(data.code || '') ? data.code! : 'NEWS_SOURCES_UNAVAILABLE';
+      throw new NewsRequestError(safeErrorMessage(code, 503), code, 503);
+    }
+    if (data.type === 'progress') onProgress(data);
+    else if (data.type === 'complete') { complete = data; break; }
+  }
+  // Partial frames are shown, never stored as a completed snapshot.
+  if (!complete) throw new NewsRequestError('La actualización quedó incompleta.', 'NEWS_STREAM_INCOMPLETE');
+  return complete;
+}
+
 /** JSON compatibility plus incremental frames; partial data is never a completed snapshot. */
 export async function readNewsResponse(response: Response, onProgress: (data: NewsResponse) => void): Promise<NewsResponse> {
   if (!response.ok) throw await responseError(response);
   if (!response.headers.get('content-type')?.includes('application/x-ndjson')) {
+    let text: string;
+    try { text = await response.text(); } catch { throw new NewsRequestError('La conexión con las noticias se interrumpió.', 'NEWS_STREAM_INTERRUPTED'); }
     let data: NewsResponse;
-    try { data = await response.json(); } catch { throw new NewsRequestError('La respuesta de noticias no pudo leerse.', 'NEWS_INVALID_RESPONSE', response.status); }
+    try { data = JSON.parse(text); } catch {
+      // Some proxies, CDNs or security software drop or rewrite the NDJSON
+      // content type. The frames are still in the body: read them as a stream.
+      if (/^\s*\{[^\n]*"type"\s*:\s*"(?:progress|complete|error)"/.test(text)) return readNewsFrames(text, response.status, onProgress);
+      throw new NewsRequestError('La respuesta de noticias no pudo leerse.', 'NEWS_INVALID_RESPONSE', response.status);
+    }
+    // A single NDJSON frame is also valid JSON: keep its frame semantics.
+    if (data && typeof data === 'object' && ['progress', 'complete', 'error'].includes(data.type || '')) return readNewsFrames(text, response.status, onProgress);
     if (!Array.isArray(data?.news)) throw new NewsRequestError('La respuesta de noticias no es válida.', 'NEWS_INVALID_RESPONSE', response.status);
     return data;
   }
