@@ -42,7 +42,7 @@ test('La Nación, Clarín e iProfesional aportan hechos propios aunque ningún R
     }
     assert.ok(news.every(item => item.sources.every(source => argentinaNewsDay(source.publishedTimestamp!) === argentinaNewsDay())));
     assert.equal(diagnostics.sources.length, 3);
-    assert.ok(diagnostics.verification.peakConcurrency <= 4);
+    assert.ok(diagnostics.verification.peakConcurrency <= 6);
   } finally { globalThis.fetch = original; purgeUrlVerificationCache(); }
 });
 

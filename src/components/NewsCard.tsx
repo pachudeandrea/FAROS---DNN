@@ -161,6 +161,8 @@ export const NewsCard: React.FC<NewsCardProps> = ({
             {matchingAssetIds.map((assetId) => {
               const asset = assetsMap[assetId];
               const pos = assetPositions?.[assetId] || 'long';
+              const holding = news.portfolioImpactAnalysis?.affectedHoldings?.find(item => item.symbol === assetId);
+              const indirectVia = holding?.exposure === 'indirecta' && holding.via?.length ? holding.via.join(', ') : '';
               return (
                 <span
                   key={assetId}
@@ -173,6 +175,11 @@ export const NewsCard: React.FC<NewsCardProps> = ({
                   }`}
                 >
                   <span>{asset?.symbol || assetId}</span>
+                  {indirectVia && (
+                    <span title={`Impacto indirecto: la noticia trata sobre ${indirectVia}`} className="px-1.5 py-0.2 rounded bg-ink-100 text-ink-800 border border-ink-300 text-[9px] font-bold tracking-wider">
+                      vía {indirectVia}
+                    </span>
+                  )}
                   {pos === 'long' && (
                     <span className="px-1.5 py-0.2 rounded bg-info-600 text-paper text-[9px] font-bold uppercase tracking-wider">
                       LONG

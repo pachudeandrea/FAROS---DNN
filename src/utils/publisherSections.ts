@@ -1,20 +1,31 @@
 import * as cheerio from 'cheerio';
 import { resolveFinalUrl, DISALLOWED_PATH_PATTERNS, PUBLISHER_ARTICLE_PATHS } from './urlResolver.js';
 
+// Each entry may list HTML section indexes and official RSS/Atom feeds of the
+// same publisher (detected by content type). Both only nominate article URLs on
+// the publisher's own host; every article is verified on the original page.
 export const COVERAGE_PUBLISHERS = [
-  { domain: 'ambito.com', sections: ['https://www.ambito.com/finanzas/', 'https://www.ambito.com/economia/'] },
-  { domain: 'cronista.com', sections: ['https://www.cronista.com/finanzas-mercados/', 'https://www.cronista.com/economia-politica/'] },
-  { domain: 'infobae.com', sections: ['https://www.infobae.com/economia/'] },
-  { domain: 'lanacion.com.ar', sections: ['https://www.lanacion.com.ar/economia/'] },
-  { domain: 'clarin.com', sections: ['https://www.clarin.com/economia/'] },
-  { domain: 'iprofesional.com', sections: ['https://www.iprofesional.com/finanzas', 'https://www.iprofesional.com/economia'] },
-  { domain: 'pagina12.com.ar', sections: ['https://www.pagina12.com.ar/economia/', 'https://www.pagina12.com.ar/secciones/economia'] },
-  { domain: 'perfil.com', sections: ['https://www.perfil.com/economia', 'https://www.perfil.com/seccion/economia'] },
+  { domain: 'ambito.com', sections: ['https://www.ambito.com/finanzas/', 'https://www.ambito.com/economia/', 'https://www.ambito.com/negocios/', 'https://www.ambito.com/rss/negocios.xml'] },
+  { domain: 'cronista.com', sections: ['https://www.cronista.com/finanzas-mercados/', 'https://www.cronista.com/economia-politica/', 'https://www.cronista.com/negocios/'] },
+  { domain: 'infobae.com', sections: ['https://www.infobae.com/economia/', 'https://www.infobae.com/arc/outboundfeeds/rss/category/economia/?outputType=xml'] },
+  { domain: 'lanacion.com.ar', sections: ['https://www.lanacion.com.ar/economia/', 'https://www.lanacion.com.ar/arc/outboundfeeds/rss/category/economia/?outputType=xml'] },
+  { domain: 'clarin.com', sections: ['https://www.clarin.com/economia/', 'https://www.clarin.com/rss/economia/'] },
+  { domain: 'iprofesional.com', sections: ['https://www.iprofesional.com/finanzas', 'https://www.iprofesional.com/economia', 'https://www.iprofesional.com/negocios', 'https://www.iprofesional.com/rss'] },
+  { domain: 'pagina12.com.ar', sections: ['https://www.pagina12.com.ar/economia/', 'https://www.pagina12.com.ar/secciones/economia', 'https://www.pagina12.com.ar/rss/secciones/economia/notas'] },
+  { domain: 'perfil.com', sections: ['https://www.perfil.com/economia', 'https://www.perfil.com/seccion/economia', 'https://www.perfil.com/feed/economia'] },
   { domain: 'eldestapeweb.com', sections: ['https://www.eldestapeweb.com/economia'] },
   { domain: 'tiempoar.com.ar', sections: ['https://www.tiempoar.com.ar/economia/'] },
   { domain: 'eleconomista.com.ar', sections: ['https://eleconomista.com.ar/economia/', 'https://eleconomista.com.ar/finanzas/'] },
   { domain: 'econojournal.com.ar', sections: ['https://econojournal.com.ar/feed/', 'https://econojournal.com.ar/'] },
-  { domain: 'baenegocios.com', sections: ['https://www.baenegocios.com/finanzas/', 'https://www.baenegocios.com/economia/'] }
+  { domain: 'baenegocios.com', sections: ['https://www.baenegocios.com/finanzas/', 'https://www.baenegocios.com/economia/'] },
+  { domain: 'noticiasargentinas.com', sections: ['https://noticiasargentinas.com/economia'] },
+  // Wall Street, CEDEAR underlyings, ETFs and global markets in Spanish: needed
+  // to follow international issuers (NVIDIA, Apple, S&P 500) beyond local press.
+  { domain: 'bloomberglinea.com', sections: ['https://www.bloomberglinea.com/mercados/', 'https://www.bloomberglinea.com/latinoamerica/argentina/', 'https://www.bloomberglinea.com/arc/outboundfeeds/rss/?outputType=xml'] },
+  { domain: 'forbesargentina.com', sections: ['https://www.forbesargentina.com/money', 'https://www.forbesargentina.com/negocios'] },
+  { domain: 'es.investing.com', sections: ['https://es.investing.com/news/stock-market-news', 'https://es.investing.com/rss/news_25.rss', 'https://es.investing.com/rss/news_14.rss'] },
+  { domain: 'expansion.com', sections: ['https://www.expansion.com/mercados.html'] },
+  { domain: 'cincodias.elpais.com', sections: ['https://cincodias.elpais.com/mercados-financieros/'] }
 ];
 export interface PublicationCandidate { publisher: string; url: string; title: string }
 export interface SectionReport { publisher: string; section: string; status: string; found: number; accepted: number }

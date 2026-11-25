@@ -25,6 +25,10 @@ export const ALLOWED_MEDIA_DOMAINS = [
   'pagina12.com.ar',
   'eldestapeweb.com',
   'tiempoar.com.ar',
+  'noticiasargentinas.com',
+  'expansion.com',
+  'cincodias.elpais.com',
+  'investing.com',
   'bcra.gob.ar',
   'ypf.com',
   'rava.com',
@@ -46,6 +50,12 @@ export const PUBLISHER_ARTICLE_PATHS: Record<string, RegExp> = {
   'eldestapeweb.com': /^\/(?:economia|economia-y-finanzas)\/[^/]+(?:\/[^/]+)*-\d{8,}\/?$/i,
   'tiempoar.com.ar': /^\/(?:economia\/[^/]+|ta_article\/[^/]+)\/?$/i,
   'eleconomista.com.ar': /^\/(?:economia|finanzas|negocios|energia)\/[^/]+-n\d+\/?$/i,
+  'bloomberglinea.com': /^\/(?:\d{4}\/\d{2}\/\d{2}\/[^/]+|(?:mercados|negocios|economia|tecnologia|internacional|latinoamerica\/argentina|latinoamerica)\/[^/]+(?:\/[^/]+)?)\/?$/i,
+  'forbesargentina.com': /^\/(?:money|negocios|innovacion|economia|millonarios|liderazgo)\/[^/]+-n\d+\/?$/i,
+  'noticiasargentinas.com': /^\/(?:economia|finanzas|negocios)\/[^/]+\/?$/i,
+  'expansion.com': /^\/(?:mercados|economia|empresas|ahorro)\/(?:[^/]+\/)*\d{4}\/\d{2}\/\d{2}\/[^/]+\.html$/i,
+  'cincodias.elpais.com': /^\/(?:mercados-financieros|economia|companias|mercados|empresas)\/\d{4}-\d{2}-\d{2}\/[^/]+\.html$/i,
+  'es.investing.com': /^\/news\/(?:stock-market-news|economy|economic-indicators|commodities-news|forex-news|cryptocurrency-news|earnings)\/[^/]+-\d+\/?$/i,
   'econojournal.com.ar': /^\/(?:\d{4}\/\d{2}\/(?:\d{2}\/)?[^/]+|(?!(?:quienes-somos|terminos|politica-de-privacidad|contacto|institucional)(?:\/|$))[a-z0-9]+(?:-[a-z0-9]+){3,})\/?$/i
 };
 

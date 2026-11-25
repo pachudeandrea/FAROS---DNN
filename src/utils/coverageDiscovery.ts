@@ -1,11 +1,13 @@
 import * as cheerio from 'cheerio';
 import type { MediaCoverage, NewsItem } from '../types/index.js';
-import { cleanHeadlineText, getPublisherKey } from './sourceGrounding.js';
+import { cleanHeadlineText, getPublisherKey, MAX_SOURCES_PER_EVENT } from './sourceGrounding.js';
 import { enrichNewsCoverage, sourcesCoverSameEvent } from './newsCoverage.js';
 import { verifySourceUrl } from './urlResolver.js';
 
 import { COVERAGE_PUBLISHERS, collectPublisherSections, type SectionReport, type PublicationCandidate } from './publisherSections.js';
 const PUBLISHERS = COVERAGE_PUBLISHERS.map(publisher => publisher.domain);
+// Shared by every event; raised with the number of configured publishers.
+const MAX_SEARCHES = 72;
 interface EventReport { searchesPlanned: number; searchesCompleted: number; searchIncomplete: boolean; id: string; headline: string; unresolvedPublishers: string[]; checkedPublishers: string[]; candidateCount: number; attempted: number; matched: number; differentEvent: number; failed: number; skipped: number; sourcesBefore: number; sourcesAfter: number; status: string };
 export function createCoverageDiscoveryDiagnostics() {
   return { summary: { total: 0, multiMedia: 0, singleSource: 0, enriched: 0, incompleteSearches: 0 }, events: [] as EventReport[], sections: [] as SectionReport[], verification: { budgetExhausted: false, skipped: 0 }, searchBudgetExhausted: false, searches: 0, unavailable: 0, candidates: 0, verified: 0, added: 0, queries: [] as { publisher: string; query: string; raw: number; rejected: number; accepted: number; status: string; route: string; rejectionReasons: Record<string, number>; rejectedExamples: { host: string; path: string; reason: string }[] }[] };
@@ -90,10 +92,10 @@ export async function discoverMissingCoverage(news: NewsItem[], diagnostics = cr
   diagnostics.summary.multiMedia = news.filter(item => item.sources.length > 1).length;
   diagnostics.summary.singleSource = news.filter(item => item.sources.length === 1).length;
   const publishers = options.publishers || PUBLISHERS;
-  const targets = news.filter(item => item.sources.length && item.sources.length < 5 && publishers.some(publisher => !item.sources.some(source => getPublisherKey(source) === publisher)));
+  const targets = news.filter(item => item.sources.length && item.sources.length < MAX_SOURCES_PER_EVENT && publishers.some(publisher => !item.sources.some(source => getPublisherKey(source) === publisher)));
   const reports = new Map<NewsItem, EventReport>();
   for (const item of news) {
-    const report: EventReport = { searchesPlanned: 0, searchesCompleted: 0, searchIncomplete: false, id: item.id, headline: item.sources[0]?.originalHeadline || item.headline, unresolvedPublishers: [], checkedPublishers: [], candidateCount: 0, attempted: 0, matched: 0, differentEvent: 0, failed: 0, skipped: 0, sourcesBefore: item.sources.length, sourcesAfter: item.sources.length, status: item.sources.length >= 5 ? 'coverage_limit' : item.sources.length ? 'pending' : 'missing_anchor' };
+    const report: EventReport = { searchesPlanned: 0, searchesCompleted: 0, searchIncomplete: false, id: item.id, headline: item.sources[0]?.originalHeadline || item.headline, unresolvedPublishers: [], checkedPublishers: [], candidateCount: 0, attempted: 0, matched: 0, differentEvent: 0, failed: 0, skipped: 0, sourcesBefore: item.sources.length, sourcesAfter: item.sources.length, status: item.sources.length >= MAX_SOURCES_PER_EVENT ? 'coverage_limit' : item.sources.length ? 'pending' : 'missing_anchor' };
     diagnostics.events.push(report); reports.set(item, report);
   }
   if (!targets.length) return news;
@@ -107,14 +109,14 @@ export async function discoverMissingCoverage(news: NewsItem[], diagnostics = cr
   const queries = Array.from({ length: publishers.length }, (_, turn) => queues.flatMap(queue => queue[turn] ? [queue[turn]] : [])).flat();
   let nextQuery = 0;
   await Promise.all(Array.from({ length: Math.min(4, queries.length) }, async () => {
-    while (!searchSignal.aborted && nextQuery < queries.length && diagnostics.searches < 48) {
+    while (!searchSignal.aborted && nextQuery < queries.length && diagnostics.searches < MAX_SEARCHES) {
       const { item, anchor, publisher } = queries[nextQuery++];
       const seen = new Set<string>();
       let accepted = false; let interrupted = false; let queryFailed = false;
       for (const terms of coverageDatedQueries(anchor)) {
         for (const route of options.searchPaths || ['/news/search', '/search']) {
           if (accepted) break;
-          if (searchSignal.aborted || diagnostics.searches >= 48) { interrupted = true; break; }
+          if (searchSignal.aborted || diagnostics.searches >= MAX_SEARCHES) { interrupted = true; break; }
           diagnostics.searches++;
           const query = `site:${publisher} ${terms}`;
           const report = { publisher, query, route, raw: 0, rejected: 0, accepted: 0, status: 'pending', rejectionReasons: {} as Record<string, number>, rejectedExamples: [] as { host: string; path: string; reason: string }[] };
@@ -154,7 +156,7 @@ export async function discoverMissingCoverage(news: NewsItem[], diagnostics = cr
       if (!interrupted && !queryFailed) reports.get(item)!.searchesCompleted++;
     }
   }));
-  diagnostics.searchBudgetExhausted = diagnostics.events.some(event => event.searchesCompleted < event.searchesPlanned) && (searchSignal.aborted || diagnostics.searches >= 48);
+  diagnostics.searchBudgetExhausted = diagnostics.events.some(event => event.searchesCompleted < event.searchesPlanned) && (searchSignal.aborted || diagnostics.searches >= MAX_SEARCHES);
   const sectionCandidates = await sectionsTask;
   for (const item of targets) {
     const report = reports.get(item)!;

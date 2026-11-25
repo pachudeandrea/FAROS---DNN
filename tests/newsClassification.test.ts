@@ -62,21 +62,71 @@ test('la cobertura real conserva NVDA y el contexto de SPY aportado por otro med
   const sources = reports.flatMap(item => item.sources);
   const originals = structuredClone(sources);
   const analysis = analyzeVerifiedCoverage(sources);
-  assert.deepEqual([...analysis.affectedAssetIds].sort(), ['NVDA', 'SPY']);
+  // NVDA is a top constituent of SPY/QQQ/DIA and a TSMC customer: the event also
+  // reaches the set of instruments exposed to it. One publisher reports that the
+  // indices rose that day, so no net effect is assigned to the index ETFs.
+  assert.deepEqual([...analysis.affectedAssetIds].sort(), ['DIA', 'MSFT', 'NVDA', 'QQQ', 'SPY', 'TSM']);
   assert.equal(analysis.assetImpacts.NVDA, 'alerta');
-  assert.equal(analysis.assetImpacts.SPY, 'neutral', 'La suba genérica de las bolsas no demuestra la cotización de SPY');
+  assert.equal(analysis.assetImpacts.SPY, 'neutral', 'La suba informada de las bolsas impide fijar un efecto neto para SPY');
+  assert.match(analysis.relationships.SPY, /Impacto indirecto: NVDA integra el S&P 500/);
+  assert.equal(analysis.exposures?.SPY.kind, 'indice');
+  assert.equal(analysis.assetImpacts.TSM, 'alerta');
+  // The publication describes the competitors' reaction: no sector inference.
+  assert.equal(analysis.assetImpacts.AMD, undefined);
   assert.equal(analysis.relevanceType, 'impacto_precio');
   assert.deepEqual(sources, originals);
 
   const merged = { ...reports[0], affectedAssetIds: ['NVDA'], sources };
   const revised = reclassifyCachedNews([merged])[0];
-  assert.deepEqual([...revised.affectedAssetIds].sort(), ['NVDA', 'SPY']);
+  assert.deepEqual([...revised.affectedAssetIds].sort(), ['DIA', 'MSFT', 'NVDA', 'QQQ', 'SPY', 'TSM']);
   assert.equal(revised.portfolioImpactAnalysis.affectedHoldings.find(holding => holding.symbol === 'NVDA')?.impactDirection, 'alerta');
   assert.equal(revised.portfolioImpactAnalysis.affectedHoldings.find(holding => holding.symbol === 'SPY')?.impactDirection, 'neutral');
   assert.equal(getPortfolioNewsImpact(revised, { assetIds: ['NVDA'], assetPositions: { NVDA: 'long' } }), 'alerta');
   assert.equal(getPortfolioNewsImpact(revised, { assetIds: ['NVDA'], assetPositions: { NVDA: 'short' } }), 'favorable');
   assert.equal(getPortfolioNewsImpact(revised, { assetIds: ['SPY'], assetPositions: { SPY: 'long' } }), 'neutral');
   assert.equal(reclassifyCachedNews([revised])[0], revised, 'Una cobertura ya actualizada conserva su identidad');
+});
+
+test('una caída de NVDA se refleja en SPY, QQQ y DIA aunque la cartera solo tenga el índice', () => {
+  const publications = JSON.parse(readFileSync(new URL('./fixtures/nvidia-coverage-production-2026-11-09.json', import.meta.url), 'utf8')) as NewsItem[];
+  const report = publications.find(item => /^Las acciones de Nvidia caen casi 5%/.test(item.headline))!;
+  const analysis = analyzeVerifiedCoverage(report.sources);
+  for (const etf of ['SPY', 'QQQ', 'DIA']) {
+    assert.equal(analysis.assetImpacts[etf], 'alerta', etf);
+    assert.deepEqual(analysis.exposures?.[etf].via, ['NVDA']);
+  }
+  // Peers inherit an observed price movement as sector contagion.
+  assert.equal(analysis.assetImpacts.AMD, 'alerta');
+  assert.match(analysis.relationships.AMD, /^Arrastre sectorial/);
+  // Assets without a structural link are not touched.
+  assert.equal(analysis.assetImpacts.KO, undefined);
+  assert.equal(analysis.assetImpacts.GGAL, undefined);
+
+  const onlySpy = reclassifyCachedNews([{ ...report, affectedAssetIds: ['NVDA'] }])[0];
+  const holding = onlySpy.portfolioImpactAnalysis.affectedHoldings.find(item => item.symbol === 'SPY');
+  assert.equal(holding?.exposure, 'indirecta');
+  assert.deepEqual(holding?.via, ['NVDA']);
+  assert.equal(getPortfolioNewsImpact(onlySpy, { assetIds: ['SPY'], assetPositions: { SPY: 'long' } }), 'alerta');
+  assert.equal(getPortfolioNewsImpact(onlySpy, { assetIds: ['SPY'], assetPositions: { SPY: 'short' } }), 'favorable');
+  assert.match(onlySpy.portfolioImpactAnalysis.directExplanation, /alcanza también a .*SPY/);
+});
+
+test('la exposición indirecta cubre cadena, riesgo soberano y no inventa direcciones', () => {
+  const source = (originalHeadline: string, articleSummary = ''): MediaCoverage => ({ mediaName: 'Ámbito', originalHeadline, articleSummary, sourceUrl: 'https://www.ambito.com/finanzas/exposicion-fixture' });
+  // Direct evidence about the index prevails over the constituent's signal.
+  const both = analyzeVerifiedCoverage([source('Las acciones de Nvidia caen 6% y Wall Street cae arrastrada por las tecnológicas')]);
+  assert.equal(both.assetImpacts.SPY, 'alerta');
+  // A rising sovereign risk reaches banks holding public debt.
+  const sovereign = analyzeVerifiedCoverage([source('El riesgo país sube 80 puntos y los bonos en dólares caen')]);
+  assert.equal(sovereign.assetImpacts.GGAL, 'alerta');
+  assert.equal(sovereign.exposures?.GGAL.kind, 'riesgo');
+  // Macro context or noise carries no direction to transmit.
+  const rumor = analyzeVerifiedCoverage([source('Analistas especulan que Nvidia podría subir si mejora la demanda')]);
+  assert.equal(rumor.exposures, undefined);
+  // A company result is not copied to competitors (only observed moves are).
+  const results = analyzeVerifiedCoverage([source('Nvidia reportó ganancias récord y sus ingresos aumentaron 60%')]);
+  assert.equal(results.assetImpacts.AMD, undefined);
+  assert.equal(results.assetImpacts.SPY, results.assetImpacts.NVDA);
 });
 
 test('combina evidencia por instrumento y no atribuye al ETF el movimiento adverso de la compañía', () => {
@@ -152,4 +202,23 @@ test('modificar un análisis devuelto no altera consultas posteriores de la mism
   original.assetImpacts.TSLA = 'favorable';
   original.relationships.TSLA = 'Texto ajeno a las fuentes.';
   assert.deepEqual(analyzeVerifiedCoverage([publication]), expected);
+});
+
+test('el contagio es general: cualquier emisor alcanza a sus índices, cadena, sector y riesgo', () => {
+  const source = (originalHeadline: string): MediaCoverage => ({ mediaName: 'Ámbito', originalHeadline, sourceUrl: 'https://www.ambito.com/finanzas/contagio-general-fixture' });
+  const cases: [string, Record<string, string>, string[]][] = [
+    ['Las acciones de Exxon Mobil caen 7% tras el desplome del crudo', { XLE: 'alerta', SPY: 'alerta', CVX: 'alerta' }, ['KO', 'GGAL']],
+    ['Las acciones de Apple suben 6% tras presentar un nuevo iPhone', { SPY: 'favorable', QQQ: 'favorable', DIA: 'favorable', TSM: 'favorable', MSFT: 'favorable' }, ['XOM']],
+    ['Las acciones de JPMorgan Chase caen 5% en Wall Street', { XLF: 'alerta', SPY: 'alerta', DIA: 'alerta', BAC: 'alerta' }, ['NVDA']],
+    ['Las acciones de Petrobras se desploman 9%', { EWZ: 'alerta', EEM: 'alerta', XOM: 'alerta' }, ['AAPL']],
+    ['Las acciones de YPF suben 8% en Wall Street', { VIST: 'favorable', PAMP: 'favorable' }, ['GGAL', 'SPY']],
+    ['Las acciones de Coca-Cola caen 6%', { SPY: 'alerta', DIA: 'alerta', PEP: 'alerta' }, ['QQQ', 'NVDA']],
+    ['Wall Street cae: el S&P 500 se hunde 4%', { KO: 'alerta', NVDA: 'alerta', QQQ: 'alerta' }, ['GGAL', 'AL30']],
+    ['El riesgo país sube 120 puntos y los bonos en dólares caen', { GGAL: 'alerta', YPFD: 'alerta', CO29: 'alerta' }, ['NVDA', 'KO']],
+  ];
+  for (const [headline, expected, untouched] of cases) {
+    const analysis = analyzeVerifiedCoverage([source(headline)]);
+    for (const [id, impact] of Object.entries(expected)) assert.equal(analysis.assetImpacts[id], impact, `${headline} → ${id}`);
+    for (const id of untouched) assert.equal(analysis.assetImpacts[id], undefined, `${headline} no alcanza a ${id}`);
+  }
 });

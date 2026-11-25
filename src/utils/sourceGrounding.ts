@@ -17,6 +17,10 @@ export const DOMAIN_MEDIA_MAP: Record<string, string> = {
   'pagina12.com.ar': 'Página/12',
   'eldestapeweb.com': 'El Destape',
   'tiempoar.com.ar': 'Tiempo Argentino',
+  'expansion.com': 'Expansión',
+  'cincodias.elpais.com': 'Cinco Días',
+  'es.investing.com': 'Investing.com',
+  'noticiasargentinas.com': 'Noticias Argentinas',
   'wsj.com': 'The Wall Street Journal',
   'bloomberg.com': 'Bloomberg',
   'ft.com': 'Financial Times',
@@ -167,6 +171,9 @@ export function sanitizeGroundingSources(sources: MediaCoverage[]): MediaCoverag
 }
 
 /** Count publications from the same publisher only once, including subdomains. */
+/** Distinct publishers kept for one concrete event (comparison of coverage). */
+export const MAX_SOURCES_PER_EVENT = 8;
+
 export function getPublisherKey(source: MediaCoverage): string {
   try {
     const host = new URL(source.sourceUrl).hostname.toLowerCase().replace(/^www\./, '');

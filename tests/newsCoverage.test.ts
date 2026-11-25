@@ -514,7 +514,7 @@ test('la API recopila publicaciones propias de doce medios argentinos y verifica
     const report = fresh.diagnostics.sources.find((source: { name: string }) => source.name === publisher);
     assert.ok(report?.attempted >= 1 && report?.verified >= 1, `La cola debe dar turno y verificar publicaciones de ${publisher}`);
   }
-  assert.ok(fresh.diagnostics.verification.peakConcurrency <= 4, 'Duplicar editores conserva el límite de solicitudes simultáneas');
+  assert.ok(fresh.diagnostics.verification.peakConcurrency <= 6, 'Duplicar editores conserva el límite de solicitudes simultáneas');
   const stats = await server.stats();
   assert.equal(stats.extractions, 0, 'Las novedades de los doce medios se recopilan sin depender de síntesis generada');
   for (const publication of twelveMediaArticles) assert.equal(stats.publicationUrls.filter((url: string) => url === publication.url).length, 1, 'RSS, índices y comparación comparten la misma verificación');

@@ -85,7 +85,7 @@ test('los índices admiten enlaces relativos y JSON-LD, sin seguir impostores ni
   assert.deepEqual(result.map(candidate => candidate.url), ['https://www.cronista.com/finanzas-mercados/article/', 'https://www.cronista.com/economia-politica/other/']);
 });
 
-test('verifica las seis editoriales permitidas y conserva el límite de cinco fuentes distintas', async t => {
+test('verifica las seis editoriales permitidas y conserva todas sus fuentes distintas dentro del límite', async t => {
   const original = globalThis.fetch; purgeUrlVerificationCache();
   t.after(() => { globalThis.fetch = original; purgeUrlVerificationCache(); });
   const headline = topics[0][0];
@@ -107,8 +107,8 @@ test('verifica las seis editoriales permitidas y conserva el límite de cinco fu
   const diagnostics = createCoverageDiscoveryDiagnostics();
   const result = await discoverMissingCoverage([items()[0]], diagnostics);
   assert.equal(inspected.size, 5);
-  assert.equal(result[0].sources.length, 5);
-  assert.equal(new Set(result[0].sources.map(source => source.mediaName)).size, 5);
+  assert.equal(result[0].sources.length, 6);
+  assert.equal(new Set(result[0].sources.map(source => source.mediaName)).size, 6);
   assert.ok(result[0].sources.some(source => source.mediaName === 'La Nación'));
   assert.ok(result[0].sources.some(source => source.mediaName === 'Clarín'));
 });

@@ -136,3 +136,12 @@ completas de navegador. Incluyen el caso original en cualquier orden, la caché
 anterior, fuentes progresivas de otro emisor, comparación de titulares/cifras/URLs,
 actualización y recarga, separación de causas distintas, URL secundaria revisada,
 activos personalizados y conservación de comparaciones ya verificadas.
+
+## Ampliación del screening de medios (noviembre de 2026)
+
+- **Más editoriales**: se suman Bloomberg Línea, Forbes Argentina, Noticias Argentinas, Investing.com en español, Expansión y Cinco Días a los trece medios argentinos. Las fuentes internacionales en español cubren Wall Street, subyacentes de CEDEAR y ETF, que la prensa local trata con menos detalle.
+- **Más índices por editorial**: Ámbito, El Cronista e iProfesional suman su sección Negocios; Infobae, La Nación, Clarín, Página/12, Perfil, iProfesional, Ámbito Negocios y Bloomberg Línea suman su RSS oficial. Los RSS se declaran como índices en `COVERAGE_PUBLISHERS`: se descargan una vez, solo nominan URLs del propio host del medio y cada artículo se verifica en la publicación original. Los cuatro RSS principales de `RSS_FEEDS` no cambian.
+- **Más palabras clave financieras** para no descartar candidatos de bolsa, Wall Street, Fed, balances, commodities, aranceles, cripto o semiconductores.
+- **Más capacidad**: hasta 8 editoriales por hecho (antes 5, `MAX_SOURCES_PER_EVENT`), 6 verificaciones simultáneas (antes 4) dentro del mismo presupuesto de 18 s, 72 búsquedas dirigidas por consulta (antes 48) y 32 resultados de Gemini (antes 24). Gemini recibe la lista ampliada de fuentes autorizadas y busca también noticias de componentes de los índices/ETF de la cartera y de proveedores o pares sectoriales.
+
+Desde el entorno de desarrollo la red no permitió consultar esos sitios: las URLs de los nuevos índices siguen la convención publicada de cada medio, pero su disponibilidad debe confirmarse con los diagnósticos `sections` de producción. Un índice que no responde queda informado como `unavailable`/`empty` y no bloquea a los demás.

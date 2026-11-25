@@ -120,6 +120,12 @@ export interface PortfolioImpactAnalysis {
     symbol: string;
     impactDirection: NewsImpact;
     relationshipDetail: string;
+    /** 'indirecta': the event concerns another instrument that this holding
+     * contains or depends on (e.g. an NVIDIA event reaching SPY). */
+    exposure?: 'directa' | 'indirecta';
+    via?: string[];
+    /** indice | cadena | riesgo | sector (see data/assetExposure.ts). */
+    exposureKind?: string;
   }[];
   horizon?: string;
 }

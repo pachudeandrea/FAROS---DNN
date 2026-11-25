@@ -6,9 +6,9 @@ import { NewsJobs } from './newsJobs.js';
 import { portfolioAssets, normalizeAssetText } from '../data/assetCatalog.js';
 import { validateCustomAssets } from '../utils/manualAssets.js';
 import { describeAssets } from '../utils/assetNews.js';
-import { analyzeNewsRelevance } from '../utils/newsRelevance.js';
+import { analyzeVerifiedCoverage, explanationWithExposure, holdingsFor } from '../utils/newsClassification.js';
 import { portfolioNewsScope } from '../utils/newsCache.js';
-import type { Asset } from '../types/index.js';
+import type { Asset, MediaCoverage } from '../types/index.js';
 import express, { type RequestHandler } from 'express';
 import { DatabaseError, query } from './database.js';
 import { RequestError } from './requestError.js';
@@ -209,7 +209,9 @@ Incluí tanto catalizadores favorables como factores de RIESGO e impacto adverso
 - Balances corporativos con caída de márgenes, suspensiones de inversiones o dividendos, hechos relevantes adversos y caídas en commodities (petróleo, gas, granos).
 - Shocks internacionales (tasas de la Fed, tensión geopolítica, bajas de calificación crediticia).
 
-Fuentes prioritarias autorizadas: Ámbito Financiero (ambito.com), El Cronista (cronista.com), Infobae Economía (infobae.com), Bloomberg Línea (bloomberglinea.com), La Nación Economía (lanacion.com.ar), Clarín Economía (clarin.com), Reuters (reuters.com), EconoJournal (econojournal.com.ar), BAE Negocios (baenegocios.com), iProfesional (iprofesional.com), Comunicados Oficiales BCRA (bcra.gob.ar), CNV (cnv.gov.ar) e INDEC (indec.gob.ar).
+- Noticias de las empresas que componen los índices o ETF de la cartera (por ejemplo NVIDIA, Apple o Microsoft para SPY/QQQ; Exxon o Chevron para XLE), y de proveedores, clientes o pares sectoriales de los activos seleccionados: un hecho sobre esas empresas también impacta al conjunto de activos expuestos.
+
+Fuentes prioritarias autorizadas: Ámbito Financiero (ambito.com), El Cronista (cronista.com), Infobae Economía (infobae.com), Bloomberg Línea (bloomberglinea.com), La Nación Economía (lanacion.com.ar), Clarín Economía (clarin.com), Reuters (reuters.com), EconoJournal (econojournal.com.ar), BAE Negocios (baenegocios.com), iProfesional (iprofesional.com), Página/12 (pagina12.com.ar), Perfil (perfil.com), El Destape (eldestapeweb.com), Tiempo Argentino (tiempoar.com.ar), El Economista (eleconomista.com.ar), Forbes Argentina (forbesargentina.com), Noticias Argentinas (noticiasargentinas.com), Investing.com en español (es.investing.com), Expansión (expansion.com), Cinco Días (cincodias.elpais.com), CNBC (cnbc.com), The Wall Street Journal (wsj.com), Financial Times (ft.com), Bloomberg (bloomberg.com), Comunicados Oficiales BCRA (bcra.gob.ar), CNV (cnv.gov.ar) e INDEC (indec.gob.ar).
 Para cada acontecimiento, buscá publicaciones del MISMO HECHO en dos o más medios distintos, con sus titulares y enlaces originales. Buscá también cuando usen palabras diferentes para describirlo. No confundas noticias del mismo sector con un mismo acontecimiento y no inventes una segunda fuente si no la encontrás.
 Detallá los hechos concretos, cifras y mecanismos de transmisión respaldados por las notas encontradas.`;
 
@@ -242,10 +244,10 @@ Detallá los hechos concretos, cifras y mecanismos de transmisión respaldados p
     const rawChunkToSourceId = new Map<number, number>();
     let sourceIdCounter = 1;
 
-    const candidates = rawChunks.slice(0, 24);
+    const candidates = rawChunks.slice(0, 32);
     const results: Awaited<ReturnType<typeof verifySourceUrl>>[] = new Array(candidates.length);
     let next = 0;
-    await Promise.all(Array.from({ length: Math.min(4, candidates.length) }, async () => {
+    await Promise.all(Array.from({ length: Math.min(6, candidates.length) }, async () => {
       while (!controller.signal.aborted && next < candidates.length) {
         const index = next++;
         const chunk = candidates[index];
@@ -343,8 +345,11 @@ Respondé ÚNICAMENTE con un JSON con el siguiente esquema:
       const mediaDomain = assignedSource.domain || (new URL(assignedSource.sourceUrl)).hostname;
       const mediaName = assignedSource.mediaName || mediaDomain;
 
-      const analysis = analyzeNewsRelevance(assignedSource.originalHeadline, assets, assignedSource.articleSummary);
+      // Same aggregate as RSS: direct relations plus structural exposure (an
+      // NVIDIA event also reaches SPY/QQQ holders).
+      const analysis = analyzeVerifiedCoverage([assignedSource as MediaCoverage], assets);
       const relatedIds = analysis.affectedAssetIds.filter(id => !tickers.length || tickers.includes(id));
+      const explanation = explanationWithExposure(analysis, relatedIds);
       if (tickers.length && !relatedIds.some(id => tickers.includes(id))) continue;
       const proposedSummary = typeof item.summary === 'string' ? item.summary.trim() : '';
       const advice = /\b(recomiend\w*|recomendamos|conviene (comprar|vender|invertir)|deberias|tenes que (comprar|vender)|compra ahora|vende ahora|objetivo de precio|rentabilidad garantizada)\b/;
@@ -355,7 +360,7 @@ Respondé ÚNICAMENTE con un JSON con el siguiente esquema:
         briefSummary: summary,
         fullSynthesis: [
           summary,
-          analysis.explanation,
+          explanation,
           `Información respaldada por ${mediaName}.`
         ].filter(Boolean),
         publishedAgo: assignedSource.publishedTime || 'Hoy',
@@ -376,19 +381,15 @@ Respondé ÚNICAMENTE con un JSON con el siguiente esquema:
         relevanceType: analysis.relevanceType,
         topicCategory: analysis.topicCategory,
         audioDuration: '1:00 min',
-        audioScript: `Resumen FAROS. ${assignedSource.originalHeadline}. ${analysis.explanation} Publicado en ${mediaName}.`,
+        audioScript: `Resumen FAROS. ${assignedSource.originalHeadline}. ${explanation} Publicado en ${mediaName}.`,
         factCheck: {
           status: analysis.relevanceType === 'ruido' ? 'en_analisis' : 'confirmado',
           officialSource: mediaName,
           detail: analysis.relevanceType === 'ruido' ? `Publicación verificada en ${mediaName}; su contenido no se trata como un hecho financiero confirmado.` : `Respaldado por publicación original en ${mediaName}.`
         },
         portfolioImpactAnalysis: {
-          directExplanation: analysis.explanation,
-          affectedHoldings: relatedIds.map((ticker: string) => ({
-            symbol: ticker,
-            impactDirection: analysis.assetImpacts[ticker] || 'neutral',
-            relationshipDetail: analysis.relationships[ticker]
-          }))
+          directExplanation: explanation,
+          affectedHoldings: holdingsFor(relatedIds, analysis)
         }
       });
     }

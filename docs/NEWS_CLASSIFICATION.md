@@ -36,3 +36,16 @@ Se utiliza el titular original junto con hasta 1200 caracteres de bajada/cuerpo 
 Se mantiene `v16_daily_news`. Los snapshots generados por FAROS se reclasifican al leerlos, sin borrar las noticias acumuladas ni alterar la hora de consulta o la fecha de publicación. Las colecciones del día y el corte a medianoche de Argentina continúan; Guardadas mantiene su vencimiento independiente. Los activos personalizados requieren su catálogo para reclasificarse y nunca se eliminan por faltar en el catálogo general.
 
 Validación de esta corrección: lint de cliente/servidor, 221 pruebas unitarias y de integración aprobadas con PostgreSQL local y cero omitidas, más las dos regresiones nuevas de navegador sobre catalizadores judiciales y reclasificación de caché. El recorrido general completó sus primeras 35 comprobaciones; una aserción nueva asumía un reloj de 24 horas y se ajustó al formato real de Chromium antes de repetir satisfactoriamente las dos comprobaciones nuevas. No se afirma una ejecución completa de las 41 en esta corrección.
+
+## Impacto en el conjunto de activos expuestos (contagio)
+
+Una noticia ya no se limita al activo que nombra. `src/data/assetExposure.ts` define, para todo el catálogo, qué otros instrumentos están expuestos a cada uno, y `applyExposureSpillover` (en `newsClassification.ts`) extiende el análisis verificado a esos activos. Se aplica igual a RSS, Gemini, índices de medios y cachés.
+
+Tipos de vínculo:
+
+- `indice`: el ETF contiene al activo (S&P 500/SPY, Nasdaq 100/QQQ, Dow Jones/DIA, XLE, XLF, MSCI Brazil/EWZ, MSCI EM/EEM, ARKK). La dirección se transmite siempre. Ej.: una caída de NVIDIA, Apple o Exxon llega a SPY; JPMorgan a XLF, SPY y DIA; Petrobras a EWZ y EEM.
+- `cadena`: proveedor/cliente (NVIDIA, AMD y Apple → TSMC; NVIDIA → Microsoft; YPF ↔ Vista).
+- `riesgo`: la deuda soberana alcanza a los bancos argentinos (tenencia de títulos públicos), a las acciones líderes del panel y a los bonos provinciales.
+- `sector`: pares del mismo sector (semiconductores, consumo masivo, farmacéuticas, automotrices, bancos, petroleras, agro argentino, utilities, etc.) y el índice hacia sus componentes. Solo se transmite un movimiento bursátil observado; un resultado propio de una empresa no se copia a sus competidores, y si la nota describe la reacción de los competidores no se infiere nada.
+
+Reglas: la evidencia directa sobre un activo prevalece sobre la indirecta; señales contrapuestas de varios componentes quedan neutrales; contexto macro, rumores y opiniones no se propagan. Si la nota informa el movimiento del índice de referencia como sujeto («Wall Street cae», «cae el S&P 500»), esa señal se asigna al ETF; si va en sentido contrario al componente, no se fija un efecto neto. Cada tenencia alcanzada indica `exposure: 'indirecta'`, `via` y `exposureKind`; la tarjeta muestra «vía NVDA», el detalle «Impacto indirecto vía …» y el audio explica el canal («porque NVIDIA integra ese índice…»). Las ponderaciones son niveles cualitativos, no cotizaciones, y deben revisarse en cada rebalanceo de índices. Un portfolio con solo SPY ahora recibe las noticias de sus principales componentes, priorizadas en la cola de verificación.

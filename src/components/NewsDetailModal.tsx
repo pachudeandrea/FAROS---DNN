@@ -490,6 +490,11 @@ export const NewsDetailModal: React.FC<NewsDetailModalProps> = ({
                                 · {asset.sector}
                               </span>
                             )}
+                            {holdingData?.exposure === 'indirecta' && holdingData.via?.length ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-ink-100 text-ink-800 border-ink-300">
+                                Impacto indirecto vía {holdingData.via.join(', ')}
+                              </span>
+                            ) : null}
                           </div>
 
                           <div className="flex items-center gap-1.5 flex-wrap">

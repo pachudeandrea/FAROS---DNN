@@ -219,10 +219,29 @@ function explainTransmission(news: NarrativeNews, context: NarrativeContext): st
   const { text, assets } = news;
   let recognized = false;
   const add = (key: string, line: string) => { recognized = true; if (!context.channels.has(key)) { context.channels.add(key); lines.push(line); } };
-  const sovereign = assets.filter(asset => asset.category === 'bonos' && asset.issuer === 'República Argentina');
+  // Holdings reached through another instrument (an NVIDIA event in an S&P 500
+  // ETF) are explained by that exposure, not as if the note named them.
+  const holdings = news.item.portfolioImpactAnalysis?.affectedHoldings || [];
+  const indirect = holdings.filter(holding => holding.exposure === 'indirecta' && holding.via?.length && news.selected.includes(holding.symbol));
+  for (const holding of indirect) {
+    const catalog = portfolioAssets();
+    const via = joinNames(holding.via!.map(id => assetLabel(catalog.find(asset => asset.id === id), id)));
+    const direction = getPortfolioNewsImpact(news.item, { assetIds: [holding.symbol], assetPositions: {} });
+    const label = exposureLabel(news, [holding.symbol]);
+    add(`indirect:${holding.symbol}:${holding.via!.join(',')}`, direction === 'neutral'
+      ? `La noticia trata sobre ${via}, que forma parte de ${label}. Por eso te alcanza de forma indirecta, aunque el texto no permite fijar una dirección.`
+      : `La noticia trata sobre ${via}, pero también alcanza a ${label}, ${{
+        indice: `porque ${via} integra ese índice y su movimiento se transmite en proporción a su peso`,
+        cadena: `por su relación de proveedor o cliente con ${via}`,
+        riesgo: 'por la tenencia de bonos soberanos en el balance de los bancos',
+        sector: 'porque comparten sector y un movimiento bursátil suele arrastrar a sus pares'
+      }[holding.exposureKind || 'indice'] || 'por su exposición a ese activo'}. Es un impacto indirecto, no una variación propia medida en la nota.`);
+  }
+  const indirectIds = new Set(indirect.map(holding => holding.symbol));
+  const sovereign = assets.filter(asset => !indirectIds.has(asset.id) && asset.category === 'bonos' && asset.issuer === 'República Argentina');
   const debt = assets.filter(asset => ['bonos', 'provinciales', 'corporativos', 'tesoro'].includes(asset.category));
-  const equities = assets.filter(asset => ['acciones', 'cedears', 'fondos'].includes(asset.category) && asset.instrumentType !== 'CEDEAR de ETF');
-  const funds = assets.filter(asset => asset.instrumentType === 'CEDEAR de ETF');
+  const equities = assets.filter(asset => !indirectIds.has(asset.id) && ['acciones', 'cedears', 'fondos'].includes(asset.category) && asset.instrumentType !== 'CEDEAR de ETF');
+  const funds = assets.filter(asset => !indirectIds.has(asset.id) && asset.instrumentType === 'CEDEAR de ETF');
   const fx = assets.filter(asset => asset.category === 'divisas');
   const legalTerms = /\b(?:justicia|tribunal\w*|juez\w*|corte|juicio\w*|judicial\w*|litigio\w*|conden\w*|fallo\w*|sentencia\w*|embarg\w*|indemnizaci\w*|amicus|jurisdiccion)\b/;
   const marketTerms = /\b(?:bolsa|wall street|cotiza\w*|acciones|indice|nasdaq|s&p|capitalizacion|toma de ganancias)\b/;

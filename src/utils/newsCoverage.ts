@@ -1,7 +1,7 @@
 import { recognizeAssetIds } from './assetNews.js';
 import { ASSET_CATALOG } from '../data/assetCatalog.js';
 import type { MediaCoverage, NewsItem } from '../types/index.js';
-import { areSourcesReportingSameEvent, cleanHeadlineText, distinctMediaSources, getPublisherKey } from './sourceGrounding.js';
+import { areSourcesReportingSameEvent, cleanHeadlineText, distinctMediaSources, getPublisherKey, MAX_SOURCES_PER_EVENT } from './sourceGrounding.js';
 import { reclassifyCachedNews } from './newsClassification.js';
 import { publicationUrls } from './newsLibrary.js';
 
@@ -323,13 +323,13 @@ export function enrichNewsCoverage(news: NewsItem[], verifiedPool: MediaCoverage
     if (!primary) return item;
     const existing: MediaCoverage[] = [];
     for (const source of distinct) {
-      if (existing.length >= 5) break;
+      if (existing.length >= MAX_SOURCES_PER_EVENT) break;
       if (!existing.length || existing.every(previous => sourcesCoverSameEvent(previous, source))) existing.push(source);
     }
     const publishers = new Set(existing.map(getPublisherKey));
     const sources = [...existing];
     for (const candidate of verifiedPool) {
-      if (sources.length >= 5) break;
+      if (sources.length >= MAX_SOURCES_PER_EVENT) break;
       const at = publishedAt(candidate);
       if (!Number.isFinite(at) || at < now.getTime() - 48 * 3600000 || at > now.getTime() + 5 * 60000) continue;
       const publisher = getPublisherKey(candidate);
@@ -354,7 +354,7 @@ function combineEventItems(previous: NewsItem, incoming: NewsItem, preferIncomin
   // additional old sources, rather than stripping that comparison on a second
   // cache read just because two original quotes have different wording.
   const sources = distinctMediaSources([...preferred.sources, ...other.sources.filter(source =>
-    preferred.sources.every(current => sourcesCoverSameEvent(current, source)))]).slice(0, 5);
+    preferred.sources.every(current => sourcesCoverSameEvent(current, source)))]).slice(0, MAX_SOURCES_PER_EVENT);
   const affectedAssetIds = replacingPublication ? preferred.affectedAssetIds
     : [...new Set([...(preferred.affectedAssetIds || []), ...(other.affectedAssetIds || [])])];
   const baseHoldings = preferred.portfolioImpactAnalysis?.affectedHoldings || [];

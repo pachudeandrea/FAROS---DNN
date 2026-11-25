@@ -98,17 +98,17 @@ test('pipeline fixtures: retain distinct payments, days and countries without in
   assert.ok(result.every(item => item.coverageCount === 1 && item.sources.length === 1));
 });
 
-test('pipeline fixtures: deduplicate the exact publication URL and cap distinct outlets at five', () => {
+test('pipeline fixtures: deduplicate the exact publication URL and cap distinct outlets at eight', () => {
   const title = 'El BCRA mantiene la tasa de interés al 40%';
   const primary = itemFixture('primary', [fixture(title)]);
   const samePublication = itemFixture('same-url', [primary.sources[0]]);
-  const outlets = ['cronista.com', 'infobae.com', 'lanacion.com.ar', 'clarin.com', 'perfil.com', 'iprofesional.com'];
+  const outlets = ['cronista.com', 'infobae.com', 'lanacion.com.ar', 'clarin.com', 'perfil.com', 'iprofesional.com', 'pagina12.com.ar', 'baenegocios.com', 'eleconomista.com.ar'];
   const secondary = outlets.map((publisher, index) => itemFixture(`outlet-${index}`, [fixture(title, publisher)]));
   const result = mergeVerifiedNews([primary], [samePublication, ...secondary], new Date(at));
   assert.equal(result.length, 1);
-  assert.equal(result[0].coverageCount, 5);
-  assert.equal(result[0].sources.length, 5);
-  assert.equal(new Set(result[0].sources.map(source => source.mediaName)).size, 5);
+  assert.equal(result[0].coverageCount, 8);
+  assert.equal(result[0].sources.length, 8);
+  assert.equal(new Set(result[0].sources.map(source => source.mediaName)).size, 8);
 });
 
 test('equivalencia de prima argentina exige nivel, dirección propia y jornada verificada', () => {

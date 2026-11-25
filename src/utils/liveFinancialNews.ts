@@ -3,12 +3,13 @@ import { createHash } from 'node:crypto';
 import * as cheerio from 'cheerio';
 import { recognizeAssetIds } from './assetNews.js';
 import { analyzeNewsRelevance } from './newsRelevance.js';
-import { analyzeVerifiedCoverage } from './newsClassification.js';
+import { analyzeVerifiedCoverage, explanationWithExposure, holdingsFor } from './newsClassification.js';
 import { ASSET_CATALOG } from '../data/assetCatalog.js';
+import { exposureDriversOf } from '../data/assetExposure.js';
 import type { Asset } from '../types/index.js';
 import { NewsItem, MediaCoverage } from '../types/index.js';
 import { verifySourceUrl, filterByFreshness, getArgentinaDateInfo, DISALLOWED_PATH_PATTERNS } from './urlResolver.js';
-import { getPublisherKey } from './sourceGrounding.js';
+import { getPublisherKey, MAX_SOURCES_PER_EVENT } from './sourceGrounding.js';
 import { sourcesCoverSameEvent } from './newsCoverage.js';
 import type { PublicationCandidate } from './publisherSections.js';
 
@@ -19,7 +20,10 @@ export interface RawFeedItem {
   sourceFeed: string;
 }
 
-const RSS_FEEDS = [
+// Core feeds. Further publisher RSS/Atom feeds and section indexes are listed
+// in COVERAGE_PUBLISHERS (publisherSections.ts): they are fetched once, share
+// this verification queue and also feed the cross-publisher comparison.
+export const RSS_FEEDS = [
   { name: 'Ámbito Finanzas', url: 'https://www.ambito.com/rss/finanzas.xml' },
   { name: 'Ámbito Economía', url: 'https://www.ambito.com/rss/economia.xml' },
   { name: 'El Cronista', url: 'https://www.cronista.com/files/rss/news.xml' },
@@ -30,7 +34,7 @@ const FEED_TIMEOUT_MS = 5000;
 // RSS and source verification together use at most about 23 seconds. Leave
 // time for the personalized synthesis in the 60-second serverless request.
 const VERIFICATION_BUDGET_MS = 18000;
-const VERIFICATION_CONCURRENCY = 4;
+const VERIFICATION_CONCURRENCY = 6;
 
 function publisherFor(candidate: RawFeedItem): string {
   return getPublisherKey({ sourceUrl: candidate.link, mediaName: candidate.sourceFeed } as MediaCoverage);
@@ -54,14 +58,17 @@ function candidateUrlKey(rawUrl: string): string | null {
 function fairCandidateOrder(candidates: RawFeedItem[], userTickers: string[], assets: Asset[]): RawFeedItem[] {
   const byPublisher = new Map<string, RawFeedItem[]>();
   const selected = new Set(userTickers);
+  // A portfolio holding SPY also needs NVIDIA/Apple headlines: they reach the
+  // index through its largest constituents (see assetExposure.ts).
+  const drivers = exposureDriversOf(selected);
   const priorities = new Map<RawFeedItem, number>();
   for (const candidate of candidates) {
     const publisher = publisherFor(candidate);
     const queue = byPublisher.get(publisher) || [];
     queue.push(candidate);
     byPublisher.set(publisher, queue);
-    priorities.set(candidate, selected.size > 0
-      && recognizeAssetIds(candidate.title, assets).some(id => selected.has(id)) ? 1 : 0);
+    const recognized = selected.size > 0 ? recognizeAssetIds(candidate.title, assets) : [];
+    priorities.set(candidate, recognized.some(id => selected.has(id)) ? 2 : recognized.some(id => drivers.has(id)) ? 1 : 0);
   }
   // Prioritize relevant headlines inside every publisher's queue without
   // excluding other publishers or dropping general financial coverage.
@@ -84,7 +91,13 @@ const FINANCIAL_KEYWORDS = [
   'ypf', 'vaca muerta', 'petróleo', 'petroleo', 'crudo', 'gas natural', 'gasoducto', 'gnc', 'pampa', 'energía', 'energia',
   'banco', 'bancos', 'galicia', 'ggal', 'tasa', 'tasas', 'bcra', 'reservas', 'inflación', 'inflacion',
   'byma', 'merval', 'cedear', 'cedears', 'wall street', 'adr', 'adrs', 'superávit', 'superavit', 'déficit', 'deficit',
-  'comercial', 'exportaciones', 'exportación', 'exportacion', 'cnv', 'lecap', 'lecaps', 'boncap', 'fmi'
+  'comercial', 'exportaciones', 'exportación', 'exportacion', 'cnv', 'lecap', 'lecaps', 'boncap', 'fmi',
+  // Equity markets and global drivers that reach CEDEARs, ETFs and local shares.
+  'acciones', 'acción', 'accion', 'bolsa', 'bolsas', 'bursátil', 'bursatil', 'nasdaq', 's&p', 's&p 500', 'dow jones', 'índice', 'indice',
+  'fed', 'reserva federal', 'bce', 'tesoro', 'licitación', 'licitacion', 'calificación', 'calificacion', 'calificadora', 'moody\'s', 'fitch',
+  'balance', 'balances', 'ganancias', 'resultados', 'facturación', 'facturacion', 'dividendo', 'dividendos', 'recompra', 'inversores', 'inversión', 'inversion',
+  'mercados', 'commodities', 'soja', 'trigo', 'maíz', 'maiz', 'oro', 'cobre', 'litio', 'bitcoin', 'cripto', 'criptomonedas',
+  'arancel', 'aranceles', 'importaciones', 'tarifas', 'subsidios', 'pbi', 'recesión', 'recesion', 'semiconductores', 'chips', 'inteligencia artificial'
 ];
 
 const NON_FINANCIAL_REJECT_REGEX = /(^|[^\p{L}\p{N}])(botargas?|carrera de|maratón|maraton|desfile|recital|concierto|farándula|farandula|espectáculos?|espectaculos?|fútbol|futbol|partido de|champions league|copa libertadores|asesinato|homicidio|femicidio|detenido por|accidente vial|choque fatal|clima para hoy|pronóstico del tiempo|horóscopo|horoscopo|signos del zodíaco)([^\\p{L}\\p{N}]|$)/iu;
@@ -522,7 +535,7 @@ function buildVerifiedNews(verifiedSources: VerifiedSource[], userTickers: strin
     if (matchedCluster) {
       // Deduplicate within cluster by media name or URL
       const hasMedia = matchedCluster.sources.some(s => getPublisherKey(s) === getPublisherKey(src) || s.sourceUrl === src.sourceUrl);
-      if (!hasMedia && matchedCluster.sources.length < 5) {
+      if (!hasMedia && matchedCluster.sources.length < MAX_SOURCES_PER_EVENT) {
         matchedCluster.sources.push(src);
 
       }
@@ -553,6 +566,7 @@ function buildVerifiedNews(verifiedSources: VerifiedSource[], userTickers: strin
     const matchesUserTickers = userTickers.length === 0 || analysis.affectedAssetIds.some(t => userTickers.includes(t));
     if (!matchesUserTickers) { diagnostics.discarded.unrelated++; continue; }
     const relatedIds = userTickers.length ? analysis.affectedAssetIds.filter(id => userTickers.includes(id)) : analysis.affectedAssetIds;
+    const explanation = explanationWithExposure(analysis, relatedIds);
 
     const primarySource = cluster.sources[0];
     const mediaNames = cluster.sources.map(s => s.mediaName).join(' y ');
@@ -568,7 +582,7 @@ function buildVerifiedNews(verifiedSources: VerifiedSource[], userTickers: strin
       briefSummary,
       fullSynthesis: [
         `Hecho concreto informado en ${mediaNames} (${displayTimestamp}).`,
-        analysis.explanation,
+        explanation,
         `Información respaldada directamente por las publicaciones originales de los medios consultados.`
       ],
       publishedAgo: primarySource.publishedTime || 'Reciente',
@@ -588,15 +602,11 @@ function buildVerifiedNews(verifiedSources: VerifiedSource[], userTickers: strin
       impact: analysis.impact,
       relevanceType: analysis.relevanceType,
       portfolioImpactAnalysis: {
-        directExplanation: analysis.explanation,
-        affectedHoldings: relatedIds.map(sym => ({
-          symbol: sym,
-          impactDirection: analysis.assetImpacts[sym] || 'neutral',
-          relationshipDetail: analysis.relationships[sym]
-        }))
+        directExplanation: explanation,
+        affectedHoldings: holdingsFor(relatedIds, analysis)
       },
       audioDuration: '1:00 min',
-      audioScript: `Resumen FAROS. ${cluster.headline}. ${analysis.explanation} Publicado en ${mediaNames}.`,
+      audioScript: `Resumen FAROS. ${cluster.headline}. ${explanation} Publicado en ${mediaNames}.`,
       factCheck: {
         status: analysis.relevanceType === 'ruido' ? 'en_analisis' : 'confirmado',
         officialSource: mediaNames,

@@ -132,7 +132,13 @@ export function installNewsTransport() {
       const found = process.env.FAROS_TEST_NEWS_SECTION === '1' ? activeArticles().filter(article => article.media === 'Infobae') : [];
       return new Response(`<html><body>${found.map(article => `<a href="${new URL(article.url).pathname}"><h2>${article.title}</h2></a>`).join('')}</body></html>`, { headers: { 'content-type': 'text/html' } });
     }
-    const feed = url.includes('/rss/') || url.includes('/outboundfeeds/');
+    // Publisher RSS listed as section indexes (COVERAGE_PUBLISHERS) are not
+    // the four core feeds counted here; they answer with an empty channel.
+    const coreFeed = /^https:\/\/www\.(?:ambito\.com\/rss\/(?:finanzas|economia)\.xml|cronista\.com\/files\/rss\/news\.xml|infobae\.com\/arc\/outboundfeeds\/rss\/\?outputType=xml)$/.test(url);
+    if (!coreFeed && (url.includes('/rss') || url.includes('/outboundfeeds/') || url.includes('/feed'))) {
+      return new Response('<rss><channel></channel></rss>', { headers: { 'content-type': 'application/rss+xml' } });
+    }
+    const feed = coreFeed;
     if (feed) {
       stats.feeds++;
       const publisher = url.includes('ambito.com') ? 'Ámbito' : url.includes('cronista.com') ? 'El Cronista' : 'Infobae';

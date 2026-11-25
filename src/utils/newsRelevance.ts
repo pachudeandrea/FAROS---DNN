@@ -10,6 +10,9 @@ export interface NewsRelevanceAnalysis {
   topicCategory: NewsItem['topicCategory'];
   relationships: Record<string, string>;
   explanation: string;
+  /** Instruments reached through structural exposure to another instrument
+   * named in the publication (e.g. SPY through NVDA). Absent for direct links. */
+  exposures?: Record<string, { via: string[]; kind: string }>;
 }
 
 const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

@@ -95,7 +95,7 @@ test('deduplica antes de verificar y reparte los turnos por medio con prioridad 
   });
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(calls.slice(0, 3), ['ambito.com', 'cronista.com', 'infobae.com'].map(publisher => fixtureCandidate(publisher, 2).link));
-  assert.equal(calls.length, 4, 'Solo se inician cuatro verificaciones simultáneas');
+  assert.equal(calls.length, 6, 'Solo se inician seis verificaciones simultáneas');
   while (calls.length < 9 || pending.length) {
     for (const resolve of pending.splice(0)) resolve();
     await new Promise(resolve => setImmediate(resolve));
@@ -105,8 +105,8 @@ test('deduplica antes de verificar y reparte los turnos por medio con prioridad 
   assert.equal(new Set(calls).size, 9);
   assert.equal(diagnostics.discarded.duplicate, 1);
   assert.equal(diagnostics.uniqueCandidates, 9);
-  assert.equal(peak, 4);
-  assert.equal(diagnostics.verification.peakConcurrency, 4);
+  assert.equal(peak, 6);
+  assert.equal(diagnostics.verification.peakConcurrency, 6);
   assert.ok(diagnostics.sources.every(source => source.attempted === 3 && source.verified === 3));
 });
 
@@ -119,12 +119,12 @@ test('el presupuesto global corta la espera y no inicia nuevas verificaciones tr
     verify: async () => { calls++; return new Promise(() => {}); }
   });
   assert.deepEqual(verified, []);
-  assert.equal(calls, 4);
+  assert.equal(calls, 6);
   assert.equal(diagnostics.verification.budgetExhausted, true);
-  assert.equal(diagnostics.verification.skipped, 5);
-  assert.equal(diagnostics.discarded.connection, 4);
-  assert.deepEqual(diagnostics.sources.map(source => source.attempted), [2, 1, 1], 'Todos los medios reciben un turno antes del corte');
-  assert.equal(diagnostics.sources.reduce((sum, source) => sum + source.timedOut, 0), 4);
+  assert.equal(diagnostics.verification.skipped, 3);
+  assert.equal(diagnostics.discarded.connection, 6);
+  assert.deepEqual(diagnostics.sources.map(source => source.attempted), [2, 2, 2], 'Todos los medios reciben un turno antes del corte');
+  assert.equal(diagnostics.sources.reduce((sum, source) => sum + source.timedOut, 0), 6);
 });
 
 test('una caída de acceso a todas las publicaciones no se presenta como ausencia de noticias', async () => {
@@ -287,7 +287,7 @@ test('el primer RSS verificado se muestra mientras otro feed sigue pendiente, si
   } finally { globalThis.fetch = original; purgeUrlVerificationCache(); }
 });
 
-test('la cola incremental comparte cuatro verificaciones y da turno a un medio que llega después, sin repetir URLs', async () => {
+test('la cola incremental comparte seis verificaciones y da turno a un medio que llega después, sin repetir URLs', async () => {
   const diagnostics = createCollectionDiagnostics();
   const calls: string[] = [];
   const pending: (() => void)[] = [];
@@ -296,23 +296,23 @@ test('la cola incremental comparte cuatro verificaciones y da turno a un medio q
     calls.push(url); active++; peak = Math.max(peak, active);
     return new Promise(resolve => pending.push(() => { active--; resolve(fixtureVerified({ link: url, title: title!, sourceFeed: new URL(url).hostname })); }));
   } });
-  const first = Array.from({ length: 6 }, (_, index) => fixtureCandidate('ambito.com', index));
+  const first = Array.from({ length: 8 }, (_, index) => fixtureCandidate('ambito.com', index));
   queue.add(first);
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(calls.length, 4);
+  assert.equal(calls.length, 6);
   queue.add([fixtureCandidate('cronista.com', 1), fixtureCandidate('cronista.com', 2), { ...first[0], link: first[0].link + '?utm_source=duplicate' }]);
   pending.shift()!();
   await new Promise(resolve => setImmediate(resolve));
-  assert.ok(calls[4].includes('cronista.com'), 'Un feed posterior recibe turno antes de agotar el primer medio');
+  assert.ok(calls[6].includes('cronista.com'), 'Un feed posterior recibe turno antes de agotar el primer medio');
   let finished = false;
   const done = queue.finish().then(value => { finished = true; return value; });
   while (!finished) {
     for (const release of pending.splice(0)) release();
     await new Promise(resolve => setImmediate(resolve));
   }
-  assert.equal((await done).length, 8); assert.equal(calls.length, 8); assert.equal(new Set(calls).size, 8);
-  assert.equal(peak, 4); assert.equal(diagnostics.verification.peakConcurrency, 4);
-  assert.equal(diagnostics.uniqueCandidates, 8); assert.equal(diagnostics.discarded.duplicate, 1);
+  assert.equal((await done).length, 10); assert.equal(calls.length, 10); assert.equal(new Set(calls).size, 10);
+  assert.equal(peak, 6); assert.equal(diagnostics.verification.peakConcurrency, 6);
+  assert.equal(diagnostics.uniqueCandidates, 10); assert.equal(diagnostics.discarded.duplicate, 1);
   assert.equal(diagnostics.verification.skipped, 0);
 });
 
@@ -323,9 +323,9 @@ test('feeds posteriores no reinician el presupuesto incremental ni inician solic
   await new Promise(resolve => setTimeout(resolve, 30));
   queue.add(Array.from({ length: 4 }, (_, index) => fixtureCandidate('cronista.com', index)));
   assert.deepEqual(await queue.finish(), []);
-  assert.equal(calls, 4); assert.equal(diagnostics.verification.budgetExhausted, true);
-  assert.equal(diagnostics.verification.skipped, 8);
-  assert.equal(diagnostics.sources.reduce((count, source) => count + source.timedOut, 0), 4);
+  assert.equal(calls, 6); assert.equal(diagnostics.verification.budgetExhausted, true);
+  assert.equal(diagnostics.verification.skipped, 6);
+  assert.equal(diagnostics.sources.reduce((count, source) => count + source.timedOut, 0), 6);
 });
 
 test('una primera publicación ajena o vencida no impide mostrar otra relevante antes del RSS lento', { timeout: 5000 }, async () => {
